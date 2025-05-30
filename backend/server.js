@@ -563,6 +563,9 @@ app.get('/api/projects', authenticateToken, (req, res) => {
     if (!req.user.approved) {
       return res.status(403).json({ error: 'Account pending approval' });
     }
+     if (req.user.subscription_status !== 'active') {
+    return res.status(403).json({ error: 'Active subscription required' });
+  }
     query = `SELECT p.id, p.title, p.suburb, p.loan_amount, p.property_type, p.development_stage,
              p.visible, p.payment_status, p.created_at,
              CASE 
@@ -1306,7 +1309,7 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
     // Create subscription
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID }],
+      items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID || 'price_YOUR_ID' }],
       expand: ['latest_invoice.payment_intent'],
     });
 

@@ -416,6 +416,17 @@ const AuthProvider = ({ children }) => {
     setUser(userData);
   };
 
+const refreshUser = async () => {
+  try {
+    const data = await api.getUserProfile(user.id);
+    const updatedUser = { ...user, approved: data.approved };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  } catch (err) {
+    console.error('Failed to refresh user:', err);
+  }
+};
+
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
