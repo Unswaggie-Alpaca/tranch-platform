@@ -10,8 +10,6 @@ const sqlite3 = require('sqlite3').verbose();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_51RU7lrQupq5Lj3mgc39e2tMWCF1fsxJqfWlbo87bY1wEVd4r6IK9fAoVb1V62eibynYwtBak7HQPwu447pGxZH0J00APK2xLBk');
 const rateLimit = require('express-rate-limit'); 
 const aiChatRoutes = require('./routes/ai-chat');
-const helmet = require('helmet');
-app.use(helmet());
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -19,6 +17,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-i
 
 // Middleware
 // Middleware
+const helmet = require('helmet');
+app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? 'https://tranch.com.au'  // Replace with your actual domain
