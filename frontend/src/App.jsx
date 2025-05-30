@@ -870,8 +870,20 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
   };
 
   const handlePayToPublish = async () => {
-  setShowPaymentModal(true);
-};
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSuccess = async () => {
+    setShowPaymentModal(false);
+    setSuccess('Payment successful! Your project is now published.');
+    
+    // Add a small delay to ensure database is updated
+    setTimeout(async () => {
+      if (onProjectUpdate) {
+        await onProjectUpdate();
+      }
+    }, 500); // Small delay to ensure DB write completes
+  };
 
   const getRiskRatingColor = (rating) => {
     switch (rating?.toLowerCase()) {
@@ -886,31 +898,14 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
     <div className="project-card enhanced">
       {success && <SuccessMessage message={success} onClose={() => setSuccess('')} />}
       {error && <ErrorMessage message={error} onClose={() => setError('')} />}
-        <PaymentModal 
-  isOpen={showPaymentModal}
-  onClose={() => setShowPaymentModal(false)}
-  project={project}
- // In ProjectCard, after successful payment
-onSuccess={async () => {
-  setShowPaymentModal(false);
-  
-  // Update local project state immediately
-  project.payment_status = 'paid';
-  project.visible = true;
-  
-  setSuccess('Payment successful! Your project is now published.');
-  
-  // Then refresh from server
-  if (onProjectUpdate) {
-    setTimeout(() => {
-      onProjectUpdate();
-    }, 1000);
-  }
-}}
-/>
+      
+      <PaymentModal 
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        project={project}
+        onSuccess={handlePaymentSuccess}
+      />
     
-    <div className="project-header"></div>
-
       <div className="project-header">
         <div className="header-content">
           <h3 className="project-title">{project.title}</h3>
@@ -1172,6 +1167,7 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
 };
 
 // Separate component for the form (inside Elements)
+// Separate component for the form (inside Elements)
 const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user, updateUser }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -1189,6 +1185,10 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
       const { error, paymentMethod } = await stripe.createPaymentMethod({
         type: 'card',
         card: elements.getElement(CardElement),
+        billing_details: {
+          name: user.name,
+          email: user.email
+        }
       });
 
       if (error) {
@@ -1197,18 +1197,34 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
         return;
       }
 
-      // Create subscription
+      // Create subscription through your backend
       const response = await api.createSubscription(paymentMethod.id);
       
+      // Check if subscription requires additional action (3D Secure)
+      if (response.client_secret) {
+        const { error: confirmError } = await stripe.confirmCardPayment(
+          response.client_secret
+        );
+        
+        if (confirmError) {
+          setError(confirmError.message);
+          setProcessing(false);
+          return;
+        }
+      }
+      
+      // If we get here, subscription is active
       if (response.status === 'active' || response.status === 'trialing') {
         // Update local user status
         updateUser({ ...user, subscription_status: 'active' });
         onSuccess();
+      } else if (response.status === 'incomplete') {
+        setError('Payment requires additional authentication. Please check your email.');
       } else {
-        setError('Subscription requires additional action');
+        setError('Subscription setup failed. Please try again.');
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to create subscription');
     } finally {
       setProcessing(false);
     }
@@ -1226,8 +1242,17 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
                 '::placeholder': {
                   color: '#aab7c4',
                 },
+                fontFamily: 'Inter, system-ui, sans-serif',
+                ':-webkit-autofill': {
+                  color: '#424770',
+                },
+              },
+              invalid: {
+                color: '#ef4444',
+                iconColor: '#ef4444',
               },
             },
+            hidePostalCode: false,
           }}
         />
       </div>
@@ -1237,8 +1262,19 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
         disabled={processing || !stripe}
         className="btn btn-primary btn-block"
       >
-        {processing ? 'Processing...' : 'Start Subscription'}
+        {processing ? (
+          <>
+            <span className="spinner-small"></span>
+            Processing...
+          </>
+        ) : (
+          'Start Subscription - $299/month'
+        )}
       </button>
+      
+      <div className="subscription-terms">
+        <p>By subscribing, you agree to our terms of service. Cancel anytime.</p>
+      </div>
     </form>
   );
 };
@@ -3636,13 +3672,14 @@ const AdminPanel = () => {
           {user.approved ? 'Approved' : 'Pending'}
         </span>
       </td>
-      <td> {/* Add this */}
-        {user.role === 'funder' && (
-          <span className={`status-badge ${user.subscription_status === 'active' ? 'paid' : 'unpaid'}`}>
-            {user.subscription_status || 'inactive'}
-          </span>
-        )}
-      </td>
+      // This is already in your code but make sure it's displaying correctly
+<td>
+  {user.role === 'funder' && (
+    <span className={`status-badge ${user.subscription_status === 'active' ? 'paid' : 'unpaid'}`}>
+      {user.subscription_status || 'inactive'}
+    </span>
+  )}
+</td>
       <td>{formatDate(user.created_at)}</td>
       <td>
         {!user.approved && user.role !== 'admin' && (
@@ -4447,58 +4484,66 @@ const LandingPage = () => {
             <Link to="/login" className="btn btn-outline">Sign In</Link>
             <Link to="/register" className="btn btn-primary">Get Started</Link>
           </div>
+          {/* Mobile menu button */}
+          <button className="mobile-menu-btn">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
         </div>
       </nav>
 
       {/* Hero Section */}
       <section className="hero-section">
-        <div className="hero-content">
-          <h1 className="hero-title">
-            Connect Property Developers<br />
-            with <span className="gradient-text">Private Credit</span>
-          </h1>
-          <p className="hero-subtitle">
-            Australia's premier platform for property development finance. 
-            Streamline your funding process with institutional-grade tools and AI-powered insights.
-          </p>
-          <div className="hero-actions">
-            <Link to="/register" className="btn btn-primary btn-lg">
-              Start Your Project
-            </Link>
-            <Link to="/register?role=funder" className="btn btn-outline btn-lg">
-              Become a Funder
-            </Link>
-          </div>
-          <div className="hero-stats">
-            <div className="stat">
-              <span className="stat-value">$50M+</span>
-              <span className="stat-label">Projects Funded</span>
+        <div className="hero-container">
+          <div className="hero-content">
+            <h1 className="hero-title">
+              Empowering Developers to<br />
+              <span className="gradient-text">Take Control of Their Finance</span>
+            </h1>
+            <p className="hero-subtitle">
+              Australia's premier platform connecting property developers with private credit. 
+              Streamline your funding process with institutional-grade tools and AI-powered insights.
+            </p>
+            <div className="hero-actions">
+              <Link to="/register" className="btn btn-primary btn-lg">
+                Start Your Project
+              </Link>
+              <Link to="/register?role=funder" className="btn btn-outline btn-lg">
+                Become a Funder
+              </Link>
             </div>
-            <div className="stat">
-              <span className="stat-value">200+</span>
-              <span className="stat-label">Active Developers</span>
+            <div className="hero-stats">
+              <div className="stat">
+                <span className="stat-value">$50M+</span>
+                <span className="stat-label">Projects Funded</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">200+</span>
+                <span className="stat-label">Active Developers</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">12-15%</span>
+                <span className="stat-label">Avg Returns</span>
+              </div>
             </div>
-            <div className="stat">
-              <span className="stat-value">12-15%</span>
-              <span className="stat-label">Avg Returns</span>
+          </div>
+          <div className="hero-visual">
+            <div className="floating-card card-1">
+              <h4>Luxury Apartments</h4>
+              <p>Brisbane CBD</p>
+              <span className="amount">$5.2M</span>
             </div>
-          </div>
-        </div>
-        <div className="hero-visual">
-          <div className="floating-card card-1">
-            <h4>Luxury Apartments</h4>
-            <p>Brisbane CBD</p>
-            <span className="amount">$5.2M</span>
-          </div>
-          <div className="floating-card card-2">
-            <h4>Mixed Use Development</h4>
-            <p>Gold Coast</p>
-            <span className="amount">$8.7M</span>
-          </div>
-          <div className="floating-card card-3">
-            <h4>Townhouse Project</h4>
-            <p>Sunshine Coast</p>
-            <span className="amount">$3.4M</span>
+            <div className="floating-card card-2">
+              <h4>Mixed Use Development</h4>
+              <p>Gold Coast</p>
+              <span className="amount">$8.7M</span>
+            </div>
+            <div className="floating-card card-3">
+              <h4>Townhouse Project</h4>
+              <p>Sunshine Coast</p>
+              <span className="amount">$3.4M</span>
+            </div>
           </div>
         </div>
       </section>
@@ -4513,7 +4558,12 @@ const LandingPage = () => {
           
           <div className="features-grid">
             <div className="feature-card">
-              <div className="feature-icon">🏗️</div>
+              <div className="feature-icon-wrapper">
+                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+              </div>
               <h3>For Developers</h3>
               <ul>
                 <li>List projects in minutes</li>
@@ -4524,7 +4574,12 @@ const LandingPage = () => {
             </div>
             
             <div className="feature-card">
-              <div className="feature-icon">💰</div>
+              <div className="feature-icon-wrapper">
+                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="2" x2="12" y2="22"></line>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+              </div>
               <h3>For Funders</h3>
               <ul>
                 <li>Curated deal flow</li>
@@ -4535,7 +4590,12 @@ const LandingPage = () => {
             </div>
             
             <div className="feature-card featured">
-              <div className="feature-icon">🤖</div>
+              <div className="feature-icon-wrapper">
+                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  <circle cx="12" cy="12" r="10"></circle>
+                </svg>
+              </div>
               <h3>BrokerAI Assistant</h3>
               <ul>
                 <li>24/7 expert guidance</li>
@@ -4596,19 +4656,43 @@ const LandingPage = () => {
                 <span className="period">per project</span>
               </div>
               <ul>
-                <li>✓ List unlimited projects</li>
-                <li>✓ Access to all funders</li>
-                <li>✓ Secure document portal</li>
-                <li>✓ BrokerAI assistance</li>
-                <li>✓ Real-time messaging</li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  List unlimited projects
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Access to all funders
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Secure document portal
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  BrokerAI assistance
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Real-time messaging
+                </li>
               </ul>
               <Link to="/register" className="btn btn-primary btn-block">
                 Start Listing
               </Link>
             </div>
             
-            <div className="pricing-card featured">
-              <div className="badge">Most Popular</div>
+            <div className="pricing-card">
               <h3>Funders</h3>
               <div className="price">
                 <span className="currency">$</span>
@@ -4616,11 +4700,36 @@ const LandingPage = () => {
                 <span className="period">per month</span>
               </div>
               <ul>
-                <li>✓ Unlimited deal access</li>
-                <li>✓ Advanced filters</li>
-                <li>✓ Due diligence tools</li>
-                <li>✓ Portfolio analytics</li>
-                <li>✓ Priority support</li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Unlimited deal access
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Advanced filters
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Due diligence tools
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Portfolio analytics
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Priority support
+                </li>
               </ul>
               <Link to="/register?role=funder" className="btn btn-primary btn-block">
                 Start Investing
@@ -4639,9 +4748,9 @@ const LandingPage = () => {
             <Link to="/register" className="btn btn-primary btn-lg">
               Get Started Free
             </Link>
-            <Link to="/login" className="btn btn-outline btn-lg">
-              Schedule Demo
-            </Link>
+            <a href="mailto:support@tranch.com.au" className="btn btn-outline btn-lg">
+              Contact Sales
+            </a>
           </div>
         </div>
       </section>
@@ -4652,7 +4761,7 @@ const LandingPage = () => {
           <div className="footer-content">
             <div className="footer-brand">
               <span className="logo-text">Tranch</span>
-              <p>Connecting property developers with private credit</p>
+              <p>Empowering developers to take control of their finance</p>
             </div>
             <div className="footer-links">
               <h4>Platform</h4>

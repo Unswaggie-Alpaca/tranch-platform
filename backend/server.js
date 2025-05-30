@@ -14,6 +14,9 @@ const aiChatRoutes = require('./routes/ai-chat');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/var/data/tranch.db'  // Persistent disk path on Render
+  : './tranch.db';   
 
 // Middleware
 // Middleware
@@ -40,7 +43,15 @@ if (!fs.existsSync('uploads')) {
 }
 
 // Database setup
-const db = new sqlite3.Database('tranch.db');
+const db = new sqlite3.Database(dbPath);
+
+// Ensure the data directory exists (for production)
+if (process.env.NODE_ENV === 'production') {
+  const dataDir = path.dirname(dbPath);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+}
 
 // Initialize database tables
 db.serialize(() => {
@@ -1247,52 +1258,86 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
   }
 });
 
-// In server.js, update the simulate-success endpoint
-app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borrower']), (req, res) => {
-  const { project_id, payment_intent_id } = req.body;
-
-  console.log('Simulating payment for project:', project_id);
-
-  if (!project_id) {
-    return res.status(400).json({ error: 'Project ID required' });
-  }
-
-  // Simulate successful payment processing
+// Add this endpoint to server.js for testing subscriptions
+app.post('/api/payments/simulate-subscription', authenticateToken, requireRole(['funder']), (req, res) => {
   db.run(
-    'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ? WHERE id = ? AND borrower_id = ?',
-    ['paid', payment_intent_id || 'pi_demo_' + Date.now(), project_id, req.user.id],
+    'UPDATE users SET subscription_status = ? WHERE id = ?',
+    ['active', req.user.id],
     function(err) {
       if (err) {
-        console.error('Payment simulation error:', err);
-        return res.status(500).json({ error: 'Failed to update project status' });
+        console.error('Subscription update error:', err);
+        return res.status(500).json({ error: 'Failed to update subscription' });
       }
-
-      console.log('Update result - changes:', this.changes);
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Project not found or access denied' });
-      }
-
-      // Create payment record
-      db.run(
-        'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
-        [req.user.id, project_id, payment_intent_id || 'pi_demo_' + Date.now(), 49900, 'project_listing', 'completed'],
-        (paymentErr) => {
-          if (paymentErr) {
-            console.error('Payment record creation error:', paymentErr);
-          }
-        }
-      );
 
       res.json({ 
-        message: 'Project published successfully',
-        project_id: project_id,
-        status: 'paid'
+        message: 'Subscription activated successfully',
+        status: 'active'
       });
     }
   );
 });
 
+app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borrower']), async (req, res) => {
+  const { project_id, payment_intent_id } = req.body;
+
+  console.log('Payment simulation started for project:', project_id);
+
+  if (!project_id) {
+    return res.status(400).json({ error: 'Project ID required' });
+  }
+
+  try {
+    // Use a transaction to ensure both updates happen
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      
+      // Update project
+      db.run(
+        'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND borrower_id = ?',
+        ['paid', payment_intent_id || 'pi_demo_' + Date.now(), project_id, req.user.id],
+        function(err) {
+          if (err) {
+            console.error('Project update error:', err);
+            db.run('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to update project' });
+          }
+
+          if (this.changes === 0) {
+            db.run('ROLLBACK');
+            return res.status(404).json({ error: 'Project not found' });
+          }
+
+          // Create payment record
+          db.run(
+            'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
+            [req.user.id, project_id, payment_intent_id || 'pi_demo_' + Date.now(), 49900, 'project_listing', 'completed'],
+            (paymentErr) => {
+              if (paymentErr) {
+                console.error('Payment record error:', paymentErr);
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Failed to create payment record' });
+              }
+
+              db.run('COMMIT');
+              console.log('Payment simulation completed successfully');
+              
+              res.json({ 
+                message: 'Project published successfully',
+                project_id: project_id,
+                status: 'paid'
+              });
+            }
+          );
+        }
+      );
+    });
+  } catch (error) {
+    console.error('Payment processing error:', error);
+    res.status(500).json({ error: 'Payment processing failed' });
+  }
+});
+
+// In server.js - update the create-subscription endpoint
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
   try {
     const { payment_method_id } = req.body;
@@ -1308,31 +1353,84 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
         invoice_settings: {
           default_payment_method: payment_method_id,
         },
-        metadata: { user_id: req.user.id }
+        metadata: { 
+          user_id: String(req.user.id),
+          role: req.user.role
+        }
       });
       customerId = customer.id;
       
       // Update user with customer ID
-      db.run('UPDATE users SET stripe_customer_id = ? WHERE id = ?', [customerId, req.user.id]);
+      await new Promise((resolve, reject) => {
+        db.run('UPDATE users SET stripe_customer_id = ? WHERE id = ?', 
+          [customerId, req.user.id], 
+          (err) => err ? reject(err) : resolve()
+        );
+      });
+    } else {
+      // Attach payment method to existing customer
+      await stripe.paymentMethods.attach(payment_method_id, {
+        customer: customerId,
+      });
+      
+      // Set as default payment method
+      await stripe.customers.update(customerId, {
+        invoice_settings: {
+          default_payment_method: payment_method_id,
+        },
+      });
     }
 
-   // Create subscription
-const subscription = await stripe.subscriptions.create({
-  customer: customerId,
-  items: [{ price: (process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID || 'price_YOUR_ID').trim() }],
-  expand: ['latest_invoice.payment_intent'],
-});
+    // Create subscription with price
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: 'Tranch Funder Subscription',
+            description: 'Monthly subscription for funders',
+          },
+          unit_amount: 29900, // $299.00 in cents
+          recurring: {
+            interval: 'month',
+          },
+        },
+      }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: { 
+        save_default_payment_method: 'on_subscription' 
+      },
+      expand: ['latest_invoice.payment_intent'],
+    });
 
     // Update user subscription status
-    db.run('UPDATE users SET subscription_status = ? WHERE id = ?', ['active', req.user.id]);
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      await new Promise((resolve, reject) => {
+        db.run('UPDATE users SET subscription_status = ? WHERE id = ?', 
+          ['active', req.user.id], 
+          (err) => err ? reject(err) : resolve()
+        );
+      });
+    }
 
-    res.json({
+    // Return necessary info for frontend
+    const response = {
       subscription_id: subscription.id,
       status: subscription.status
-    });
+    };
+
+    // If payment requires confirmation (3D Secure), include client secret
+    if (subscription.latest_invoice.payment_intent) {
+      response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Subscription creation error:', error);
-    res.status(500).json({ error: 'Subscription creation failed' });
+    res.status(500).json({ 
+      error: error.message || 'Subscription creation failed' 
+    });
   }
 });
 
