@@ -1167,7 +1167,6 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
 };
 
 // Separate component for the form (inside Elements)
-// Separate component for the form (inside Elements)
 const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user, updateUser }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -1202,7 +1201,8 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
       
       // Check if subscription requires additional action (3D Secure)
       if (response.client_secret) {
-        const { error: confirmError } = await stripe.confirmCardPayment(
+        // Confirm the payment
+        const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
           response.client_secret
         );
         
@@ -1211,19 +1211,25 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
           setProcessing(false);
           return;
         }
-      }
-      
-      // If we get here, subscription is active
-      if (response.status === 'active' || response.status === 'trialing') {
-        // Update local user status
+        
+        // If payment succeeded, the subscription should now be active
+        if (paymentIntent.status === 'succeeded') {
+          // Update local user status
+          updateUser({ ...user, subscription_status: 'active' });
+          onSuccess();
+        } else {
+          setError('Payment was not successful. Please try again.');
+        }
+      } else if (response.status === 'active' || response.status === 'trialing') {
+        // Subscription is already active (no 3D Secure needed)
         updateUser({ ...user, subscription_status: 'active' });
         onSuccess();
-      } else if (response.status === 'incomplete') {
-        setError('Payment requires additional authentication. Please check your email.');
       } else {
-        setError('Subscription setup failed. Please try again.');
+        // Handle other statuses
+        setError('Unable to activate subscription. Please contact support.');
       }
     } catch (err) {
+      console.error('Subscription error:', err);
       setError(err.message || 'Failed to create subscription');
     } finally {
       setProcessing(false);

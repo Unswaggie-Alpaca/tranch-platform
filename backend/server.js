@@ -1403,17 +1403,19 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
     }
 
     // Return necessary info for frontend
-    const response = {
-      subscription_id: subscription.id,
-      status: subscription.status
-    };
+   const response = {
+  subscription_id: subscription.id,
+  status: subscription.status
+};
 
     // If payment requires confirmation (3D Secure), include client secret
-    if (subscription.latest_invoice?.payment_intent?.client_secret) {
-      response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
-    }
+    if (subscription.latest_invoice && 
+    subscription.latest_invoice.payment_intent && 
+    subscription.latest_invoice.payment_intent.client_secret) {
+  response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
+}
 
-    res.json(response);
+res.json(response);
   } catch (error) {
     console.error('Subscription creation error:', error);
     res.status(500).json({ 
