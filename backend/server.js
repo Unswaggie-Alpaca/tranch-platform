@@ -1381,21 +1381,11 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       });
     }
 
-    // Create subscription with price
+    // Create subscription using the price ID from env
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{
-        price_data: {
-          currency: 'aud',
-          product_data: {
-            name: 'Tranch Funder Subscription',
-            description: 'Monthly subscription for funders',
-          },
-          unit_amount: 29900, // $299.00 in cents
-          recurring: {
-            interval: 'month',
-          },
-        },
+        price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID, // Use your env price ID
       }],
       payment_behavior: 'default_incomplete',
       payment_settings: { 
@@ -1421,7 +1411,7 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
     };
 
     // If payment requires confirmation (3D Secure), include client secret
-    if (subscription.latest_invoice.payment_intent) {
+    if (subscription.latest_invoice?.payment_intent?.client_secret) {
       response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
     }
 
