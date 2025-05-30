@@ -1171,78 +1171,89 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
   const stripe = useStripe();
   const elements = useElements();
 
-  // In SubscriptionForm, add logging:
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!stripe || !elements) return;
-  
-  setProcessing(true);
-  setError('');
-
-  try {
-    // Create payment method
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: 'card',
-      card: elements.getElement(CardElement),
-      billing_details: {
-        name: user.name,
-        email: user.email
-      }
-    });
-
-    if (error) {
-      console.error('Payment method error:', error);
-      setError(error.message);
-      setProcessing(false);
-      return;
-    }
-
-    console.log('Payment method created:', paymentMethod.id);
-
-    // Create subscription through your backend
-    const response = await api.createSubscription(paymentMethod.id);
+    e.preventDefault();
     
-    console.log('Subscription response:', response); // ADD THIS
+    if (!stripe || !elements) return;
     
-    // Check if subscription requires additional action (3D Secure)
-    if (response.client_secret) {
-      console.log('Confirming payment with client_secret...');
-      
-      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
-        response.client_secret
-      );
-      
-      if (confirmError) {
-        console.error('Confirm error:', confirmError);
-        setError(confirmError.message);
+    setProcessing(true);
+    setError('');
+
+    try {
+      // Create payment method
+      const { error, paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+        billing_details: {
+          name: user.name,
+          email: user.email
+        }
+      });
+
+      if (error) {
+        console.error('Payment method error:', error);
+        setError(error.message);
         setProcessing(false);
         return;
       }
+
+      console.log('Payment method created:', paymentMethod.id);
+
+      // Create subscription through your backend
+      const response = await api.createSubscription(paymentMethod.id);
       
-      console.log('Payment intent status:', paymentIntent.status);
+      console.log('Subscription response:', response);
+      console.log('Subscription status:', response.status);
+      console.log('Has client_secret?', !!response.client_secret);
       
-      if (paymentIntent.status === 'succeeded') {
+      // Check if subscription requires additional action (3D Secure)
+      if (response.client_secret) {
+        console.log('Confirming payment with client_secret...');
+        
+        // Confirm the payment
+        const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+          response.client_secret
+        );
+        
+        if (confirmError) {
+          console.error('Confirm error:', confirmError);
+          setError(confirmError.message);
+          setProcessing(false);
+          return;
+        }
+        
+        console.log('Payment intent status:', paymentIntent.status);
+        
+        // If payment succeeded, the subscription should now be active
+        if (paymentIntent.status === 'succeeded') {
+          console.log('Payment succeeded, updating user status');
+          // Update local user status
+          updateUser({ ...user, subscription_status: 'active' });
+          onSuccess();
+        } else {
+          setError('Payment was not successful. Please try again.');
+        }
+      } else if (response.status === 'active' || response.status === 'trialing') {
+        // Subscription is already active (no 3D Secure needed)
+        console.log('Subscription active without 3D Secure');
         updateUser({ ...user, subscription_status: 'active' });
         onSuccess();
+      } else if (response.status === 'incomplete') {
+        // Payment requires action but we don't have client_secret
+        console.log('Subscription incomplete, no client_secret provided');
+        setError('Payment requires additional authentication. Please try again.');
       } else {
-        setError('Payment was not successful. Please try again.');
+        // Handle unexpected status
+        console.log('Unexpected subscription status:', response.status);
+        setError(`Unable to activate subscription. Status: ${response.status}`);
       }
-    } else if (response.status === 'active' || response.status === 'trialing') {
-      console.log('Subscription active without 3D Secure');
-      updateUser({ ...user, subscription_status: 'active' });
-      onSuccess();
-    } else {
-      console.log('Unexpected subscription status:', response.status);
-      setError('Unable to activate subscription. Please contact support.');
+    } catch (err) {
+      console.error('Full subscription error:', err);
+      setError(err.message || 'Failed to create subscription');
+    } finally {
+      setProcessing(false);
     }
-  } catch (err) {
-    console.error('Full error:', err);
-    setError(err.message || 'Failed to create subscription');
-  } finally {
-    setProcessing(false);
-  }
-};
+  };
 
   return (
     <form onSubmit={handleSubmit}>
