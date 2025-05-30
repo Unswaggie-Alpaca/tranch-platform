@@ -1109,7 +1109,7 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
 const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
-  const { user, updateUser } = useAuth();
+  const { user, updateUser } = useAuth(); // Make sure we're getting updateUser from useAuth
 
   if (!isOpen) return null;
 
@@ -1150,7 +1150,7 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
                   processing={processing}
                   setProcessing={setProcessing}
                   user={user}
-                  updateUser={updateUser}
+                  updateUser={updateUser}  // Pass updateUser here
                 />
               </Elements>
 
@@ -1308,7 +1308,7 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
 
 const Dashboard = () => {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth(); 
   const [projects, setProjects] = useState([]);
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [loading, setLoading] = useState(true);
