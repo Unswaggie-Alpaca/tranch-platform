@@ -487,6 +487,22 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await api.login(formData);
+      login(response.user, response.token);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -1152,15 +1168,13 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
   );
 };
 
+
 // Separate component for the form (inside Elements)
 const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user, updateUser }) => {
   const stripe = useStripe();
   const elements = useElements();
 
-  const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user, updateUser }) => {
-  const stripe = useStripe();  // This line is important!
-  const elements = useElements();  // This line is important!
-
+  // Define handleSubmit INSIDE the component
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1186,13 +1200,7 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit}>
-      {/* ... rest of the form ... */}
-    </form>
-  );
-};
-
+  // THEN use it in the return statement
   return (
     <form onSubmit={handleSubmit}>
       <div className="card-element-container">
@@ -1205,17 +1213,8 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
                 '::placeholder': {
                   color: '#aab7c4',
                 },
-                fontFamily: 'Inter, system-ui, sans-serif',
-                ':-webkit-autofill': {
-                  color: '#424770',
-                },
-              },
-              invalid: {
-                color: '#ef4444',
-                iconColor: '#ef4444',
               },
             },
-            hidePostalCode: false,
           }}
         />
       </div>
@@ -1225,14 +1224,7 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
         disabled={processing || !stripe}
         className="btn btn-primary btn-block"
       >
-        {processing ? (
-          <>
-            <span className="spinner-small"></span>
-            Processing...
-          </>
-        ) : (
-          'Start Subscription - $299/month'
-        )}
+        {processing ? 'Processing...' : 'Start Subscription - $299/month'}
       </button>
       
       <div className="subscription-terms">
