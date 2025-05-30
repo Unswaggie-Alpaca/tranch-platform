@@ -1306,12 +1306,12 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       db.run('UPDATE users SET stripe_customer_id = ? WHERE id = ?', [customerId, req.user.id]);
     }
 
-    // Create subscription
-    const subscription = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID || 'price_YOUR_ID' }],
-      expand: ['latest_invoice.payment_intent'],
-    });
+   // Create subscription
+const subscription = await stripe.subscriptions.create({
+  customer: customerId,
+  items: [{ price: (process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID || 'price_YOUR_ID').trim() }],
+  expand: ['latest_invoice.payment_intent'],
+});
 
     // Update user subscription status
     db.run('UPDATE users SET subscription_status = ? WHERE id = ?', ['active', req.user.id]);
