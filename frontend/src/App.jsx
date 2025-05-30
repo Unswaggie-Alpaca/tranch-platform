@@ -103,11 +103,14 @@ const api = {
     body: JSON.stringify({ project_id: projectId }),
   }),
 
-  simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/simulate-success', {
-    method: 'POST',
-    body: JSON.stringify({ project_id: projectId, payment_intent_id: paymentIntentId }),
+ 
+simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/simulate-success', {
+  method: 'POST',
+  body: JSON.stringify({ 
+    project_id: projectId, 
+    payment_intent_id: paymentIntentId 
   }),
-
+}),
  createSubscription: (paymentMethodId) => api.request('/payments/create-subscription', {
   method: 'POST',
   body: JSON.stringify({ payment_method_id: paymentMethodId }),
@@ -884,19 +887,27 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
       {success && <SuccessMessage message={success} onClose={() => setSuccess('')} />}
       {error && <ErrorMessage message={error} onClose={() => setError('')} />}
         <PaymentModal 
-      isOpen={showPaymentModal}
-      onClose={() => setShowPaymentModal(false)}
-      project={project}
-      onSuccess={async () => {
-        setShowPaymentModal(false);
-        setSuccess('Payment successful! Your project is now published.');
-        if (onProjectUpdate) {
-          setTimeout(() => {
-            onProjectUpdate();
-          }, 2000);
-        }
-      }}
-    />
+  isOpen={showPaymentModal}
+  onClose={() => setShowPaymentModal(false)}
+  project={project}
+ // In ProjectCard, after successful payment
+onSuccess={async () => {
+  setShowPaymentModal(false);
+  
+  // Update local project state immediately
+  project.payment_status = 'paid';
+  project.visible = true;
+  
+  setSuccess('Payment successful! Your project is now published.');
+  
+  // Then refresh from server
+  if (onProjectUpdate) {
+    setTimeout(() => {
+      onProjectUpdate();
+    }, 1000);
+  }
+}}
+/>
     
     <div className="project-header"></div>
 
@@ -1259,20 +1270,26 @@ const Dashboard = () => {
   }, [projects, filters]);
 
   const fetchData = async () => {
-    try {
-      const projectData = await api.getProjects();
-      setProjects(projectData);
-      
-      if (user.role === 'admin') {
-        const statsData = await api.getAdminStats();
-        setStats(statsData);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  try {
+    const projectData = await api.getProjects();
+    setProjects(projectData);
+    
+    if (user.role === 'admin') {
+      const statsData = await api.getAdminStats();
+      setStats(statsData);
     }
-  };
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleProjectUpdate = async () => {
+  // Force a complete refresh
+  setLoading(true);
+  await fetchData();
+};
 
   const applyFilters = () => {
     let filtered = [...projects];
@@ -1300,10 +1317,6 @@ const Dashboard = () => {
     }
 
     setFilteredProjects(filtered);
-  };
-
-  const handleProjectUpdate = () => {
-    fetchData();
   };
 
   if (loading) return <LoadingSpinner />;
@@ -3598,44 +3611,52 @@ const AdminPanel = () => {
             <div className="users-table">
               <table>
                 <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Company</th>
-                    <th>Status</th>
-                    <th>Joined</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(user => (
-                    <tr key={user.id}>
-                      <td>{user.name}</td>
-                      <td>{user.email}</td>
-                      <td>
-                        <span className="role-badge">{user.role}</span>
-                      </td>
-                      <td>{user.company_name || '-'}</td>
-                      <td>
-                        <span className={`status-badge ${user.approved ? 'approved' : 'pending'}`}>
-                          {user.approved ? 'Approved' : 'Pending'}
-                        </span>
-                      </td>
-                      <td>{formatDate(user.created_at)}</td>
-                      <td>
-                        {!user.approved && user.role !== 'admin' && (
-                          <button
-                            onClick={() => handleApproveUser(user.id)}
-                            className="btn btn-sm btn-primary"
-                          >
-                            Approve
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+  <tr>
+    <th>Name</th>
+    <th>Email</th>
+    <th>Role</th>
+    <th>Company</th>
+    <th>Status</th>
+    <th>Subscription</th> {/* Add this */}
+    <th>Joined</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+<tbody>
+  {users.map(user => (
+    <tr key={user.id}>
+      <td>{user.name}</td>
+      <td>{user.email}</td>
+      <td>
+        <span className="role-badge">{user.role}</span>
+      </td>
+      <td>{user.company_name || '-'}</td>
+      <td>
+        <span className={`status-badge ${user.approved ? 'approved' : 'pending'}`}>
+          {user.approved ? 'Approved' : 'Pending'}
+        </span>
+      </td>
+      <td> {/* Add this */}
+        {user.role === 'funder' && (
+          <span className={`status-badge ${user.subscription_status === 'active' ? 'paid' : 'unpaid'}`}>
+            {user.subscription_status || 'inactive'}
+          </span>
+        )}
+      </td>
+      <td>{formatDate(user.created_at)}</td>
+      <td>
+        {!user.approved && user.role !== 'admin' && (
+          <button
+            onClick={() => handleApproveUser(user.id)}
+            className="btn btn-sm btn-primary"
+          >
+            Approve
+          </button>
+        )}
+      </td>
+    </tr>
+  ))}
+</tbody>
               </table>
             </div>
           </div>
@@ -4669,7 +4690,8 @@ import { Elements, CardElement, useStripe, useElements } from '@stripe/react-str
 const stripePromise = loadStripe('pk_test_51RU7lrQupq5Lj3mgQLoOPZQnTHeOOC8HSXs9x4D0H9uURhmGi0tlRxvkiuTy9NEd9RlM3B51YBpvgMdwlbU6bvkQ00WUSGUnp8');
 
 // Payment Form Component
-const PaymentForm = ({ amount, onSuccess, onError }) => {
+// In PaymentModal component, update the PaymentForm to use the correct API
+const PaymentForm = ({ amount, onSuccess, onError, project }) => {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
@@ -4681,33 +4703,14 @@ const PaymentForm = ({ amount, onSuccess, onError }) => {
     
     setProcessing(true);
 
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: 'card',
-      card: elements.getElement(CardElement),
-    });
-
-    if (error) {
-      onError(error.message);
-      setProcessing(false);
-      return;
-    }
-
-    // Call your backend to create payment intent
     try {
-      const response = await api.createProjectPayment(paymentMethod.id);
-      
-      const { error: confirmError } = await stripe.confirmCardPayment(
-        response.client_secret,
-        {
-          payment_method: paymentMethod.id
-        }
+      // For demo purposes, simulate the payment
+      const response = await api.simulatePaymentSuccess(
+        project.id, 
+        'pi_demo_' + Date.now()
       );
-
-      if (confirmError) {
-        onError(confirmError.message);
-      } else {
-        onSuccess();
-      }
+      
+      onSuccess();
     } catch (err) {
       onError(err.message);
     }
@@ -4774,6 +4777,7 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
           <Elements stripe={stripePromise}>
             <PaymentForm 
               amount={499}
+              project={project}  // Pass the project here
               onSuccess={onSuccess}
               onError={setError}
             />

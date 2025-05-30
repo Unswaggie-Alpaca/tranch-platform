@@ -1247,8 +1247,11 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
   }
 });
 
+// In server.js, update the simulate-success endpoint
 app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borrower']), (req, res) => {
   const { project_id, payment_intent_id } = req.body;
+
+  console.log('Simulating payment for project:', project_id);
 
   if (!project_id) {
     return res.status(400).json({ error: 'Project ID required' });
@@ -1264,6 +1267,8 @@ app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borr
         return res.status(500).json({ error: 'Failed to update project status' });
       }
 
+      console.log('Update result - changes:', this.changes);
+
       if (this.changes === 0) {
         return res.status(404).json({ error: 'Project not found or access denied' });
       }
@@ -1271,7 +1276,12 @@ app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borr
       // Create payment record
       db.run(
         'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
-        [req.user.id, project_id, payment_intent_id, 49900, 'project_listing', 'completed']
+        [req.user.id, project_id, payment_intent_id || 'pi_demo_' + Date.now(), 49900, 'project_listing', 'completed'],
+        (paymentErr) => {
+          if (paymentErr) {
+            console.error('Payment record creation error:', paymentErr);
+          }
+        }
       );
 
       res.json({ 
