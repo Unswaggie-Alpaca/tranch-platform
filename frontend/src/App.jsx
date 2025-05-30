@@ -3,6 +3,8 @@ import React, { useState, useEffect, createContext, useContext, useRef } from 'r
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import './App.css';
 import ReactMarkdown from 'react-markdown';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 // Context for global state management
 const AuthContext = createContext();
@@ -484,31 +486,6 @@ const Login = () => {
   const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!stripe || !elements) return;
-  
-  setProcessing(true);
-  setError('');
-
-  try {
-    // For testing, just simulate the subscription
-    const response = await api.request('/payments/simulate-subscription', {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    
-    // Update local user status
-    updateUser({ ...user, subscription_status: 'active' });
-    onSuccess();
-  } catch (err) {
-    setError(err.message || 'Failed to activate subscription');
-  } finally {
-    setProcessing(false);
-  }
-};
 
   return (
     <div className="auth-container">
@@ -1180,6 +1157,10 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
   const stripe = useStripe();
   const elements = useElements();
 
+  const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user, updateUser }) => {
+  const stripe = useStripe();  // This line is important!
+  const elements = useElements();  // This line is important!
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1189,80 +1170,28 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
     setError('');
 
     try {
-      // Create payment method
-      const { error, paymentMethod } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: elements.getElement(CardElement),
-        billing_details: {
-          name: user.name,
-          email: user.email
-        }
+      // For testing, just simulate the subscription
+      const response = await api.request('/payments/simulate-subscription', {
+        method: 'POST',
+        body: JSON.stringify({})
       });
-
-      if (error) {
-        console.error('Payment method error:', error);
-        setError(error.message);
-        setProcessing(false);
-        return;
-      }
-
-      console.log('Payment method created:', paymentMethod.id);
-
-      // Create subscription through your backend
-      const response = await api.createSubscription(paymentMethod.id);
       
-      console.log('Subscription response:', response);
-      console.log('Subscription status:', response.status);
-      console.log('Has client_secret?', !!response.client_secret);
-      
-      // Check if subscription requires additional action (3D Secure)
-      if (response.client_secret) {
-        console.log('Confirming payment with client_secret...');
-        
-        // Confirm the payment
-        const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
-          response.client_secret
-        );
-        
-        if (confirmError) {
-          console.error('Confirm error:', confirmError);
-          setError(confirmError.message);
-          setProcessing(false);
-          return;
-        }
-        
-        console.log('Payment intent status:', paymentIntent.status);
-        
-        // If payment succeeded, the subscription should now be active
-        if (paymentIntent.status === 'succeeded') {
-          console.log('Payment succeeded, updating user status');
-          // Update local user status
-          updateUser({ ...user, subscription_status: 'active' });
-          onSuccess();
-        } else {
-          setError('Payment was not successful. Please try again.');
-        }
-      } else if (response.status === 'active' || response.status === 'trialing') {
-        // Subscription is already active (no 3D Secure needed)
-        console.log('Subscription active without 3D Secure');
-        updateUser({ ...user, subscription_status: 'active' });
-        onSuccess();
-      } else if (response.status === 'incomplete') {
-        // Payment requires action but we don't have client_secret
-        console.log('Subscription incomplete, no client_secret provided');
-        setError('Payment requires additional authentication. Please try again.');
-      } else {
-        // Handle unexpected status
-        console.log('Unexpected subscription status:', response.status);
-        setError(`Unable to activate subscription. Status: ${response.status}`);
-      }
+      // Update local user status
+      updateUser({ ...user, subscription_status: 'active' });
+      onSuccess();
     } catch (err) {
-      console.error('Full subscription error:', err);
-      setError(err.message || 'Failed to create subscription');
+      setError(err.message || 'Failed to activate subscription');
     } finally {
       setProcessing(false);
     }
   };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* ... rest of the form ... */}
+    </form>
+  );
+};
 
   return (
     <form onSubmit={handleSubmit}>
@@ -4835,11 +4764,7 @@ const LandingPage = () => {
   );
 };
 
-// Add imports at the top
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-// Initialize Stripe (add after imports)
 const stripePromise = loadStripe('pk_test_51RU7lrQupq5Lj3mgQLoOPZQnTHeOOC8HSXs9x4D0H9uURhmGi0tlRxvkiuTy9NEd9RlM3B51YBpvgMdwlbU6bvkQ00WUSGUnp8');
 
 // Payment Form Component
