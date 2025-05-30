@@ -1586,12 +1586,22 @@ const handleProjectUpdate = async () => {
       <SubscriptionModal 
   isOpen={showSubscriptionModal}
   onClose={() => setShowSubscriptionModal(false)}
-  onSuccess={() => {
+  onSuccess={async () => {
     setShowSubscriptionModal(false);
-    // Update user subscription status
-    updateUser({ ...user, subscription_status: 'active' });
-    // Refresh dashboard
-    fetchData();
+    
+    // Wait a moment for the backend to update
+    setTimeout(async () => {
+      // Refresh user data from backend
+      try {
+        const userData = await api.getUserProfile(user.id);
+        updateUser({ ...user, ...userData });
+        
+        // Refresh projects
+        await fetchData();
+      } catch (err) {
+        console.error('Failed to refresh user data:', err);
+      }
+    }, 1000);
   }}
 />
     </div>
