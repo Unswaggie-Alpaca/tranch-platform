@@ -1099,6 +1099,124 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
   );
 };
 
+// Subscription Modal Component for Funders
+const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
+  const [error, setError] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const stripe = useStripe();
+  const elements = useElements();
+  const { user, updateUser } = useAuth();
+
+  if (!isOpen) return null;
+
+  const handleSubscribe = async (e) => {
+    e.preventDefault();
+    
+    if (!stripe || !elements) return;
+    
+    setProcessing(true);
+    setError('');
+
+    try {
+      // Create payment method
+      const { error, paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+      });
+
+      if (error) {
+        setError(error.message);
+        setProcessing(false);
+        return;
+      }
+
+      // Create subscription
+      const response = await api.createSubscription(paymentMethod.id);
+      
+      if (response.status === 'active' || response.status === 'trialing') {
+        // Update local user status
+        updateUser({ ...user, subscription_status: 'active' });
+        onSuccess();
+      } else {
+        setError('Subscription requires additional action');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Funder Subscription</h2>
+          <button onClick={onClose} className="close-btn">&times;</button>
+        </div>
+        
+        <div className="modal-body">
+          <div className="subscription-plans">
+            <div className="plan-card featured">
+              <h3>Professional Funder</h3>
+              <div className="plan-price">
+                <span className="currency">$</span>
+                <span className="amount">299</span>
+                <span className="period">/month</span>
+              </div>
+              
+              <ul className="plan-features">
+                <li>✓ Unlimited project access</li>
+                <li>✓ Advanced search filters</li>
+                <li>✓ Direct messaging with developers</li>
+                <li>✓ Document downloads</li>
+                <li>✓ Portfolio analytics</li>
+                <li>✓ Priority support</li>
+                <li>✓ Early access to new listings</li>
+              </ul>
+
+              {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+
+              <Elements stripe={stripePromise}>
+                <form onSubmit={handleSubscribe}>
+                  <div className="card-element-container">
+                    <CardElement 
+                      options={{
+                        style: {
+                          base: {
+                            fontSize: '16px',
+                            color: '#424770',
+                            '::placeholder': {
+                              color: '#aab7c4',
+                            },
+                          },
+                        },
+                      }}
+                    />
+                  </div>
+                  
+                  <button 
+                    type="submit" 
+                    disabled={processing || !stripe}
+                    className="btn btn-primary btn-block"
+                  >
+                    {processing ? 'Processing...' : 'Start Subscription'}
+                  </button>
+                </form>
+              </Elements>
+
+              <div className="payment-security">
+                <span>🔒</span>
+                <p>Cancel anytime. Secured by Stripe.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Dashboard Component with Enhanced Features
 
 const Dashboard = () => {
@@ -4656,42 +4774,7 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
   );
 };
 
-// Subscription Modal Component for Funders
-const handleSubscribe = async (e) => {
-  e.preventDefault();
-  
-  if (!stripe || !elements) return;
-  
-  setProcessing(true);
-  setError('');
 
-  try {
-    // Create payment method
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: 'card',
-      card: elements.getElement(CardElement),
-    });
-
-    if (error) {
-      setError(error.message);
-      setProcessing(false);
-      return;
-    }
-
-    // Create subscription
-    const response = await api.createSubscription(paymentMethod.id);
-    
-    if (response.status === 'active' || response.status === 'trialing') {
-      onSuccess();
-    } else {
-      setError('Subscription requires additional action');
-    }
-  } catch (err) {
-    setError(err.message);
-  } finally {
-    setProcessing(false);
-  }
-};
 
 // Main App Component
 const App = () => {
