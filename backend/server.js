@@ -14,6 +14,7 @@ const aiChatRoutes = require('./routes/ai-chat');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+app.set('trust proxy', 1);
 const dbPath = process.env.NODE_ENV === 'production' 
   ? '/var/data/tranch.db'  // Persistent disk path on Render
   : './tranch.db';   
@@ -576,29 +577,44 @@ app.get('/api/projects', authenticateToken, (req, res) => {
     if (!req.user.approved) {
       return res.status(403).json({ error: 'Account pending approval' });
     }
-     if (req.user.subscription_status !== 'active') {
-    return res.status(403).json({ error: 'Active subscription required' });
-  }
-    query = `SELECT p.id, p.title, p.suburb, p.loan_amount, p.property_type, p.development_stage,
-             p.visible, p.payment_status, p.created_at,
-             CASE 
-               WHEN ar.status = 'approved' THEN p.description
-               ELSE NULL 
-             END as description,
-             CASE 
-               WHEN ar.status = 'approved' THEN p.location
-               ELSE NULL 
-             END as location,
-             CASE 
-               WHEN ar.status = 'approved' THEN p.interest_rate
-               ELSE NULL 
-             END as interest_rate,
-             ar.status as access_status
-             FROM projects p 
-             LEFT JOIN access_requests ar ON p.id = ar.project_id AND ar.funder_id = ?
-             WHERE p.payment_status = 'paid' AND p.visible = TRUE
-             ORDER BY p.created_at DESC`;
-    params = [req.user.id];
+    
+    // Add subscription check from database
+    db.get('SELECT subscription_status FROM users WHERE id = ?', [req.user.id], (err, userData) => {
+      if (err || !userData || userData.subscription_status !== 'active') {
+        return res.status(403).json({ error: 'Active subscription required' });
+      }
+      
+      // Continue with the projects query
+      const query = `SELECT p.id, p.title, p.suburb, p.loan_amount, p.property_type, p.development_stage,
+               p.visible, p.payment_status, p.created_at,
+               CASE 
+                 WHEN ar.status = 'approved' THEN p.description
+                 ELSE NULL 
+               END as description,
+               CASE 
+                 WHEN ar.status = 'approved' THEN p.location
+                 ELSE NULL 
+               END as location,
+               CASE 
+                 WHEN ar.status = 'approved' THEN p.interest_rate
+                 ELSE NULL 
+               END as interest_rate,
+               ar.status as access_status
+               FROM projects p 
+               LEFT JOIN access_requests ar ON p.id = ar.project_id AND ar.funder_id = ?
+               WHERE p.payment_status = 'paid' AND p.visible = TRUE
+               ORDER BY p.created_at DESC`;
+      
+      db.all(query, [req.user.id], (err, projects) => {
+        if (err) {
+          console.error('Projects fetch error:', err);
+          return res.status(500).json({ error: 'Failed to fetch projects' });
+        }
+        res.json(projects);
+      });
+    });
+    
+    return; // Important: return here to prevent the code from continuing
   }
 
   db.all(query, params, (err, projects) => {
