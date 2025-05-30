@@ -486,20 +486,29 @@ const Login = () => {
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  e.preventDefault();
+  
+  if (!stripe || !elements) return;
+  
+  setProcessing(true);
+  setError('');
 
-    try {
-      const response = await api.login(formData);
-      login(response.user, response.token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    // For testing, just simulate the subscription
+    const response = await api.request('/payments/simulate-subscription', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    
+    // Update local user status
+    updateUser({ ...user, subscription_status: 'active' });
+    onSuccess();
+  } catch (err) {
+    setError(err.message || 'Failed to activate subscription');
+  } finally {
+    setProcessing(false);
+  }
+};
 
   return (
     <div className="auth-container">

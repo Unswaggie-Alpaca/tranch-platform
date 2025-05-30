@@ -1261,6 +1261,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
 });
 
 // Add this endpoint to server.js for testing subscriptions
+// Add this simulation endpoint for funder subscriptions
 app.post('/api/payments/simulate-subscription', authenticateToken, requireRole(['funder']), (req, res) => {
   db.run(
     'UPDATE users SET subscription_status = ? WHERE id = ?',
