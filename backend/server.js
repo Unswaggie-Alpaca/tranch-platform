@@ -1384,9 +1384,7 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
     // Create subscription using the price ID from env
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{
-        price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID, // Use your env price ID
-      }],
+      items: [{ price: (process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID || 'price_YOUR_ID').trim() }],
       payment_behavior: 'default_incomplete',
       payment_settings: { 
         save_default_payment_method: 'on_subscription' 
