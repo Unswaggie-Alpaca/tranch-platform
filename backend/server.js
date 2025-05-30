@@ -21,7 +21,7 @@ const helmet = require('helmet');
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? 'https://tranch.com.au'  // Replace with your actual domain
+    ? ['https://tranch-platform.onrender.com', 'https://tranch.com.au']
     : 'http://localhost:3000',
   credentials: true
 }));
