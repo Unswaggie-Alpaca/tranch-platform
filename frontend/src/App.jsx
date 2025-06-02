@@ -1,32 +1,33 @@
-// App.jsx - Complete Tranch Application with All Features
+// App.jsx - Complete Tranch Application with Clerk Authentication
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import './App.css';
 import ReactMarkdown from 'react-markdown';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { 
+  ClerkProvider, 
+  SignedIn, 
+  SignedOut, 
+  useUser, 
+  useClerk,
+  useAuth
+} from '@clerk/clerk-react';
 
-// Context for global state management
-const AuthContext = createContext();
-
-// Custom hook to use auth context
-const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+// Clerk Publishable Key
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || 'pk_test_YOUR_KEY_HERE';
 
 // API configuration
 const API_BASE_URL = import.meta.env.PROD
-  ? 'https://fundr-demo.onrender.com/api'
+  ? 'https://tranch-platform.onrender.com/api'
   : 'http://localhost:5000/api';
 
-// API helper functions
+// API helper with Clerk auth
 const api = {
   async request(endpoint, options = {}) {
-    const token = localStorage.getItem('token');
+    const { getToken } = window.Clerk;
+    const token = await getToken();
+    
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -52,19 +53,18 @@ const api = {
   },
 
   // Auth endpoints
-  register: (userData) => api.request('/register', {
+  getCurrentUser: () => api.request('/auth/me'),
+  setUserRole: (role) => api.request('/auth/set-role', {
     method: 'POST',
-    body: JSON.stringify(userData),
+    body: JSON.stringify({ role }),
   }),
-
-  login: (credentials) => api.request('/login', {
+  completeProfile: (profileData) => api.request('/auth/complete-profile', {
     method: 'POST',
-    body: JSON.stringify(credentials),
+    body: JSON.stringify(profileData),
   }),
 
   // User profile endpoints
   getUserProfile: (userId) => api.request(`/users/${userId}/profile`),
-  
   updateUserProfile: (userId, profileData) => api.request(`/users/${userId}/profile`, {
     method: 'PUT',
     body: JSON.stringify(profileData),
@@ -72,14 +72,11 @@ const api = {
 
   // Project endpoints
   getProjects: () => api.request('/projects'),
-  
   createProject: (projectData) => api.request('/projects', {
     method: 'POST',
     body: JSON.stringify(projectData),
   }),
-
   getProject: (id) => api.request(`/projects/${id}`),
-
   updateProject: (id, projectData) => api.request(`/projects/${id}`, {
     method: 'PUT',
     body: JSON.stringify(projectData),
@@ -90,48 +87,42 @@ const api = {
     method: 'POST',
     body: formData,
   }),
-
   getProjectDocuments: (projectId) => api.request(`/projects/${projectId}/documents`),
-
   deleteDocument: (documentId) => api.request(`/documents/${documentId}`, {
     method: 'DELETE',
   }),
-
   getRequiredDocuments: () => api.request('/required-documents'),
+  
+  // Document download with auth
+  async downloadDocument(filePath) {
+    const { getToken } = window.Clerk;
+    const token = await getToken();
+    
+    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/${filePath}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) throw new Error('Download failed');
+    return response.blob();
+  },
 
   // Payment endpoints
   createProjectPayment: (projectId) => api.request('/payments/create-project-payment', {
     method: 'POST',
     body: JSON.stringify({ project_id: projectId }),
   }),
-
- 
-simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/simulate-success', {
-  method: 'POST',
-  body: JSON.stringify({ 
-    project_id: projectId, 
-    payment_intent_id: paymentIntentId 
+  simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/simulate-success', {
+    method: 'POST',
+    body: JSON.stringify({ 
+      project_id: projectId, 
+      payment_intent_id: paymentIntentId 
+    }),
   }),
-}),
- createSubscription: (paymentMethodId) => api.request('/payments/create-subscription', {
-  method: 'POST',
-  body: JSON.stringify({ payment_method_id: paymentMethodId }),
-}),
-
-  // Admin endpoints
-  getUsers: () => api.request('/admin/users'),
-  
-  approveUser: (userId) => api.request(`/admin/users/${userId}/approve`, {
-    method: 'PUT',
-  }),
-
-  getAdminStats: () => api.request('/admin/stats'),
-
-  getSystemSettings: () => api.request('/admin/system-settings'),
-
-  updateSystemSetting: (key, value) => api.request(`/admin/system-settings/${key}`, {
-    method: 'PUT',
-    body: JSON.stringify({ value }),
+  createSubscription: (paymentMethodId) => api.request('/payments/create-subscription', {
+    method: 'POST',
+    body: JSON.stringify({ payment_method_id: paymentMethodId }),
   }),
 
   // Access request endpoints
@@ -139,25 +130,26 @@ simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/s
     method: 'POST',
     body: JSON.stringify({ project_id: projectId, initial_message: initialMessage }),
   }),
-
   getAccessRequests: () => api.request('/access-requests'),
-
   approveAccessRequest: (requestId) => api.request(`/access-requests/${requestId}/approve`, {
     method: 'PUT',
   }),
-
   declineAccessRequest: (requestId) => api.request(`/access-requests/${requestId}/decline`, {
     method: 'PUT',
+  }),
+  
+  // Deal status endpoints
+  updateDealStatus: (requestId, status) => api.request(`/access-requests/${requestId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
   }),
 
   // Messaging endpoints
   getMessages: (requestId) => api.request(`/access-requests/${requestId}/messages`),
-
   sendMessage: (requestId, message) => api.request(`/access-requests/${requestId}/messages`, {
     method: 'POST',
     body: JSON.stringify({ message, message_type: 'text' }),
   }),
-
   markMessageAsRead: (messageId) => api.request(`/messages/${messageId}/read`, {
     method: 'PUT',
   }),
@@ -167,15 +159,80 @@ simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/s
     method: 'POST',
     body: JSON.stringify({ project_id: projectId, session_title: sessionTitle }),
   }),
-
   getAIChatSessions: () => api.request('/ai-chat/sessions'),
-
   getAIChatMessages: (sessionId) => api.request(`/ai-chat/sessions/${sessionId}/messages`),
-
   sendAIChatMessage: (sessionId, message) => api.request(`/ai-chat/sessions/${sessionId}/messages`, {
     method: 'POST',
     body: JSON.stringify({ message }),
   }),
+
+  // Admin endpoints
+  getUsers: () => api.request('/admin/users'),
+  approveUser: (userId) => api.request(`/admin/users/${userId}/approve`, {
+    method: 'PUT',
+  }),
+  getAdminStats: () => api.request('/admin/stats'),
+  getSystemSettings: () => api.request('/admin/system-settings'),
+  updateSystemSetting: (key, value) => api.request(`/admin/system-settings/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  }),
+};
+
+// App Context for managing user data
+const AppContext = createContext();
+
+const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within AppProvider');
+  }
+  return context;
+};
+
+const AppProvider = ({ children }) => {
+  const { user: clerkUser, isSignedIn, isLoaded } = useUser();
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (isLoaded) {
+      if (isSignedIn && clerkUser) {
+        fetchUserData();
+      } else {
+        setUserData(null);
+        setLoading(false);
+      }
+    }
+  }, [isSignedIn, isLoaded, clerkUser]);
+
+  const fetchUserData = async () => {
+    try {
+      const data = await api.getCurrentUser();
+      setUserData(data.user);
+    } catch (err) {
+      console.error('Failed to fetch user data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshUser = async () => {
+    await fetchUserData();
+  };
+
+  const value = {
+    user: userData,
+    loading,
+    refreshUser,
+    isAuthenticated: isSignedIn
+  };
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  );
 };
 
 // Utility Functions
@@ -210,6 +267,17 @@ const formatTime = (dateString) => {
   }
 };
 
+// Deal status options
+const DEAL_STATUSES = {
+  pending: 'Pending Review',
+  approved: 'Exploring',
+  due_diligence: 'Due Diligence',
+  term_sheet: 'Term Sheet',
+  funded: 'Funded',
+  declined: 'Declined',
+  closed: 'Closed'
+};
+
 // Loading Spinner Component
 const LoadingSpinner = () => (
   <div className="loading-spinner">
@@ -233,13 +301,13 @@ const SuccessMessage = ({ message, onClose }) => (
   </div>
 );
 
-// Navigation Component with Enhanced Features
-// Navigation Component with Enhanced Features
+// Navigation Component with Mobile Menu
 const Navigation = () => {
-  const { user, logout } = useAuth();
+  const { user } = useApp();
+  const { signOut } = useClerk();
   const navigate = useNavigate();
   const location = useLocation();
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [accessRequests, setAccessRequests] = useState([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
@@ -259,14 +327,26 @@ const Navigation = () => {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/');
   };
 
   if (!user) return null;
 
   const isActive = (path) => location.pathname === path;
+
+  const navLinks = [
+    { path: '/dashboard', label: 'Dashboard', roles: ['borrower', 'funder', 'admin'] },
+    { path: '/messages', label: 'Messages', roles: ['borrower', 'funder'], badge: unreadMessages },
+    { path: '/create-project', label: 'Create Project', roles: ['borrower'] },
+    { path: '/my-projects', label: 'My Projects', roles: ['borrower'] },
+    { path: '/portfolio', label: 'Portfolio', roles: ['funder'] },
+    { path: '/ai-broker', label: 'BrokerAI', roles: ['borrower', 'funder'] },
+    { path: '/admin', label: 'Admin', roles: ['admin'] },
+  ];
+
+  const filteredLinks = navLinks.filter(link => link.roles.includes(user.role));
 
   return (
     <nav className="navbar">
@@ -275,44 +355,31 @@ const Navigation = () => {
           <span className="logo-text">Tranch</span>
         </Link>
         
-        <div className="nav-menu">
-          <Link to="/dashboard" className={`nav-link ${isActive('/dashboard') ? 'active' : ''}`}>
-            Dashboard
-          </Link>
-          
-          <Link to="/messages" className={`nav-link ${isActive('/messages') ? 'active' : ''}`}>
-            Messages
-            {unreadMessages > 0 && <span className="nav-badge">{unreadMessages}</span>}
-          </Link>
-
-          {user.role === 'borrower' && (
-            <>
-              <Link to="/create-project" className={`nav-link ${isActive('/create-project') ? 'active' : ''}`}>
-                Create Project
-              </Link>
-              <Link to="/my-projects" className={`nav-link ${isActive('/my-projects') ? 'active' : ''}`}>
-                My Projects
-              </Link>
-            </>
-          )}
-
-          {user.role === 'funder' && (
-            <Link to="/portfolio" className={`nav-link ${isActive('/portfolio') ? 'active' : ''}`}>
-              Portfolio
+        {/* Desktop Navigation */}
+        <div className="nav-menu desktop-only">
+          {filteredLinks.map(link => (
+            <Link 
+              key={link.path}
+              to={link.path} 
+              className={`nav-link ${isActive(link.path) ? 'active' : ''}`}
+            >
+              {link.label}
+              {link.badge > 0 && <span className="nav-badge">{link.badge}</span>}
             </Link>
-          )}
-
-          <Link to="/ai-broker" className={`nav-link ${isActive('/ai-broker') ? 'active' : ''}`}>
-            BrokerAI
-          </Link>
-          
-          {user.role === 'admin' && (
-            <Link to="/admin" className={`nav-link ${isActive('/admin') ? 'active' : ''}`}>
-              Admin
-            </Link>
-          )}
+          ))}
         </div>
         
+        {/* Mobile Menu Button */}
+        <button 
+          className="mobile-menu-btn"
+          onClick={() => setShowMobileMenu(!showMobileMenu)}
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        
+        {/* User Section */}
         <div className="nav-user-section">
           <div className="profile-dropdown-container">
             <button 
@@ -396,80 +463,60 @@ const Navigation = () => {
           </div>
         </div>
       </div>
+      
+      {/* Mobile Menu */}
+      {showMobileMenu && (
+        <div className="mobile-menu">
+          {filteredLinks.map(link => (
+            <Link 
+              key={link.path}
+              to={link.path} 
+              className={`mobile-menu-link ${isActive(link.path) ? 'active' : ''}`}
+              onClick={() => setShowMobileMenu(false)}
+            >
+              {link.label}
+              {link.badge > 0 && <span className="nav-badge">{link.badge}</span>}
+            </Link>
+          ))}
+          <div className="mobile-menu-divider"></div>
+          <Link 
+            to="/profile" 
+            className="mobile-menu-link"
+            onClick={() => setShowMobileMenu(false)}
+          >
+            My Profile
+          </Link>
+          <Link 
+            to="/settings" 
+            className="mobile-menu-link"
+            onClick={() => setShowMobileMenu(false)}
+          >
+            Settings
+          </Link>
+          <button onClick={handleLogout} className="mobile-menu-link logout">
+            Logout
+          </button>
+        </div>
+      )}
     </nav>
-  );
-};
-
-// Auth Provider Component
-const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    
-    if (token && userData) {
-      setUser(JSON.parse(userData));
-    }
-    
-    setLoading(false);
-  }, []);
-
-  const login = (userData, token) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-  };
-
-const refreshUser = async () => {
-  try {
-    const data = await api.getUserProfile(user.id);
-    const updatedUser = { ...user, approved: data.approved };
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-  } catch (err) {
-    console.error('Failed to refresh user:', err);
-  }
-};
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-  };
-
-  const updateUser = (updates) => {
-    const updatedUser = { ...user, ...updates };
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-  };
-
-  const value = {
-    user,
-    login,
-    logout,
-    updateUser,
-    isAuthenticated: !!user,
-  };
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
   );
 };
 
 // Protected Route Component
 const ProtectedRoute = ({ children, roles = [] }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, loading, isAuthenticated } = useApp();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!user || !user.role) {
+    return <Navigate to="/onboarding" replace />;
   }
 
   if (roles.length > 0 && !roles.includes(user.role)) {
@@ -479,87 +526,89 @@ const ProtectedRoute = ({ children, roles = [] }) => {
   return children;
 };
 
-// Login Component
-const Login = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const { login } = useAuth();
+// Clerk Auth Wrapper with custom styling
+const ClerkAuthWrapper = ({ mode }) => {
   const navigate = useNavigate();
+  const [showClerkUI, setShowClerkUI] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await api.login(formData);
-      login(response.user, response.token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Custom styled container that matches your design
   return (
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
           <h1 className="auth-title">Welcome to Tranch</h1>
-          <p className="auth-subtitle">Connect property developers with private credit</p>
+          <p className="auth-subtitle">
+            {mode === 'sign-in' 
+              ? 'Connect property developers with private credit'
+              : 'Join Australia\'s premier property finance platform'
+            }
+          </p>
         </div>
 
-        {error && <ErrorMessage message={error} onClose={() => setError('')} />}
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
-              className="form-input"
-              placeholder="Enter your email"
-            />
+        {!showClerkUI ? (
+          <>
+            <button 
+              onClick={() => setShowClerkUI(true)}
+              className="auth-button"
+            >
+              {mode === 'sign-in' ? 'Sign In' : 'Create Account'}
+            </button>
+            
+            <div className="auth-footer">
+              <p>
+                {mode === 'sign-in' 
+                  ? "Don't have an account? "
+                  : "Already have an account? "
+                }
+                <Link 
+                  to={mode === 'sign-in' ? '/register' : '/login'} 
+                  className="auth-link"
+                >
+                  {mode === 'sign-in' ? 'Sign up' : 'Sign in'}
+                </Link>
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="clerk-container">
+            {mode === 'sign-in' ? (
+              <SignIn 
+                appearance={{
+                  elements: {
+                    rootBox: "clerk-root",
+                    card: "clerk-card"
+                  }
+                }}
+                afterSignInUrl="/onboarding"
+              />
+            ) : (
+              <SignUp 
+                appearance={{
+                  elements: {
+                    rootBox: "clerk-root",
+                    card: "clerk-card"
+                  }
+                }}
+                afterSignUpUrl="/onboarding"
+              />
+            )}
           </div>
-
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
-              className="form-input"
-              placeholder="Enter your password"
-            />
-          </div>
-
-          <button type="submit" disabled={loading} className="auth-button">
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="auth-footer">
-          <p>Don't have an account? <Link to="/register" className="auth-link">Sign up</Link></p>
-        </div>
+        )}
       </div>
     </div>
   );
 };
 
-// Enhanced Register Component with Funder Profile Details
-const Register = () => {
+// Onboarding Component
+const Onboarding = () => {
+  const { user: clerkUser } = useUser();
+  const { refreshUser } = useApp();
+  const navigate = useNavigate();
+  const [step, setStep] = useState('role'); // role, profile, complete
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'borrower',
+    role: '',
     // Funder profile fields
     company_name: '',
     company_type: '',
@@ -570,22 +619,24 @@ const Register = () => {
     aum: '',
     phone: '',
     linkedin: '',
-    bio: ''
+    bio: '',
+    abn: ''
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const { login } = useAuth();
-  const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleRoleSelection = async (role) => {
     setLoading(true);
     setError('');
-
+    
     try {
-      const response = await api.register(formData);
-      login(response.user, response.token);
-      navigate('/dashboard');
+      await api.setUserRole(role);
+      
+      if (role === 'borrower') {
+        await refreshUser();
+        navigate('/dashboard');
+      } else {
+        setFormData({ ...formData, role });
+        setStep('profile');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -593,251 +644,339 @@ const Register = () => {
     }
   };
 
-  return (
-    <div className="auth-container">
-      <div className="auth-card" style={{ maxWidth: formData.role === 'funder' ? '600px' : '400px' }}>
-        <div className="auth-header">
-          <h1 className="auth-title">Join Tranch</h1>
-          <p className="auth-subtitle">Create your account</p>
-        </div>
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-        {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+    try {
+      await api.completeProfile(formData);
+      await refreshUser();
+      setStep('complete');
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          {/* Basic Information */}
-          <div className="form-section">
-            <h3>Basic Information</h3>
+  if (step === 'role') {
+    return (
+      <div className="onboarding-container">
+        <div className="onboarding-card">
+          <h1>Welcome to Tranch</h1>
+          <p>Let's get you set up. Are you a property developer or an investor?</p>
+          
+          {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+          
+          <div className="role-selection">
+            <button 
+              className="role-card"
+              onClick={() => handleRoleSelection('borrower')}
+              disabled={loading}
+            >
+              <div className="role-icon">🏗️</div>
+              <h3>I'm a Developer</h3>
+              <p>I need funding for property development projects</p>
+            </button>
             
-            <div className="form-group">
-              <label htmlFor="name">Full Name *</label>
-              <input
-                type="text"
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                className="form-input"
-                placeholder="Enter your full name"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="email">Email *</label>
-              <input
-                type="email"
-                id="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-                className="form-input"
-                placeholder="Enter your email"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Password *</label>
-              <input
-                type="password"
-                id="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
-                className="form-input"
-                placeholder="Create a password"
-                minLength="6"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="role">Account Type *</label>
-              <select
-                id="role"
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                className="form-select"
-              >
-                <option value="borrower">Borrower (Property Developer)</option>
-                <option value="funder">Funder (Private Credit Investor)</option>
-              </select>
-            </div>
+            <button 
+              className="role-card"
+              onClick={() => handleRoleSelection('funder')}
+              disabled={loading}
+            >
+              <div className="role-icon">💰</div>
+              <h3>I'm an Investor</h3>
+              <p>I want to invest in property development projects</p>
+            </button>
           </div>
+        </div>
+      </div>
+    );
+  }
 
-          {/* Funder-specific fields */}
-          {formData.role === 'funder' && (
-            <>
-              <div className="form-section">
-                <h3>Company Information</h3>
-                
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="company_name">Company Name *</label>
-                    <input
-                      type="text"
-                      id="company_name"
-                      value={formData.company_name}
-                      onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                      required={formData.role === 'funder'}
-                      className="form-input"
-                      placeholder="ABC Capital Partners"
-                    />
-                  </div>
+  if (step === 'profile') {
+    return (
+      <div className="onboarding-container">
+        <div className="onboarding-card wide">
+          <h1>Complete Your Investor Profile</h1>
+          <p>This information helps developers understand your investment criteria</p>
+          
+          {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+          
+          <form onSubmit={handleProfileSubmit} className="onboarding-form">
+            <div className="form-section">
+              <h3>Company Information</h3>
+              
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="company_name">Company Name *</label>
+                  <input
+                    type="text"
+                    id="company_name"
+                    value={formData.company_name}
+                    onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                    required
+                    className="form-input"
+                    placeholder="ABC Capital Partners"
+                  />
+                </div>
 
-                  <div className="form-group">
-                    <label htmlFor="company_type">Company Type *</label>
-                    <select
-                      id="company_type"
-                      value={formData.company_type}
-                      onChange={(e) => setFormData({ ...formData, company_type: e.target.value })}
-                      className="form-select"
-                      required={formData.role === 'funder'}
-                    >
-                      <option value="">Select company type</option>
-                      <option value="Private Credit Fund">Private Credit Fund</option>
-                      <option value="Investment Bank">Investment Bank</option>
-                      <option value="Family Office">Family Office</option>
-                      <option value="Hedge Fund">Hedge Fund</option>
-                      <option value="Real Estate Fund">Real Estate Fund</option>
-                      <option value="High Net Worth Individual">High Net Worth Individual</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
+                <div className="form-group">
+                  <label htmlFor="abn">ABN *</label>
+                  <input
+                    type="text"
+                    id="abn"
+                    value={formData.abn}
+                    onChange={(e) => setFormData({ ...formData, abn: e.target.value })}
+                    required
+                    className="form-input"
+                    placeholder="12 345 678 901"
+                    pattern="[0-9\s]{11,14}"
+                  />
                 </div>
               </div>
 
-              <div className="form-section">
-                <h3>Investment Profile</h3>
-                
+              <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="investment_focus">Investment Focus *</label>
+                  <label htmlFor="company_type">Company Type *</label>
                   <select
-                    id="investment_focus"
-                    value={formData.investment_focus}
-                    onChange={(e) => setFormData({ ...formData, investment_focus: e.target.value })}
+                    id="company_type"
+                    value={formData.company_type}
+                    onChange={(e) => setFormData({ ...formData, company_type: e.target.value })}
                     className="form-select"
-                    required={formData.role === 'funder'}
+                    required
                   >
-                    <option value="">Select investment focus</option>
-                    <option value="Residential Development">Residential Development</option>
-                    <option value="Commercial Development">Commercial Development</option>
-                    <option value="Mixed-Use Development">Mixed-Use Development</option>
-                    <option value="Industrial Development">Industrial Development</option>
-                    <option value="All Property Types">All Property Types</option>
+                    <option value="">Select company type</option>
+                    <option value="Private Credit Fund">Private Credit Fund</option>
+                    <option value="Investment Bank">Investment Bank</option>
+                    <option value="Family Office">Family Office</option>
+                    <option value="Hedge Fund">Hedge Fund</option>
+                    <option value="Real Estate Fund">Real Estate Fund</option>
+                    <option value="High Net Worth Individual">High Net Worth Individual</option>
+                    <option value="Other">Other</option>
                   </select>
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="typical_deal_size_min">Min Deal Size (AUD) *</label>
-                    <input
-                      type="number"
-                      id="typical_deal_size_min"
-                      value={formData.typical_deal_size_min}
-                      onChange={(e) => setFormData({ ...formData, typical_deal_size_min: e.target.value })}
-                      required={formData.role === 'funder'}
-                      className="form-input"
-                      placeholder="1000000"
-                      min="1"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="typical_deal_size_max">Max Deal Size (AUD) *</label>
-                    <input
-                      type="number"
-                      id="typical_deal_size_max"
-                      value={formData.typical_deal_size_max}
-                      onChange={(e) => setFormData({ ...formData, typical_deal_size_max: e.target.value })}
-                      required={formData.role === 'funder'}
-                      className="form-input"
-                      placeholder="50000000"
-                      min="1"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="years_experience">Years Experience *</label>
-                    <input
-                      type="number"
-                      id="years_experience"
-                      value={formData.years_experience}
-                      onChange={(e) => setFormData({ ...formData, years_experience: e.target.value })}
-                      required={formData.role === 'funder'}
-                      className="form-input"
-                      placeholder="10"
-                      min="0"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="aum">Assets Under Management (AUD)</label>
-                    <input
-                      type="number"
-                      id="aum"
-                      value={formData.aum}
-                      onChange={(e) => setFormData({ ...formData, aum: e.target.value })}
-                      className="form-input"
-                      placeholder="100000000"
-                      min="1"
-                    />
-                  </div>
+                <div className="form-group">
+                  <label htmlFor="years_experience">Years Experience *</label>
+                  <input
+                    type="number"
+                    id="years_experience"
+                    value={formData.years_experience}
+                    onChange={(e) => setFormData({ ...formData, years_experience: e.target.value })}
+                    required
+                    className="form-input"
+                    placeholder="10"
+                    min="0"
+                  />
                 </div>
               </div>
+            </div>
 
-              <div className="form-section">
-                <h3>Contact & Profile</h3>
-                
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="phone">Phone Number</label>
-                    <input
-                      type="tel"
-                      id="phone"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="form-input"
-                      placeholder="+61 400 000 000"
-                    />
-                  </div>
+            <div className="form-section">
+              <h3>Investment Profile</h3>
+              
+              <div className="form-group">
+                <label htmlFor="investment_focus">Investment Focus *</label>
+                <select
+                  id="investment_focus"
+                  value={formData.investment_focus}
+                  onChange={(e) => setFormData({ ...formData, investment_focus: e.target.value })}
+                  className="form-select"
+                  required
+                >
+                  <option value="">Select investment focus</option>
+                  <option value="Residential Development">Residential Development</option>
+                  <option value="Commercial Development">Commercial Development</option>
+                  <option value="Mixed-Use Development">Mixed-Use Development</option>
+                  <option value="Industrial Development">Industrial Development</option>
+                  <option value="All Property Types">All Property Types</option>
+                </select>
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="linkedin">LinkedIn Profile</label>
-                    <input
-                      type="url"
-                      id="linkedin"
-                      value={formData.linkedin}
-                      onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
-                      className="form-input"
-                      placeholder="https://linkedin.com/in/yourprofile"
-                    />
-                  </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="typical_deal_size_min">Min Deal Size (AUD) *</label>
+                  <input
+                    type="number"
+                    id="typical_deal_size_min"
+                    value={formData.typical_deal_size_min}
+                    onChange={(e) => setFormData({ ...formData, typical_deal_size_min: e.target.value })}
+                    required
+                    className="form-input"
+                    placeholder="1000000"
+                    min="1"
+                  />
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="bio">Professional Bio</label>
-                  <textarea
-                    id="bio"
-                    value={formData.bio}
-                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                    className="form-textarea"
-                    placeholder="Brief professional background and investment philosophy..."
-                    rows="4"
-                    maxLength="500"
+                  <label htmlFor="typical_deal_size_max">Max Deal Size (AUD) *</label>
+                  <input
+                    type="number"
+                    id="typical_deal_size_max"
+                    value={formData.typical_deal_size_max}
+                    onChange={(e) => setFormData({ ...formData, typical_deal_size_max: e.target.value })}
+                    required
+                    className="form-input"
+                    placeholder="50000000"
+                    min="1"
                   />
-                  <div className="character-count">{formData.bio.length}/500</div>
                 </div>
               </div>
-            </>
-          )}
 
-          <button type="submit" disabled={loading} className="auth-button">
-            {loading ? 'Creating Account...' : 'Create Account'}
+              <div className="form-group">
+                <label htmlFor="aum">Assets Under Management (AUD)</label>
+                <input
+                  type="number"
+                  id="aum"
+                  value={formData.aum}
+                  onChange={(e) => setFormData({ ...formData, aum: e.target.value })}
+                  className="form-input"
+                  placeholder="100000000"
+                  min="1"
+                />
+              </div>
+            </div>
+
+            <div className="form-section">
+              <h3>Contact Information</h3>
+              
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="phone">Phone Number *</label>
+                  <input
+                    type="tel"
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    required
+                    className="form-input"
+                    placeholder="+61 400 000 000"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="linkedin">LinkedIn Profile</label>
+                  <input
+                    type="url"
+                    id="linkedin"
+                    value={formData.linkedin}
+                    onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
+                    className="form-input"
+                    placeholder="https://linkedin.com/in/yourprofile"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="bio">Professional Bio</label>
+                <textarea
+                  id="bio"
+                  value={formData.bio}
+                  onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                  className="form-textarea"
+                  placeholder="Brief professional background and investment philosophy..."
+                  rows="4"
+                  maxLength="500"
+                />
+                <div className="character-count">{formData.bio.length}/500</div>
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading} className="btn btn-primary btn-block">
+              {loading ? 'Submitting...' : 'Complete Profile'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'complete') {
+    return (
+      <div className="onboarding-container">
+        <div className="onboarding-card">
+          <div className="success-icon">✓</div>
+          <h1>Profile Submitted!</h1>
+          <p>Your profile is under review. We'll notify you once approved (usually within 24 hours).</p>
+          <button onClick={() => navigate('/dashboard')} className="btn btn-primary">
+            Go to Dashboard
           </button>
-        </form>
+        </div>
+      </div>
+    );
+  }
+};
 
-        <div className="auth-footer">
-          <p>Already have an account? <Link to="/login" className="auth-link">Sign in</Link></p>
+// Document Preview Modal
+const DocumentPreviewModal = ({ document, onClose }) => {
+  const [loading, setLoading] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  useEffect(() => {
+    if (document && document.mime_type?.includes('pdf')) {
+      loadDocument();
+    }
+  }, [document]);
+
+  const loadDocument = async () => {
+    try {
+      const blob = await api.downloadDocument(document.file_path);
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch (err) {
+      console.error('Failed to load document:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      const blob = await api.downloadDocument(document.file_path);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = document.file_name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
+
+  if (!document) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content document-preview" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{document.file_name}</h2>
+          <div className="modal-actions">
+            <button onClick={handleDownload} className="btn btn-sm btn-primary">
+              Download
+            </button>
+            <button onClick={onClose} className="close-btn">&times;</button>
+          </div>
+        </div>
+        
+        <div className="modal-body">
+          {loading ? (
+            <LoadingSpinner />
+          ) : document.mime_type?.includes('pdf') ? (
+            <iframe 
+              src={previewUrl} 
+              className="document-iframe"
+              title={document.file_name}
+            />
+          ) : (
+            <div className="preview-unavailable">
+              <p>Preview not available for this file type</p>
+              <button onClick={handleDownload} className="btn btn-primary">
+                Download to View
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -845,7 +984,6 @@ const Register = () => {
 };
 
 // Enhanced Project Card Component
-
 const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true }) => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -879,12 +1017,11 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
     setShowPaymentModal(false);
     setSuccess('Payment successful! Your project is now published.');
     
-    // Add a small delay to ensure database is updated
     setTimeout(async () => {
       if (onProjectUpdate) {
         await onProjectUpdate();
       }
-    }, 500); // Small delay to ensure DB write completes
+    }, 500);
   };
 
   const getRiskRatingColor = (rating) => {
@@ -1021,8 +1158,9 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
               {project.payment_status === 'unpaid' && (
                 <button 
                   onClick={handlePayToPublish}
-                  disabled={paying}
+                  disabled={paying || !project.documents_complete}
                   className="btn btn-primary"
+                  title={!project.documents_complete ? 'Upload all required documents first' : ''}
                 >
                   {paying ? 'Processing Payment...' : 'Pay to Publish ($499 AUD)'}
                 </button>
@@ -1111,7 +1249,7 @@ const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true })
 const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
-  const { user, updateUser } = useAuth(); // Make sure we're getting updateUser from useAuth
+  const { user } = useApp();
 
   if (!isOpen) return null;
 
@@ -1152,7 +1290,6 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
                   processing={processing}
                   setProcessing={setProcessing}
                   user={user}
-                  updateUser={updateUser}  // Pass updateUser here
                 />
               </Elements>
 
@@ -1168,13 +1305,11 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
   );
 };
 
-
-// Separate component for the form (inside Elements)
-const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user, updateUser }) => {
+// Subscription Form Component
+const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user }) => {
   const stripe = useStripe();
   const elements = useElements();
 
-  // Define handleSubmit INSIDE the component
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1184,14 +1319,11 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
     setError('');
 
     try {
-      // For testing, just simulate the subscription
       const response = await api.request('/payments/simulate-subscription', {
         method: 'POST',
         body: JSON.stringify({})
       });
       
-      // Update local user status
-      updateUser({ ...user, subscription_status: 'active' });
       onSuccess();
     } catch (err) {
       setError(err.message || 'Failed to activate subscription');
@@ -1200,7 +1332,6 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
     }
   };
 
-  // THEN use it in the return statement
   return (
     <form onSubmit={handleSubmit}>
       <div className="card-element-container">
@@ -1234,11 +1365,10 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
   );
 };
 
-// Dashboard Component with Enhanced Features
-
+// Dashboard Component with Deal Status
 const Dashboard = () => {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const { user, updateUser } = useAuth(); 
+  const { user, refreshUser } = useApp();
   const [projects, setProjects] = useState([]);
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1251,36 +1381,74 @@ const Dashboard = () => {
     developmentStage: ''
   });
   const [stats, setStats] = useState(null);
+  const [deals, setDeals] = useState({
+    exploring: [],
+    dueDiligence: [],
+    termSheet: [],
+    funded: []
+  });
 
   useEffect(() => {
     fetchData();
-  }, [user.role]);
+  }, [user?.role]);
 
   useEffect(() => {
     applyFilters();
   }, [projects, filters]);
 
   const fetchData = async () => {
-  try {
-    const projectData = await api.getProjects();
-    setProjects(projectData);
-    
-    if (user.role === 'admin') {
-      const statsData = await api.getAdminStats();
-      setStats(statsData);
+    try {
+      const projectData = await api.getProjects();
+      setProjects(projectData);
+      
+      if (user?.role === 'admin') {
+        const statsData = await api.getAdminStats();
+        setStats(statsData);
+      }
+      
+      if (user?.role === 'funder') {
+        const accessRequests = await api.getAccessRequests();
+        categorizeDeals(accessRequests);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    setError(err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
-const handleProjectUpdate = async () => {
-  // Force a complete refresh
-  setLoading(true);
-  await fetchData();
-};
+  const categorizeDeals = (requests) => {
+    const categorized = {
+      exploring: [],
+      dueDiligence: [],
+      termSheet: [],
+      funded: []
+    };
+    
+    requests.forEach(req => {
+      switch (req.status) {
+        case 'approved':
+          categorized.exploring.push(req);
+          break;
+        case 'due_diligence':
+          categorized.dueDiligence.push(req);
+          break;
+        case 'term_sheet':
+          categorized.termSheet.push(req);
+          break;
+        case 'funded':
+          categorized.funded.push(req);
+          break;
+      }
+    });
+    
+    setDeals(categorized);
+  };
+
+  const handleProjectUpdate = async () => {
+    setLoading(true);
+    await fetchData();
+  };
 
   const applyFilters = () => {
     let filtered = [...projects];
@@ -1310,7 +1478,7 @@ const handleProjectUpdate = async () => {
     setFilteredProjects(filtered);
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (loading || !user) return <LoadingSpinner />;
 
   return (
     <div className="dashboard">
@@ -1335,20 +1503,22 @@ const handleProjectUpdate = async () => {
           <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
         </div>
       )}
-{user.role === 'funder' && user.approved && user.subscription_status !== 'active' && (
-  <div className="subscription-banner">
-    <div className="banner-content">
-      <h3>Activate Your Subscription</h3>
-      <p>Subscribe to unlock full access to all projects and features</p>
-    </div>
-    <button 
-      onClick={() => setShowSubscriptionModal(true)}
-      className="btn btn-primary"
-    >
-      Subscribe Now - $299/month
-    </button>
-  </div>
-)}
+
+      {user.role === 'funder' && user.approved && user.subscription_status !== 'active' && (
+        <div className="subscription-banner">
+          <div className="banner-content">
+            <h3>Activate Your Subscription</h3>
+            <p>Subscribe to unlock full access to all projects and features</p>
+          </div>
+          <button 
+            onClick={() => setShowSubscriptionModal(true)}
+            className="btn btn-primary"
+          >
+            Subscribe Now - $299/month
+          </button>
+        </div>
+      )}
+
       {user.role === 'admin' && stats && (
         <div className="admin-stats">
           <div className="stat-card">
@@ -1377,6 +1547,30 @@ const handleProjectUpdate = async () => {
             <div className="stat-content">
               <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
               <div className="stat-label">Total Revenue</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {user.role === 'funder' && user.approved && user.subscription_status === 'active' && (
+        <div className="deal-pipeline">
+          <h2>Deal Pipeline</h2>
+          <div className="pipeline-stages">
+            <div className="pipeline-stage">
+              <h3>Exploring ({deals.exploring.length})</h3>
+              <div className="stage-amount">{formatCurrency(deals.exploring.reduce((sum, d) => sum + d.loan_amount, 0))}</div>
+            </div>
+            <div className="pipeline-stage">
+              <h3>Due Diligence ({deals.dueDiligence.length})</h3>
+              <div className="stage-amount">{formatCurrency(deals.dueDiligence.reduce((sum, d) => sum + d.loan_amount, 0))}</div>
+            </div>
+            <div className="pipeline-stage">
+              <h3>Term Sheet ({deals.termSheet.length})</h3>
+              <div className="stage-amount">{formatCurrency(deals.termSheet.reduce((sum, d) => sum + d.loan_amount, 0))}</div>
+            </div>
+            <div className="pipeline-stage funded">
+              <h3>Funded ({deals.funded.length})</h3>
+              <div className="stage-amount">{formatCurrency(deals.funded.reduce((sum, d) => sum + d.loan_amount, 0))}</div>
             </div>
           </div>
         </div>
@@ -1504,30 +1698,833 @@ const handleProjectUpdate = async () => {
           </div>
         )}
       </div>
+
       <SubscriptionModal 
-  isOpen={showSubscriptionModal}
-  onClose={() => setShowSubscriptionModal(false)}
-  onSuccess={async () => {
-    setShowSubscriptionModal(false);
-    
-    // Wait a moment for the backend to update
-    setTimeout(async () => {
-      // Refresh user data from backend
-      try {
-        const userData = await api.getUserProfile(user.id);
-        updateUser({ ...user, ...userData });
-        
-        // Refresh projects
-        await fetchData();
-      } catch (err) {
-        console.error('Failed to refresh user data:', err);
-      }
-    }, 1000);
-  }}
-/>
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={async () => {
+          setShowSubscriptionModal(false);
+          
+          setTimeout(async () => {
+            await refreshUser();
+            await fetchData();
+          }, 1000);
+        }}
+      />
     </div>
   );
 };
+
+// Landing Page with Updated Copy
+const LandingPage = () => {
+  const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  return (
+    <div className="landing-page">
+      {/* Navigation */}
+      <nav className="landing-nav">
+        <div className="nav-container">
+          <div className="nav-logo">
+            <span className="logo-text">Tranch</span>
+          </div>
+          <div className="nav-links desktop-only">
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How it Works</a>
+            <a href="#pricing">Pricing</a>
+            <Link to="/login" className="btn btn-outline">Sign In</Link>
+            <Link to="/register" className="btn btn-primary">Get Started</Link>
+          </div>
+          {/* Mobile menu button */}
+          <button 
+            className="mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+        </div>
+        
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="mobile-nav-menu">
+            <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
+            <a href="#pricing" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+            <Link to="/login" className="btn btn-outline">Sign In</Link>
+            <Link to="/register" className="btn btn-primary">Get Started</Link>
+          </div>
+        )}
+      </nav>
+
+      {/* Hero Section */}
+      <section className="hero-section">
+        <div className="hero-container">
+          <div className="hero-content">
+            <h1 className="hero-title">
+              Connect Your Development<br />
+              <span className="gradient-text">With The Right Capital</span>
+            </h1>
+            <p className="hero-subtitle">
+              Tranch is Australia's premier marketplace connecting property developers 
+              with private credit funders. Streamline your funding process with our 
+              secure platform and intelligent matching system.
+            </p>
+            <div className="hero-actions">
+              <Link to="/register" className="btn btn-primary btn-lg">
+                Start Your Project
+              </Link>
+              <Link to="/register?role=funder" className="btn btn-outline btn-lg">
+                Become a Funder
+              </Link>
+            </div>
+            <div className="hero-stats">
+              <div className="stat">
+                <span className="stat-value">Live Soon</span>
+                <span className="stat-label">Platform Launch</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">$0 Fees</span>
+                <span className="stat-label">Until First Deal</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">24-48hrs</span>
+                <span className="stat-label">Approval Time</span>
+              </div>
+            </div>
+          </div>
+          <div className="hero-visual">
+            <div className="floating-card card-1">
+              <h4>Luxury Apartments</h4>
+              <p>Brisbane CBD</p>
+              <span className="amount">$5.2M</span>
+            </div>
+            <div className="floating-card card-2">
+              <h4>Mixed Use Development</h4>
+              <p>Gold Coast</p>
+              <span className="amount">$8.7M</span>
+            </div>
+            <div className="floating-card card-3">
+              <h4>Townhouse Project</h4>
+              <p>Sunshine Coast</p>
+              <span className="amount">$3.4M</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="features-section">
+        <div className="container">
+          <h2 className="section-title">Built for Modern Property Finance</h2>
+          <p className="section-subtitle">
+            Everything you need to connect, transact, and succeed
+          </p>
+          
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon-wrapper">
+                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+              </div>
+              <h3>For Developers</h3>
+              <ul>
+                <li>List projects in minutes</li>
+                <li>Access verified funders</li>
+                <li>Secure document sharing</li>
+                <li>Real-time messaging</li>
+                <li>Track deal progress</li>
+              </ul>
+            </div>
+            
+            <div className="feature-card">
+              <div className="feature-icon-wrapper">
+                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="2" x2="12" y2="22"></line>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+              </div>
+              <h3>For Funders</h3>
+              <ul>
+                <li>Curated deal flow</li>
+                <li>Comprehensive due diligence</li>
+                <li>Risk assessment tools</li>
+                <li>Portfolio management</li>
+                <li>Deal pipeline tracking</li>
+              </ul>
+            </div>
+            
+            <div className="feature-card featured">
+              <div className="feature-icon-wrapper">
+                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  <circle cx="12" cy="12" r="10"></circle>
+                </svg>
+              </div>
+              <h3>BrokerAI Assistant</h3>
+              <ul>
+                <li>24/7 expert guidance</li>
+                <li>LVR & feasibility analysis</li>
+                <li>Market insights</li>
+                <li>Compliance support</li>
+                <li>Deal structuring help</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section id="how-it-works" className="how-it-works">
+        <div className="container">
+          <h2 className="section-title">Simple, Secure, Efficient</h2>
+          
+          <div className="process-timeline">
+            <div className="process-step">
+              <div className="step-number">1</div>
+              <h3>Create Your Profile</h3>
+              <p>Sign up as a developer or funder with verified credentials</p>
+            </div>
+            
+            <div className="process-step">
+              <div className="step-number">2</div>
+              <h3>List or Browse</h3>
+              <p>Developers list projects, funders browse opportunities</p>
+            </div>
+            
+            <div className="process-step">
+              <div className="step-number">3</div>
+              <h3>Connect & Negotiate</h3>
+              <p>Secure messaging and document sharing platform</p>
+            </div>
+            
+            <div className="process-step">
+              <div className="step-number">4</div>
+              <h3>Close the Deal</h3>
+              <p>Track progress from initial interest to funding</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="pricing-section">
+        <div className="container">
+          <h2 className="section-title">Transparent Pricing</h2>
+          <p className="section-subtitle">Pay only when you succeed</p>
+          
+          <div className="pricing-grid">
+            <div className="pricing-card">
+              <h3>Developers</h3>
+              <div className="price">
+                <span className="currency">$</span>
+                <span className="amount">499</span>
+                <span className="period">per funded project</span>
+              </div>
+              <ul>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  List unlimited projects
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Access to all funders
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Secure document portal
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  BrokerAI assistance
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  No upfront fees
+                </li>
+              </ul>
+              <Link to="/register" className="btn btn-primary btn-block">
+                Start Listing
+              </Link>
+            </div>
+            
+            <div className="pricing-card">
+              <h3>Funders</h3>
+              <div className="price">
+                <span className="currency">$</span>
+                <span className="amount">299</span>
+                <span className="period">per month</span>
+              </div>
+              <ul>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Unlimited deal access
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Advanced filters
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Due diligence tools
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Portfolio analytics
+                </li>
+                <li>
+                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Cancel anytime
+                </li>
+              </ul>
+              <Link to="/register?role=funder" className="btn btn-primary btn-block">
+                Start Investing
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="cta-section">
+        <div className="container">
+          <h2>Ready to Transform Your Property Finance?</h2>
+          <p>Join Australia's fastest-growing property finance platform</p>
+          <div className="cta-actions">
+            <Link to="/register" className="btn btn-primary btn-lg">
+              Get Started Free
+            </Link>
+            <a href="mailto:support@tranch.com.au" className="btn btn-outline btn-lg">
+              Contact Sales
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="landing-footer">
+        <div className="container">
+          <div className="footer-content">
+            <div className="footer-brand">
+              <span className="logo-text">Tranch</span>
+              <p>Connecting property developers with private credit</p>
+            </div>
+            <div className="footer-links">
+              <h4>Platform</h4>
+              <a href="#features">Features</a>
+              <a href="#pricing">Pricing</a>
+              <a href="#how-it-works">How it Works</a>
+            </div>
+            <div className="footer-links">
+              <h4>Company</h4>
+              <a href="#">About</a>
+              <a href="#">Contact</a>
+              <a href="#">Privacy</a>
+              <a href="#">Terms</a>
+            </div>
+            <div className="footer-contact">
+              <h4>Get in Touch</h4>
+              <p>support@tranch.com.au</p>
+              <p>1300 TRANCH</p>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <p>&copy; 2025 Tranch. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+// Other existing components (unchanged but included for completeness)
+const stripePromise = loadStripe('pk_test_51RU7lrQupq5Lj3mgQLoOPZQnTHeOOC8HSXs9x4D0H9uURhmGi0tlRxvkiuTy9NEd9RlM3B51YBpvgMdwlbU6bvkQ00WUSGUnp8');
+
+// Payment Modal Component
+const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Publish Project</h2>
+          <button onClick={onClose} className="close-btn">&times;</button>
+        </div>
+        
+        <div className="modal-body">
+          <div className="payment-summary">
+            <h3>{project.title}</h3>
+            <p className="payment-description">
+              Publishing your project will make it visible to all verified funders on the platform.
+            </p>
+            <div className="payment-amount">
+              <span>Publishing Fee:</span>
+              <strong>{formatCurrency(499)}</strong>
+            </div>
+          </div>
+
+          {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+
+          <Elements stripe={stripePromise}>
+            <PaymentForm 
+              amount={499}
+              project={project}
+              onSuccess={onSuccess}
+              onError={setError}
+            />
+          </Elements>
+
+          <div className="payment-security">
+            <span>🔒</span>
+            <p>Secured by Stripe. Your payment information is encrypted and secure.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Payment Form Component
+const PaymentForm = ({ amount, onSuccess, onError, project }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [processing, setProcessing] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!stripe || !elements) return;
+    
+    setProcessing(true);
+
+    try {
+      const response = await api.simulatePaymentSuccess(
+        project.id, 
+        'pi_demo_' + Date.now()
+      );
+      
+      onSuccess();
+    } catch (err) {
+      onError(err.message);
+    }
+
+    setProcessing(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="payment-form">
+      <div className="card-element-container">
+        <CardElement 
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                  color: '#aab7c4',
+                },
+              },
+            },
+          }}
+        />
+      </div>
+      <button 
+        type="submit" 
+        disabled={!stripe || processing}
+        className="btn btn-primary"
+      >
+        {processing ? 'Processing...' : `Pay ${formatCurrency(amount)}`}
+      </button>
+    </form>
+  );
+};
+
+// All other existing components remain the same...
+// (CreateProject, MyProjects, ProjectDetail, MessagesPage, BrokerAI, Portfolio, UserProfile, AdminPanel, EditProject)
+// These are unchanged from your original code but would be included here
+
+// Main App Component
+const App = () => {
+  return (
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <Router>
+        <AppProvider>
+          <div className="app">
+            <SignedIn>
+              <Navigation />
+            </SignedIn>
+            <main className="main-content">
+              <Routes>
+                {/* Public routes */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<ClerkAuthWrapper mode="sign-in" />} />
+                <Route path="/register" element={<ClerkAuthWrapper mode="sign-up" />} />
+                
+                {/* Onboarding */}
+                <Route path="/onboarding" element={
+                  <SignedIn>
+                    <Onboarding />
+                  </SignedIn>
+                } />
+                
+                {/* Protected routes */}
+                <Route path="/dashboard" element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/create-project" element={
+                  <ProtectedRoute roles={['borrower']}>
+                    <CreateProject />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/my-projects" element={
+                  <ProtectedRoute roles={['borrower']}>
+                    <MyProjects />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/project/:id" element={
+                  <ProtectedRoute>
+                    <ProjectDetail />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/project/:id/edit" element={
+                  <ProtectedRoute roles={['borrower']}>
+                    <EditProject />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/messages" element={
+                  <ProtectedRoute>
+                    <MessagesPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/ai-broker" element={
+                  <ProtectedRoute>
+                    <BrokerAI />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/portfolio" element={
+                  <ProtectedRoute roles={['funder']}>
+                    <Portfolio />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/profile" element={
+                  <ProtectedRoute>
+                    <UserProfile />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin" element={
+                  <ProtectedRoute roles={['admin']}>
+                    <AdminPanel />
+                  </ProtectedRoute>
+                } />
+                
+                {/* Settings page (placeholder) */}
+                <Route path="/settings" element={
+                  <ProtectedRoute>
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                      <h1>Settings</h1>
+                      <p>Settings page coming soon...</p>
+                    </div>
+                  </ProtectedRoute>
+                } />
+              </Routes>
+            </main>
+          </div>
+        </AppProvider>
+      </Router>
+    </ClerkProvider>
+  );
+};
+
+// CSS additions for mobile menu
+const mobileMenuStyles = `
+.mobile-menu-btn {
+  display: none;
+}
+
+.mobile-nav-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mobile-nav-menu a,
+.mobile-nav-menu .btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 0.75rem;
+}
+
+.mobile-menu {
+  position: fixed;
+  top: 72px;
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 999;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+}
+
+.mobile-menu-link {
+  display: block;
+  padding: 1rem 1.5rem;
+  color: var(--gray-700);
+  text-decoration: none;
+  border-bottom: 1px solid var(--gray-100);
+  transition: background 0.2s;
+}
+
+.mobile-menu-link:hover {
+  background: var(--gray-50);
+}
+
+.mobile-menu-link.active {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-weight: 600;
+}
+
+.mobile-menu-divider {
+  height: 8px;
+  background: var(--gray-100);
+  margin: 0;
+}
+
+.desktop-only {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex;
+  }
+  
+  .desktop-only {
+    display: none !important;
+  }
+  
+  .mobile-nav-menu {
+    display: flex;
+  }
+  
+  .nav-menu {
+    display: none;
+  }
+  
+  .hero-container {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  
+  .hero-visual {
+    display: none;
+  }
+  
+  .hero-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .hero-actions .btn {
+    width: 100%;
+  }
+}
+
+/* Onboarding styles */
+.onboarding-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.onboarding-card {
+  background: white;
+  padding: 3rem;
+  border-radius: 1rem;
+  max-width: 600px;
+  width: 100%;
+  text-align: center;
+}
+
+.onboarding-card.wide {
+  max-width: 800px;
+}
+
+.role-selection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 3rem;
+}
+
+.role-card {
+  background: white;
+  border: 2px solid var(--gray-200);
+  padding: 2rem;
+  border-radius: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.role-card:hover {
+  border-color: var(--primary-500);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.role-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.onboarding-form {
+  text-align: left;
+  margin-top: 2rem;
+}
+
+.success-icon {
+  width: 80px;
+  height: 80px;
+  background: var(--success);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  margin: 0 auto 2rem;
+}
+
+/* Document preview styles */
+.document-preview {
+  max-width: 90vw;
+  max-height: 90vh;
+  width: 1000px;
+}
+
+.document-iframe {
+  width: 100%;
+  height: 70vh;
+  border: none;
+  border-radius: 0.5rem;
+}
+
+.preview-unavailable {
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* Deal pipeline styles */
+.deal-pipeline {
+  margin: 2rem 0;
+}
+
+.pipeline-stages {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.pipeline-stage {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.pipeline-stage h3 {
+  font-size: 1rem;
+  color: var(--gray-700);
+  margin-bottom: 0.5rem;
+}
+
+.stage-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.pipeline-stage.funded {
+  background: var(--gradient-primary);
+  color: white;
+}
+
+.pipeline-stage.funded h3 {
+  color: white;
+}
+
+.pipeline-stage.funded .stage-amount {
+  color: white;
+}
+
+/* Clerk custom styles */
+.clerk-root {
+  width: 100%;
+}
+
+.clerk-card {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+`;
 
 // Create Project Component with Full Features
 const CreateProject = () => {
@@ -4430,519 +5427,5 @@ const EditProject = () => {
   );
 };
 
-// Add this component before the App component
-const LandingPage = () => {
-  const navigate = useNavigate();
-  
-  return (
-    <div className="landing-page">
-      {/* Navigation */}
-      <nav className="landing-nav">
-        <div className="nav-container">
-          <div className="nav-logo">
-            <span className="logo-text">Tranch</span>
-          </div>
-          <div className="nav-links">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How it Works</a>
-            <a href="#pricing">Pricing</a>
-            <Link to="/login" className="btn btn-outline">Sign In</Link>
-            <Link to="/register" className="btn btn-primary">Get Started</Link>
-          </div>
-          {/* Mobile menu button */}
-          <button className="mobile-menu-btn">
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="hero-section">
-        <div className="hero-container">
-          <div className="hero-content">
-            <h1 className="hero-title">
-              Empowering Developers to<br />
-              <span className="gradient-text">Take Control of Their Finance</span>
-            </h1>
-            <p className="hero-subtitle">
-              Australia's premier platform connecting property developers with private credit. 
-              Streamline your funding process with institutional-grade tools and AI-powered insights.
-            </p>
-            <div className="hero-actions">
-              <Link to="/register" className="btn btn-primary btn-lg">
-                Start Your Project
-              </Link>
-              <Link to="/register?role=funder" className="btn btn-outline btn-lg">
-                Become a Funder
-              </Link>
-            </div>
-            <div className="hero-stats">
-              <div className="stat">
-                <span className="stat-value">$50M+</span>
-                <span className="stat-label">Projects Funded</span>
-              </div>
-              <div className="stat">
-                <span className="stat-value">200+</span>
-                <span className="stat-label">Active Developers</span>
-              </div>
-              <div className="stat">
-                <span className="stat-value">12-15%</span>
-                <span className="stat-label">Avg Returns</span>
-              </div>
-            </div>
-          </div>
-          <div className="hero-visual">
-            <div className="floating-card card-1">
-              <h4>Luxury Apartments</h4>
-              <p>Brisbane CBD</p>
-              <span className="amount">$5.2M</span>
-            </div>
-            <div className="floating-card card-2">
-              <h4>Mixed Use Development</h4>
-              <p>Gold Coast</p>
-              <span className="amount">$8.7M</span>
-            </div>
-            <div className="floating-card card-3">
-              <h4>Townhouse Project</h4>
-              <p>Sunshine Coast</p>
-              <span className="amount">$3.4M</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="features-section">
-        <div className="container">
-          <h2 className="section-title">Built for Modern Property Finance</h2>
-          <p className="section-subtitle">
-            Everything you need to connect, transact, and succeed
-          </p>
-          
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-              </div>
-              <h3>For Developers</h3>
-              <ul>
-                <li>List projects in minutes</li>
-                <li>Access verified funders</li>
-                <li>Secure document sharing</li>
-                <li>Real-time messaging</li>
-              </ul>
-            </div>
-            
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="2" x2="12" y2="22"></line>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                </svg>
-              </div>
-              <h3>For Funders</h3>
-              <ul>
-                <li>Curated deal flow</li>
-                <li>Comprehensive due diligence</li>
-                <li>Risk assessment tools</li>
-                <li>Portfolio management</li>
-              </ul>
-            </div>
-            
-            <div className="feature-card featured">
-              <div className="feature-icon-wrapper">
-                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                  <circle cx="12" cy="12" r="10"></circle>
-                </svg>
-              </div>
-              <h3>BrokerAI Assistant</h3>
-              <ul>
-                <li>24/7 expert guidance</li>
-                <li>LVR & feasibility analysis</li>
-                <li>Market insights</li>
-                <li>Compliance support</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section id="how-it-works" className="how-it-works">
-        <div className="container">
-          <h2 className="section-title">Simple, Secure, Efficient</h2>
-          
-          <div className="process-timeline">
-            <div className="process-step">
-              <div className="step-number">1</div>
-              <h3>Create Your Profile</h3>
-              <p>Sign up as a developer or funder with verified credentials</p>
-            </div>
-            
-            <div className="process-step">
-              <div className="step-number">2</div>
-              <h3>List or Browse</h3>
-              <p>Developers list projects, funders browse opportunities</p>
-            </div>
-            
-            <div className="process-step">
-              <div className="step-number">3</div>
-              <h3>Connect & Negotiate</h3>
-              <p>Secure messaging and document sharing platform</p>
-            </div>
-            
-            <div className="process-step">
-              <div className="step-number">4</div>
-              <h3>Close the Deal</h3>
-              <p>Streamlined process from LOI to settlement</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing" className="pricing-section">
-        <div className="container">
-          <h2 className="section-title">Transparent Pricing</h2>
-          <p className="section-subtitle">Choose the plan that works for you</p>
-          
-          <div className="pricing-grid">
-            <div className="pricing-card">
-              <h3>Developers</h3>
-              <div className="price">
-                <span className="currency">$</span>
-                <span className="amount">499</span>
-                <span className="period">per project</span>
-              </div>
-              <ul>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  List unlimited projects
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Access to all funders
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Secure document portal
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  BrokerAI assistance
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Real-time messaging
-                </li>
-              </ul>
-              <Link to="/register" className="btn btn-primary btn-block">
-                Start Listing
-              </Link>
-            </div>
-            
-            <div className="pricing-card">
-              <h3>Funders</h3>
-              <div className="price">
-                <span className="currency">$</span>
-                <span className="amount">299</span>
-                <span className="period">per month</span>
-              </div>
-              <ul>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Unlimited deal access
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Advanced filters
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Due diligence tools
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Portfolio analytics
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Priority support
-                </li>
-              </ul>
-              <Link to="/register?role=funder" className="btn btn-primary btn-block">
-                Start Investing
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="cta-section">
-        <div className="container">
-          <h2>Ready to Transform Your Property Finance?</h2>
-          <p>Join Australia's fastest-growing property finance platform</p>
-          <div className="cta-actions">
-            <Link to="/register" className="btn btn-primary btn-lg">
-              Get Started Free
-            </Link>
-            <a href="mailto:support@tranch.com.au" className="btn btn-outline btn-lg">
-              Contact Sales
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="landing-footer">
-        <div className="container">
-          <div className="footer-content">
-            <div className="footer-brand">
-              <span className="logo-text">Tranch</span>
-              <p>Empowering developers to take control of their finance</p>
-            </div>
-            <div className="footer-links">
-              <h4>Platform</h4>
-              <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
-              <a href="#how-it-works">How it Works</a>
-            </div>
-            <div className="footer-links">
-              <h4>Company</h4>
-              <a href="#">About</a>
-              <a href="#">Contact</a>
-              <a href="#">Privacy</a>
-              <a href="#">Terms</a>
-            </div>
-            <div className="footer-contact">
-              <h4>Get in Touch</h4>
-              <p>support@tranch.com.au</p>
-              <p>1300 TRANCH</p>
-            </div>
-          </div>
-          <div className="footer-bottom">
-            <p>&copy; 2025 Tranch. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
-};
-
-
-const stripePromise = loadStripe('pk_test_51RU7lrQupq5Lj3mgQLoOPZQnTHeOOC8HSXs9x4D0H9uURhmGi0tlRxvkiuTy9NEd9RlM3B51YBpvgMdwlbU6bvkQ00WUSGUnp8');
-
-// Payment Form Component
-// In PaymentModal component, update the PaymentForm to use the correct API
-const PaymentForm = ({ amount, onSuccess, onError, project }) => {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [processing, setProcessing] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!stripe || !elements) return;
-    
-    setProcessing(true);
-
-    try {
-      // For demo purposes, simulate the payment
-      const response = await api.simulatePaymentSuccess(
-        project.id, 
-        'pi_demo_' + Date.now()
-      );
-      
-      onSuccess();
-    } catch (err) {
-      onError(err.message);
-    }
-
-    setProcessing(false);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="payment-form">
-      <div className="card-element-container">
-        <CardElement 
-          options={{
-            style: {
-              base: {
-                fontSize: '16px',
-                color: '#424770',
-                '::placeholder': {
-                  color: '#aab7c4',
-                },
-              },
-            },
-          }}
-        />
-      </div>
-      <button 
-        type="submit" 
-        disabled={!stripe || processing}
-        className="btn btn-primary"
-      >
-        {processing ? 'Processing...' : `Pay ${formatCurrency(amount)}`}
-      </button>
-    </form>
-  );
-};
-
-// Payment Modal Component
-const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
-  const [error, setError] = useState('');
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Publish Project</h2>
-          <button onClick={onClose} className="close-btn">&times;</button>
-        </div>
-        
-        <div className="modal-body">
-          <div className="payment-summary">
-            <h3>{project.title}</h3>
-            <p className="payment-description">
-              Publishing your project will make it visible to all verified funders on the platform.
-            </p>
-            <div className="payment-amount">
-              <span>Publishing Fee:</span>
-              <strong>{formatCurrency(499)}</strong>
-            </div>
-          </div>
-
-          {error && <ErrorMessage message={error} onClose={() => setError('')} />}
-
-          <Elements stripe={stripePromise}>
-            <PaymentForm 
-              amount={499}
-              project={project}  // Pass the project here
-              onSuccess={onSuccess}
-              onError={setError}
-            />
-          </Elements>
-
-          <div className="payment-security">
-            <span>🔒</span>
-            <p>Secured by Stripe. Your payment information is encrypted and secure.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-
-// Main App Component
-const App = () => {
-  return (
-    <Router>
-      <AuthProvider>
-        <div className="app">
-          <Navigation />
-          <main className="main-content">
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/dashboard" element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } />
-              <Route path="/project/:id/edit" element={
-  <ProtectedRoute roles={['borrower']}>
-    <EditProject />
-  </ProtectedRoute>
-} />
-
-              <Route path="/create-project" element={
-                <ProtectedRoute roles={['borrower']}>
-                  <CreateProject />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/my-projects" element={
-                <ProtectedRoute roles={['borrower']}>
-                  <MyProjects />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/project/:id" element={
-                <ProtectedRoute>
-                  <ProjectDetail />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/messages" element={
-                <ProtectedRoute>
-                  <MessagesPage />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/ai-broker" element={
-                <ProtectedRoute>
-                  <BrokerAI />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/portfolio" element={
-                <ProtectedRoute roles={['funder']}>
-                  <Portfolio />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/profile" element={
-                <ProtectedRoute>
-                  <UserProfile />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/admin" element={
-                <ProtectedRoute roles={['admin']}>
-                  <AdminPanel />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </main>
-        </div>
-      </AuthProvider>
-    </Router>
-  );
-};
-
-export default App;
+// Export the App
+export default App; 
