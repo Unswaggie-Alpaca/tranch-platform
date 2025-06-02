@@ -10,7 +10,7 @@ const rateLimit = require('express-rate-limit');
 const aiChatRoutes = require('./routes/ai-chat');
 
 // Clerk imports
-const { clerkClient } = require('@clerk/clerk-sdk-node');
+const { clerkClient , verifyToken } = require('@clerk/clerk-sdk-node');
 const { ClerkExpressRequireAuth } = require('@clerk/clerk-sdk-node');
 const { syncClerkUser, deleteClerkUser } = require('./clerk-webhook');
 
@@ -267,46 +267,74 @@ const upload = multer({
   }
 });
 
-// Enhanced Clerk Auth Middleware
+// Replace your current authenticateToken with this:
 const authenticateToken = async (req, res, next) => {
   try {
-    // Use Clerk's built-in middleware
-    const { userId } = await ClerkExpressRequireAuth()(req, res, () => {});
-    
-    if (!userId) {
+    // Get the token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Access token required' });
     }
 
-    // Get user from database using Clerk ID
-    db.get('SELECT * FROM users WHERE clerk_user_id = ?', [userId], async (err, user) => {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      if (!user) {
-        try {
-          // User doesn't exist in our DB, sync from Clerk
-          const clerkUser = await clerkClient.users.getUser(userId);
-          await syncClerkUser(clerkUser);
-          
-          // Try to get the user again
-          db.get('SELECT * FROM users WHERE clerk_user_id = ?', [userId], (err, syncedUser) => {
-            if (err || !syncedUser) {
-              return res.status(404).json({ error: 'User not found' });
-            }
-            req.user = syncedUser;
-            next();
-          });
-        } catch (syncError) {
-          console.error('User sync error:', syncError);
-          return res.status(500).json({ error: 'Failed to sync user' });
+    // ClerkExpressRequireAuth expects the request to have specific properties
+    // Let's use the Clerk SDK's verifyToken instead
+    const { verifyToken } = require('@clerk/clerk-sdk-node');
+    const token = authHeader.split(' ')[1];
+    
+    try {
+      // Verify the token
+      const payload = await verifyToken(token, {
+        secretKey: process.env.CLERK_SECRET_KEY
+      });
+      
+      const userId = payload.sub; // This is the Clerk user ID
+      
+      // Get user from database using Clerk ID
+      db.get('SELECT * FROM users WHERE clerk_user_id = ?', [userId], async (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Database error' });
         }
-      } else {
-        req.user = user;
-        next();
-      }
-    });
+
+        if (!user) {
+          try {
+            // User doesn't exist in our DB, sync from Clerk
+            const clerkUser = await clerkClient.users.getUser(userId);
+            
+            // Create user in database
+            db.run(
+              'INSERT INTO users (clerk_user_id, name, email, role) VALUES (?, ?, ?, ?)',
+              [clerkUser.id, clerkUser.fullName || clerkUser.firstName || 'User', 
+               clerkUser.emailAddresses[0].emailAddress, 'pending'],
+              function(err) {
+                if (err) {
+                  console.error('User creation error:', err);
+                  return res.status(500).json({ error: 'Failed to create user' });
+                }
+                
+                // Get the newly created user
+                db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (err, newUser) => {
+                  if (err || !newUser) {
+                    return res.status(500).json({ error: 'Failed to retrieve user' });
+                  }
+                  req.user = newUser;
+                  next();
+                });
+              }
+            );
+          } catch (syncError) {
+            console.error('User sync error:', syncError);
+            return res.status(500).json({ error: 'Failed to sync user' });
+          }
+        } else {
+          req.user = user;
+          next();
+        }
+      });
+    } catch (verifyError) {
+      console.error('Token verification error:', verifyError);
+      return res.status(401).json({ error: 'Invalid token' });
+    }
   } catch (error) {
     console.error('Auth error:', error);
     return res.status(401).json({ error: 'Authentication failed' });
