@@ -24,10 +24,9 @@ const API_BASE_URL = import.meta.env.PROD
   ? 'https://tranch-platform.onrender.com/api'
   : 'http://localhost:5000/api';
 
-// API helper with Clerk auth
-const api = {
-  async request(endpoint, options = {}) {
-    const { getToken } = window.Clerk;
+// Create API client function
+const createApiClient = (getToken) => {
+  const request = async (endpoint, options = {}) => {
     const token = await getToken();
     
     const config = {
@@ -52,133 +51,142 @@ const api = {
     }
 
     return data;
-  },
+  };
 
-  // Auth endpoints
-  getCurrentUser: () => api.request('/auth/me'),
-  setUserRole: (role) => api.request('/auth/set-role', {
-    method: 'POST',
-    body: JSON.stringify({ role }),
-  }),
-  completeProfile: (profileData) => api.request('/auth/complete-profile', {
-    method: 'POST',
-    body: JSON.stringify(profileData),
-  }),
+  return {
+    request,
 
-  // User profile endpoints
-  getUserProfile: (userId) => api.request(`/users/${userId}/profile`),
-  updateUserProfile: (userId, profileData) => api.request(`/users/${userId}/profile`, {
-    method: 'PUT',
-    body: JSON.stringify(profileData),
-  }),
-
-  // Project endpoints
-  getProjects: () => api.request('/projects'),
-  createProject: (projectData) => api.request('/projects', {
-    method: 'POST',
-    body: JSON.stringify(projectData),
-  }),
-  getProject: (id) => api.request(`/projects/${id}`),
-  updateProject: (id, projectData) => api.request(`/projects/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(projectData),
-  }),
-
-  // Document endpoints
-  uploadDocuments: (projectId, formData) => api.request(`/projects/${projectId}/documents`, {
-    method: 'POST',
-    body: formData,
-  }),
-  getProjectDocuments: (projectId) => api.request(`/projects/${projectId}/documents`),
-  deleteDocument: (documentId) => api.request(`/documents/${documentId}`, {
-    method: 'DELETE',
-  }),
-  getRequiredDocuments: () => api.request('/required-documents'),
-  
-  // Document download with auth
-  async downloadDocument(filePath) {
-    const { getToken } = window.Clerk;
-    const token = await getToken();
-    
-    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/${filePath}`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-    
-    if (!response.ok) throw new Error('Download failed');
-    return response.blob();
-  },
-
-  // Payment endpoints
-  createProjectPayment: (projectId) => api.request('/payments/create-project-payment', {
-    method: 'POST',
-    body: JSON.stringify({ project_id: projectId }),
-  }),
-  simulatePaymentSuccess: (projectId, paymentIntentId) => api.request('/payments/simulate-success', {
-    method: 'POST',
-    body: JSON.stringify({ 
-      project_id: projectId, 
-      payment_intent_id: paymentIntentId 
+    // Auth endpoints
+    getCurrentUser: () => request('/auth/me'),
+    setUserRole: (role) => request('/auth/set-role', {
+      method: 'POST',
+      body: JSON.stringify({ role }),
     }),
-  }),
-  createSubscription: (paymentMethodId) => api.request('/payments/create-subscription', {
-    method: 'POST',
-    body: JSON.stringify({ payment_method_id: paymentMethodId }),
-  }),
+    completeProfile: (profileData) => request('/auth/complete-profile', {
+      method: 'POST',
+      body: JSON.stringify(profileData),
+    }),
 
-  // Access request endpoints
-  requestAccess: (projectId, initialMessage) => api.request('/access-requests', {
-    method: 'POST',
-    body: JSON.stringify({ project_id: projectId, initial_message: initialMessage }),
-  }),
-  getAccessRequests: () => api.request('/access-requests'),
-  approveAccessRequest: (requestId) => api.request(`/access-requests/${requestId}/approve`, {
-    method: 'PUT',
-  }),
-  declineAccessRequest: (requestId) => api.request(`/access-requests/${requestId}/decline`, {
-    method: 'PUT',
-  }),
-  
-  // Deal status endpoints
-  updateDealStatus: (requestId, status) => api.request(`/access-requests/${requestId}/status`, {
-    method: 'PUT',
-    body: JSON.stringify({ status }),
-  }),
+    // User profile endpoints
+    getUserProfile: (userId) => request(`/users/${userId}/profile`),
+    updateUserProfile: (userId, profileData) => request(`/users/${userId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    }),
 
-  // Messaging endpoints
-  getMessages: (requestId) => api.request(`/access-requests/${requestId}/messages`),
-  sendMessage: (requestId, message) => api.request(`/access-requests/${requestId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ message, message_type: 'text' }),
-  }),
-  markMessageAsRead: (messageId) => api.request(`/messages/${messageId}/read`, {
-    method: 'PUT',
-  }),
+    // Project endpoints
+    getProjects: () => request('/projects'),
+    createProject: (projectData) => request('/projects', {
+      method: 'POST',
+      body: JSON.stringify(projectData),
+    }),
+    getProject: (id) => request(`/projects/${id}`),
+    updateProject: (id, projectData) => request(`/projects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(projectData),
+    }),
 
-  // AI Chat endpoints
-  createAIChatSession: (projectId, sessionTitle) => api.request('/ai-chat/sessions', {
-    method: 'POST',
-    body: JSON.stringify({ project_id: projectId, session_title: sessionTitle }),
-  }),
-  getAIChatSessions: () => api.request('/ai-chat/sessions'),
-  getAIChatMessages: (sessionId) => api.request(`/ai-chat/sessions/${sessionId}/messages`),
-  sendAIChatMessage: (sessionId, message) => api.request(`/ai-chat/sessions/${sessionId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ message }),
-  }),
+    // Document endpoints
+    uploadDocuments: (projectId, formData) => request(`/projects/${projectId}/documents`, {
+      method: 'POST',
+      body: formData,
+    }),
+    getProjectDocuments: (projectId) => request(`/projects/${projectId}/documents`),
+    deleteDocument: (documentId) => request(`/documents/${documentId}`, {
+      method: 'DELETE',
+    }),
+    getRequiredDocuments: () => request('/required-documents'),
+    
+    // Document download with auth
+    async downloadDocument(filePath) {
+      const token = await getToken();
+      
+      const response = await fetch(`${API_BASE_URL.replace('/api', '')}/${filePath}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Download failed');
+      return response.blob();
+    },
 
-  // Admin endpoints
-  getUsers: () => api.request('/admin/users'),
-  approveUser: (userId) => api.request(`/admin/users/${userId}/approve`, {
-    method: 'PUT',
-  }),
-  getAdminStats: () => api.request('/admin/stats'),
-  getSystemSettings: () => api.request('/admin/system-settings'),
-  updateSystemSetting: (key, value) => api.request(`/admin/system-settings/${key}`, {
-    method: 'PUT',
-    body: JSON.stringify({ value }),
-  }),
+    // Payment endpoints
+    createProjectPayment: (projectId) => request('/payments/create-project-payment', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId }),
+    }),
+    simulatePaymentSuccess: (projectId, paymentIntentId) => request('/payments/simulate-success', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        project_id: projectId, 
+        payment_intent_id: paymentIntentId 
+      }),
+    }),
+    createSubscription: (paymentMethodId) => request('/payments/create-subscription', {
+      method: 'POST',
+      body: JSON.stringify({ payment_method_id: paymentMethodId }),
+    }),
+
+    // Access request endpoints
+    requestAccess: (projectId, initialMessage) => request('/access-requests', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, initial_message: initialMessage }),
+    }),
+    getAccessRequests: () => request('/access-requests'),
+    approveAccessRequest: (requestId) => request(`/access-requests/${requestId}/approve`, {
+      method: 'PUT',
+    }),
+    declineAccessRequest: (requestId) => request(`/access-requests/${requestId}/decline`, {
+      method: 'PUT',
+    }),
+    
+    // Deal status endpoints
+    updateDealStatus: (requestId, status) => request(`/access-requests/${requestId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    }),
+
+    // Messaging endpoints
+    getMessages: (requestId) => request(`/access-requests/${requestId}/messages`),
+    sendMessage: (requestId, message) => request(`/access-requests/${requestId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message, message_type: 'text' }),
+    }),
+    markMessageAsRead: (messageId) => request(`/messages/${messageId}/read`, {
+      method: 'PUT',
+    }),
+
+    // AI Chat endpoints
+    createAIChatSession: (projectId, sessionTitle) => request('/ai-chat/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, session_title: sessionTitle }),
+    }),
+    getAIChatSessions: () => request('/ai-chat/sessions'),
+    getAIChatMessages: (sessionId) => request(`/ai-chat/sessions/${sessionId}/messages`),
+    sendAIChatMessage: (sessionId, message) => request(`/ai-chat/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+
+    // Admin endpoints
+    getUsers: () => request('/admin/users'),
+    approveUser: (userId) => request(`/admin/users/${userId}/approve`, {
+      method: 'PUT',
+    }),
+    getAdminStats: () => request('/admin/stats'),
+    getSystemSettings: () => request('/admin/system-settings'),
+    updateSystemSetting: (key, value) => request(`/admin/system-settings/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    }),
+  };
+};
+
+// Create a hook to use the API
+const useApi = () => {
+  const { getToken } = useAuth();
+  return createApiClient(getToken);
 };
 
 // App Context for managing user data
@@ -194,6 +202,7 @@ const useApp = () => {
 
 const AppProvider = ({ children }) => {
   const { user: clerkUser, isSignedIn, isLoaded } = useUser();
+  const { getToken } = useAuth();  // Add this
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -210,6 +219,7 @@ const AppProvider = ({ children }) => {
 
   const fetchUserData = async () => {
     try {
+      const api = createApiClient(getToken);  // Create API instance here
       const data = await api.getCurrentUser();
       setUserData(data.user);
     } catch (err) {
@@ -606,6 +616,7 @@ const Onboarding = () => {
   const { user: clerkUser } = useUser();
   const { refreshUser } = useApp();
   const navigate = useNavigate();
+  const api = useApi();
   const [step, setStep] = useState('role'); // role, profile, complete
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1369,6 +1380,7 @@ const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user
 
 // Dashboard Component with Deal Status
 const Dashboard = () => {
+  const api = useApi();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const { user, refreshUser } = useApp();
   const [projects, setProjects] = useState([]);
