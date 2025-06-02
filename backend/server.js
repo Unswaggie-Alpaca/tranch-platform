@@ -31,6 +31,10 @@ app.use(cors({
     : 'http://localhost:3000',
   credentials: true
 }));
+
+  app.options('*', cors());
+
+
 app.use(express.json({ limit: '50mb' }));
 app.use('/uploads', express.static('uploads'));
 

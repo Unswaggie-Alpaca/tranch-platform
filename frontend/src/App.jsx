@@ -315,6 +315,7 @@ const SuccessMessage = ({ message, onClose }) => (
 
 // Navigation Component with Mobile Menu
 const Navigation = () => {
+  const api = useApi();
   const { user } = useApp();
   const { signOut } = useClerk();
   const navigate = useNavigate();
@@ -923,6 +924,7 @@ const Onboarding = () => {
 
 // Document Preview Modal
 const DocumentPreviewModal = ({ document, onClose }) => {
+  const api = useApi();
   const [loading, setLoading] = useState(true);
   const [previewUrl, setPreviewUrl] = useState('');
 
@@ -998,6 +1000,7 @@ const DocumentPreviewModal = ({ document, onClose }) => {
 
 // Enhanced Project Card Component
 const ProjectCard = ({ project, userRole, onProjectUpdate, showActions = true }) => {
+  const api = useApi();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -1320,6 +1323,7 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
 
 // Subscription Form Component
 const SubscriptionForm = ({ onSuccess, setError, processing, setProcessing, user }) => {
+  const api = useApi();
   const stripe = useStripe();
   const elements = useElements();
 
@@ -2126,7 +2130,8 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
 
 // Payment Form Component
 const PaymentForm = ({ amount, onSuccess, onError, project }) => {
-  const stripe = useStripe();
+  const api = useApi();
+  const stripe = useStripe()
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
 
@@ -2542,6 +2547,7 @@ const mobileMenuStyles = `
 
 // Create Project Component with Full Features
 const CreateProject = () => {
+  const api = useApi();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     // Basic Info
@@ -3312,6 +3318,7 @@ const CreateProject = () => {
 
 // My Projects Page (Borrower)
 const MyProjects = () => {
+  const api = useApi();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -3407,6 +3414,7 @@ const MyProjects = () => {
 
 // Project Detail Page
 const ProjectDetail = () => {
+  const api = useApi();
   const { id } = useParams();
   const { user } = useApp();
   const [project, setProject] = useState(null);
@@ -3653,6 +3661,7 @@ const ProjectDetail = () => {
 
 // Messages Page Component
 const MessagesPage = () => {
+  const api = useApi();
   const { user } = useApp();
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
@@ -3916,6 +3925,7 @@ const MessagesPage = () => {
 
 // BrokerAI Chat Component
 const BrokerAI = () => {
+  const api = useApi();
   const { user } = useApp();
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -4181,6 +4191,7 @@ const BrokerAI = () => {
 
 // Portfolio Page (Funder)
 const Portfolio = () => {
+  const api = useApi();
   const [investments, setInvestments] = useState([]);
   const [stats, setStats] = useState({
     totalInvested: 0,
@@ -4308,6 +4319,7 @@ const Portfolio = () => {
 
 // User Profile Page
 const UserProfile = () => {
+  const api = useApi();
   const { user, updateUser } = useApp();
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -4492,6 +4504,7 @@ const UserProfile = () => {
 
 // Enhanced Admin Panel
 const AdminPanel = () => {
+  const api = useApi();
   const [activeTab, setActiveTab] = useState('overview');
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
@@ -4725,6 +4738,7 @@ import { useParams } from 'react-router-dom';
 // Add this component before the App component
 const EditProject = () => {
   const { id } = useParams();
+  const api = useApi();
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [project, setProject] = useState(null);
