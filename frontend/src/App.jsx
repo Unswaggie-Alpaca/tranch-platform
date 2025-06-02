@@ -11,7 +11,9 @@ import {
   SignedOut, 
   useUser, 
   useClerk,
-  useAuth
+  useAuth,
+  SignIn,    // NEW - was missing
+  SignUp 
 } from '@clerk/clerk-react';
 
 // Clerk Publishable Key
@@ -3394,7 +3396,7 @@ const MyProjects = () => {
 // Project Detail Page
 const ProjectDetail = () => {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user } = useApp();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3639,7 +3641,7 @@ const ProjectDetail = () => {
 
 // Messages Page Component
 const MessagesPage = () => {
-  const { user } = useAuth();
+  const { user } = useApp();
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -3902,7 +3904,7 @@ const MessagesPage = () => {
 
 // BrokerAI Chat Component
 const BrokerAI = () => {
-  const { user } = useAuth();
+  const { user } = useApp();
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -4294,7 +4296,7 @@ const Portfolio = () => {
 
 // User Profile Page
 const UserProfile = () => {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser } = useApp();
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
