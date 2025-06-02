@@ -202,9 +202,22 @@ const useApp = () => {
 
 const AppProvider = ({ children }) => {
   const { user: clerkUser, isSignedIn, isLoaded } = useUser();
-  const { getToken } = useAuth();  // Add this
+  const { getToken } = useAuth();  // Make sure this is here
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchUserData = async () => {
+    try {
+      // Create API client with getToken function
+      const api = createApiClient(getToken);
+      const data = await api.getCurrentUser();
+      setUserData(data.user);
+    } catch (err) {
+      console.error('Failed to fetch user data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isLoaded) {
@@ -216,18 +229,6 @@ const AppProvider = ({ children }) => {
       }
     }
   }, [isSignedIn, isLoaded, clerkUser]);
-
-  const fetchUserData = async () => {
-    try {
-      const api = createApiClient(getToken);  // Create API instance here
-      const data = await api.getCurrentUser();
-      setUserData(data.user);
-    } catch (err) {
-      console.error('Failed to fetch user data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const refreshUser = async () => {
     await fetchUserData();
