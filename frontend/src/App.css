@@ -4847,3 +4847,71 @@ td {
 .dropdown-icon {
   font-size: 1.125rem;
 }
+
+/* Clerk Component Styling */
+.cl-rootBox {
+  width: 100%;
+  --cl-color-primary: #667eea;
+}
+
+.cl-card {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 1rem !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.cl-headerTitle {
+  font-size: 2rem !important;
+  font-weight: 800 !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.cl-headerSubtitle {
+  color: #64748b !important;
+  font-size: 1rem !important;
+}
+
+.cl-formButtonPrimary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25) !important;
+  transition: all 0.3s !important;
+}
+
+.cl-formButtonPrimary:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+}
+
+.cl-socialButtonsBlockButton {
+  border: 2px solid #e2e8f0 !important;
+  transition: all 0.3s !important;
+}
+
+.cl-socialButtonsBlockButton:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+.cl-formFieldInput {
+  border: 2px solid #e2e8f0 !important;
+  border-radius: 0.5rem !important;
+  padding: 0.875rem 1rem !important;
+  font-size: 0.9375rem !important;
+}
+
+.cl-formFieldInput:focus {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1) !important;
+}
+
+.cl-footerActionLink {
+  color: #667eea !important;
+  font-weight: 600 !important;
+}
