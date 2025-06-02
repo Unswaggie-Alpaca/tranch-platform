@@ -21,7 +21,7 @@ const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || 'pk_
 
 // API configuration
 const API_BASE_URL = import.meta.env.PROD
-  ? 'https://tranch-platform.onrender.com/api'
+  ? 'https://fundr-demo.onrender.com/api'
   : 'http://localhost:5000/api';
 
 // Create API client function
