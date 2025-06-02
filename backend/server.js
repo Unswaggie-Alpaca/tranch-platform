@@ -1,7 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
@@ -11,15 +9,19 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_51RU7
 const rateLimit = require('express-rate-limit'); 
 const aiChatRoutes = require('./routes/ai-chat');
 
+// Clerk imports
+const { clerkClient } = require('@clerk/clerk-sdk-node');
+const { ClerkExpressRequireAuth } = require('@clerk/clerk-sdk-node');
+const { syncClerkUser, deleteClerkUser } = require('./clerk-webhook');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 app.set('trust proxy', 1);
+
 const dbPath = process.env.NODE_ENV === 'production' 
-  ? '/var/data/tranch.db'  // Persistent disk path on Render
+  ? '/var/data/tranch.db'
   : './tranch.db';   
 
-// Middleware
 // Middleware
 const helmet = require('helmet');
 app.use(helmet());
@@ -56,14 +58,14 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
-// Initialize database tables
+// Initialize database tables (keeping existing schema)
 db.serialize(() => {
-  // Enhanced Users table with funder profile fields
+  // Enhanced Users table with funder profile fields and Clerk ID
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clerk_user_id TEXT UNIQUE,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
     role TEXT CHECK(role IN ('borrower', 'funder', 'admin')) NOT NULL,
     approved BOOLEAN DEFAULT FALSE,
     stripe_customer_id TEXT,
@@ -82,10 +84,11 @@ db.serialize(() => {
     bio TEXT,
     verification_status TEXT DEFAULT 'pending',
     
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Enhanced Projects table with comprehensive fields
+  // Keep all other table definitions exactly the same
   db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     borrower_id INTEGER NOT NULL,
@@ -138,7 +141,6 @@ db.serialize(() => {
     FOREIGN KEY (borrower_id) REFERENCES users (id)
   )`);
 
-  // Enhanced Documents table with comprehensive document types
   db.run(`CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
@@ -152,7 +154,6 @@ db.serialize(() => {
     FOREIGN KEY (project_id) REFERENCES projects (id)
   )`);
 
-  // Access requests table with enhanced messaging
   db.run(`CREATE TABLE IF NOT EXISTS access_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
@@ -166,7 +167,6 @@ db.serialize(() => {
     FOREIGN KEY (funder_id) REFERENCES users (id)
   )`);
 
-  // Messages table for real-time messaging
   db.run(`CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     access_request_id INTEGER NOT NULL,
@@ -180,7 +180,6 @@ db.serialize(() => {
     FOREIGN KEY (sender_id) REFERENCES users (id)
   )`);
 
-  // Payments table
   db.run(`CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -195,7 +194,6 @@ db.serialize(() => {
     FOREIGN KEY (project_id) REFERENCES projects (id)
   )`);
 
-  // AI Chat sessions table for BrokerAI
   db.run(`CREATE TABLE IF NOT EXISTS ai_chat_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -206,7 +204,6 @@ db.serialize(() => {
     FOREIGN KEY (project_id) REFERENCES projects (id)
   )`);
 
-  // AI Chat messages table
   db.run(`CREATE TABLE IF NOT EXISTS ai_chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
@@ -216,7 +213,6 @@ db.serialize(() => {
     FOREIGN KEY (session_id) REFERENCES ai_chat_sessions (id)
   )`);
 
-  // System settings table
   db.run(`CREATE TABLE IF NOT EXISTS system_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     setting_key TEXT UNIQUE NOT NULL,
@@ -230,14 +226,9 @@ db.serialize(() => {
     ('monthly_subscription_fee', '29900'),
     ('max_file_upload_size', '10485760'),
     ('ai_chat_enabled', 'true')`);
-
-  // Create admin user
-  const adminPassword = bcrypt.hashSync('admin123', 10);
-  db.run(`INSERT OR IGNORE INTO users (name, email, password, role, approved, verification_status) 
-          VALUES ('Admin User', 'admin@tranch.com', ?, 'admin', TRUE, 'verified')`, [adminPassword]);
 });
 
-// File upload configuration with enhanced document types
+// File upload configuration (unchanged)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = 'uploads/';
@@ -272,25 +263,53 @@ const upload = multer({
   }
 });
 
-// Auth middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid token' });
+// Enhanced Clerk Auth Middleware
+const authenticateToken = async (req, res, next) => {
+  try {
+    // Use Clerk's built-in middleware
+    const { userId } = await ClerkExpressRequireAuth()(req, res, () => {});
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Access token required' });
     }
-    req.user = user;
-    next();
-  });
+
+    // Get user from database using Clerk ID
+    db.get('SELECT * FROM users WHERE clerk_user_id = ?', [userId], async (err, user) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (!user) {
+        try {
+          // User doesn't exist in our DB, sync from Clerk
+          const clerkUser = await clerkClient.users.getUser(userId);
+          await syncClerkUser(clerkUser);
+          
+          // Try to get the user again
+          db.get('SELECT * FROM users WHERE clerk_user_id = ?', [userId], (err, syncedUser) => {
+            if (err || !syncedUser) {
+              return res.status(404).json({ error: 'User not found' });
+            }
+            req.user = syncedUser;
+            next();
+          });
+        } catch (syncError) {
+          console.error('User sync error:', syncError);
+          return res.status(500).json({ error: 'Failed to sync user' });
+        }
+      } else {
+        req.user = user;
+        next();
+      }
+    });
+  } catch (error) {
+    console.error('Auth error:', error);
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
 };
 
-// Role-based access middleware
+// Role-based access middleware (unchanged)
 const requireRole = (roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
@@ -300,153 +319,180 @@ const requireRole = (roles) => {
   };
 };
 
-// Logging middleware
+// Logging middleware (unchanged)
 const logRequest = (req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - User: ${req.user?.id || 'Anonymous'}`);
   next();
 };
 
 // ================================
-// AUTH ROUTES
+// CLERK WEBHOOK ENDPOINT
 // ================================
 
-// AI Chat Routes
-app.use('/api/ai-chat', aiChatRoutes);
-
-app.post('/api/register', async (req, res) => {
-  try {
-    const { 
-      name, email, password, role,
-      // Funder profile fields
-      company_name, company_type, investment_focus,
-      typical_deal_size_min, typical_deal_size_max,
-      years_experience, aum, phone, linkedin, bio
-    } = req.body;
-
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: 'Required fields missing' });
+// This must be before express.json() middleware
+app.post('/api/webhooks/clerk', 
+  express.raw({ type: 'application/json' }), 
+  async (req, res) => {
+    const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+    
+    if (!webhookSecret) {
+      console.error('CLERK_WEBHOOK_SECRET not set');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
     }
 
-    if (!['borrower', 'funder'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
+    // Verify the webhook signature
+    const svix = require('svix');
+    const webhook = new svix.Webhook(webhookSecret);
+    
+    const headers = {
+      'svix-id': req.headers['svix-id'],
+      'svix-timestamp': req.headers['svix-timestamp'],
+      'svix-signature': req.headers['svix-signature'],
+    };
+
+    let evt;
+    try {
+      evt = webhook.verify(req.body, headers);
+    } catch (err) {
+      console.error('Webhook verification failed:', err);
+      return res.status(400).json({ error: 'Webhook verification failed' });
     }
 
-    // Validate funder required fields
-    if (role === 'funder') {
-      if (!company_name || !company_type || !investment_focus || 
-          !typical_deal_size_min || !typical_deal_size_max || !years_experience) {
-        return res.status(400).json({ error: 'All funder profile fields are required' });
-      }
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const approved = role === 'borrower'; // Auto-approve borrowers
-    const verification_status = role === 'borrower' ? 'verified' : 'pending';
-
-    const sql = `INSERT INTO users (
-      name, email, password, role, approved, verification_status,
-      company_name, company_type, investment_focus,
-      typical_deal_size_min, typical_deal_size_max,
-      years_experience, aum, phone, linkedin, bio
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-    const params = [
-      name, email, hashedPassword, role, approved, verification_status,
-      company_name || null, company_type || null, investment_focus || null,
-      typical_deal_size_min || null, typical_deal_size_max || null,
-      years_experience || null, aum || null, phone || null, 
-      linkedin || null, bio || null
-    ];
-
-    db.run(sql, params, function(err) {
-      if (err) {
-        console.error('Registration error:', err);
-        if (err.message.includes('UNIQUE constraint failed')) {
-          return res.status(400).json({ error: 'Email already exists' });
-        }
-        return res.status(500).json({ error: 'Registration failed' });
-      }
-
-      const token = jwt.sign(
-        { id: this.lastID, email, role, approved },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-
-      res.status(201).json({
-        message: 'Registration successful',
-        token,
-        user: { 
-          id: this.lastID, 
-          name, 
-          email, 
-          role, 
-          approved,
-          verification_status,
-          company_name: company_name || null,
-          company_type: company_type || null
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Registration server error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
-      if (err) {
-        console.error('Login database error:', err);
-        return res.status(500).json({ error: 'Server error' });
+    // Handle the webhook event
+    const { type, data } = evt;
+    
+    try {
+      switch (type) {
+        case 'user.created':
+        case 'user.updated':
+          await syncClerkUser(data);
+          break;
+          
+        case 'user.deleted':
+          await deleteClerkUser(data.id);
+          break;
+          
+        default:
+          console.log(`Unhandled webhook event: ${type}`);
       }
       
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
+      res.status(200).json({ received: true });
+    } catch (error) {
+      console.error('Webhook processing error:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
+    }
+  }
+);
 
-      const validPassword = await bcrypt.compare(password, user.password);
-      if (!validPassword) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
+// ================================
+// AUTH ROUTES (Modified for Clerk)
+// ================================
 
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role, approved: user.approved },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
+// Get current user from Clerk session
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  res.json({
+    user: {
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role,
+      approved: req.user.approved,
+      verification_status: req.user.verification_status,
+      subscription_status: req.user.subscription_status,
+      company_name: req.user.company_name,
+      company_type: req.user.company_type
+    }
+  });
+});
 
-      res.json({
-        message: 'Login successful',
-        token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          approved: user.approved,
-          verification_status: user.verification_status,
-          subscription_status: user.subscription_status,
-          company_name: user.company_name,
-          company_type: user.company_type
+// Update user role (for onboarding)
+app.post('/api/auth/set-role', authenticateToken, async (req, res) => {
+  const { role } = req.body;
+  
+  if (!['borrower', 'funder'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+
+  try {
+    // Update role in database
+    db.run(
+      'UPDATE users SET role = ?, approved = ?, verification_status = ? WHERE id = ?',
+      [
+        role,
+        role === 'borrower' ? 1 : 0,
+        role === 'borrower' ? 'verified' : 'pending',
+        req.user.id
+      ],
+      async function(err) {
+        if (err) {
+          console.error('Role update error:', err);
+          return res.status(500).json({ error: 'Failed to update role' });
         }
-      });
-    });
+
+        // Update Clerk metadata
+        try {
+          await clerkClient.users.updateUserMetadata(req.user.clerk_user_id, {
+            publicMetadata: { role }
+          });
+        } catch (clerkError) {
+          console.error('Failed to update Clerk metadata:', clerkError);
+        }
+
+        res.json({ 
+          message: 'Role updated successfully',
+          role: role
+        });
+      }
+    );
   } catch (error) {
-    console.error('Login server error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Role update error:', error);
+    res.status(500).json({ error: 'Failed to update role' });
   }
 });
 
+// Update user profile (for funder onboarding)
+app.post('/api/auth/complete-profile', authenticateToken, async (req, res) => {
+  const { 
+    company_name, company_type, investment_focus,
+    typical_deal_size_min, typical_deal_size_max,
+    years_experience, aum, phone, linkedin, bio
+  } = req.body;
+
+  if (req.user.role !== 'funder') {
+    return res.status(400).json({ error: 'Profile completion only for funders' });
+  }
+
+  db.run(
+    `UPDATE users SET 
+      company_name = ?, company_type = ?, investment_focus = ?,
+      typical_deal_size_min = ?, typical_deal_size_max = ?,
+      years_experience = ?, aum = ?, phone = ?, linkedin = ?, bio = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?`,
+    [
+      company_name, company_type, investment_focus,
+      typical_deal_size_min, typical_deal_size_max,
+      years_experience, aum, phone, linkedin, bio,
+      req.user.id
+    ],
+    function(err) {
+      if (err) {
+        console.error('Profile update error:', err);
+        return res.status(500).json({ error: 'Failed to update profile' });
+      }
+
+      res.json({ message: 'Profile completed successfully' });
+    }
+  );
+});
+
 // ================================
-// USER PROFILE ROUTES
+// AI Chat Routes
+// ================================
+app.use('/api/ai-chat', aiChatRoutes);
+
+// ================================
+// USER PROFILE ROUTES (unchanged)
 // ================================
 
 app.get('/api/users/:id/profile', authenticateToken, (req, res) => {
@@ -486,7 +532,8 @@ app.put('/api/users/:id/profile', authenticateToken, async (req, res) => {
     const sql = `UPDATE users SET 
       name = ?, company_name = ?, company_type = ?, investment_focus = ?,
       typical_deal_size_min = ?, typical_deal_size_max = ?,
-      years_experience = ?, aum = ?, phone = ?, linkedin = ?, bio = ?
+      years_experience = ?, aum = ?, phone = ?, linkedin = ?, bio = ?,
+      updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`;
 
     const params = [
@@ -510,9 +557,10 @@ app.put('/api/users/:id/profile', authenticateToken, async (req, res) => {
 });
 
 // ================================
-// PROJECT ROUTES
+// ALL OTHER ROUTES REMAIN THE SAME
 // ================================
 
+// Project routes
 app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, res) => {
   const {
     title, description, location, suburb, loan_amount, interest_rate, loan_term, 
@@ -526,7 +574,6 @@ app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, re
     return res.status(400).json({ error: 'Required fields missing' });
   }
 
-  // Calculate LVR and ICR if possible
   const lvr = land_value && loan_amount ? (loan_amount / land_value * 100) : null;
   const icr = expected_profit && loan_amount ? (expected_profit / loan_amount * 100) : null;
 
@@ -578,13 +625,11 @@ app.get('/api/projects', authenticateToken, (req, res) => {
       return res.status(403).json({ error: 'Account pending approval' });
     }
     
-    // Add subscription check from database
     db.get('SELECT subscription_status FROM users WHERE id = ?', [req.user.id], (err, userData) => {
       if (err || !userData || userData.subscription_status !== 'active') {
         return res.status(403).json({ error: 'Active subscription required' });
       }
       
-      // Continue with the projects query
       const query = `SELECT p.id, p.title, p.suburb, p.loan_amount, p.property_type, p.development_stage,
                p.visible, p.payment_status, p.created_at,
                CASE 
@@ -614,7 +659,7 @@ app.get('/api/projects', authenticateToken, (req, res) => {
       });
     });
     
-    return; // Important: return here to prevent the code from continuing
+    return;
   }
 
   db.all(query, params, (err, projects) => {
@@ -634,7 +679,6 @@ app.get('/api/projects/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Check access permissions
     if (req.user.role === 'borrower' && project.borrower_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -644,7 +688,6 @@ app.get('/api/projects/:id', authenticateToken, (req, res) => {
         return res.status(403).json({ error: 'Account pending approval' });
       }
       
-      // Check if funder has access
       db.get('SELECT status FROM access_requests WHERE project_id = ? AND funder_id = ?', 
         [projectId, req.user.id], (err, access) => {
           if (!access || access.status !== 'approved') {
@@ -664,7 +707,6 @@ app.put('/api/projects/:id', authenticateToken, requireRole(['borrower']), (req,
   const projectId = req.params.id;
   const updateFields = req.body;
   
-  // Remove id and timestamps from update
   delete updateFields.id;
   delete updateFields.created_at;
   updateFields.updated_at = new Date().toISOString();
@@ -691,11 +733,7 @@ app.put('/api/projects/:id', authenticateToken, requireRole(['borrower']), (req,
   );
 });
 
-// ================================
-// DOCUMENT MANAGEMENT ROUTES
-// ================================
-
-// Required document types for project submission
+// Document Management Routes (unchanged)
 const REQUIRED_DOCUMENT_TYPES = [
   'development_application',
   'feasibility_study',
@@ -715,7 +753,6 @@ app.post('/api/projects/:id/documents', authenticateToken, requireRole(['borrowe
     return res.status(400).json({ error: 'No files uploaded' });
   }
 
-  // Verify project ownership
   db.get('SELECT * FROM projects WHERE id = ? AND borrower_id = ?', [projectId, req.user.id], (err, project) => {
     if (err || !project) {
       return res.status(404).json({ error: 'Project not found or access denied' });
@@ -746,7 +783,6 @@ app.post('/api/projects/:id/documents', authenticateToken, requireRole(['borrowe
 
     Promise.all(documentPromises)
       .then(documents => {
-        // Check if all required documents are now uploaded
         checkDocumentCompleteness(projectId);
         
         res.status(201).json({
@@ -764,7 +800,6 @@ app.post('/api/projects/:id/documents', authenticateToken, requireRole(['borrowe
 app.get('/api/projects/:id/documents', authenticateToken, (req, res) => {
   const projectId = req.params.id;
 
-  // Check access permissions
   if (req.user.role === 'borrower') {
     db.get('SELECT id FROM projects WHERE id = ? AND borrower_id = ?', [projectId, req.user.id], (err, project) => {
       if (err || !project) {
@@ -809,7 +844,6 @@ app.delete('/api/documents/:id', authenticateToken, requireRole(['borrower']), (
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Delete file from filesystem
       fs.unlink(document.file_path, (fsErr) => {
         if (fsErr) {
           console.error('File deletion error:', fsErr);
@@ -822,7 +856,6 @@ app.delete('/api/documents/:id', authenticateToken, requireRole(['borrower']), (
           return res.status(500).json({ error: 'Failed to delete document' });
         }
 
-        // Check document completeness after deletion
         checkDocumentCompleteness(document.project_id);
         
         res.json({ message: 'Document deleted successfully' });
@@ -830,7 +863,6 @@ app.delete('/api/documents/:id', authenticateToken, requireRole(['borrower']), (
     });
 });
 
-// Helper function to check document completeness
 function checkDocumentCompleteness(projectId) {
   db.all('SELECT DISTINCT document_type FROM documents WHERE project_id = ?', [projectId], (err, docs) => {
     if (err) return;
@@ -842,10 +874,7 @@ function checkDocumentCompleteness(projectId) {
   });
 }
 
-// ================================
-// ACCESS REQUEST & MESSAGING ROUTES
-// ================================
-
+// Access Request & Messaging Routes (unchanged)
 app.post('/api/access-requests', authenticateToken, requireRole(['funder']), (req, res) => {
   const { project_id, initial_message } = req.body;
 
@@ -853,7 +882,6 @@ app.post('/api/access-requests', authenticateToken, requireRole(['funder']), (re
     return res.status(403).json({ error: 'Account pending approval' });
   }
 
-  // Check if request already exists
   db.get('SELECT * FROM access_requests WHERE project_id = ? AND funder_id = ?', 
     [project_id, req.user.id], (err, existing) => {
       if (existing) {
@@ -926,7 +954,6 @@ app.get('/api/access-requests', authenticateToken, (req, res) => {
 app.put('/api/access-requests/:id/approve', authenticateToken, requireRole(['borrower']), (req, res) => {
   const requestId = req.params.id;
 
-  // Verify the request belongs to the borrower's project
   db.get(
     `SELECT ar.*, p.borrower_id FROM access_requests ar 
      JOIN projects p ON ar.project_id = p.id 
@@ -988,14 +1015,10 @@ app.put('/api/access-requests/:id/decline', authenticateToken, requireRole(['bor
   );
 });
 
-// ================================
-// MESSAGING ROUTES
-// ================================
-
+// Messaging Routes (unchanged)
 app.get('/api/access-requests/:id/messages', authenticateToken, (req, res) => {
   const requestId = req.params.id;
 
-  // Verify user has access to this conversation
   db.get(
     `SELECT ar.*, p.borrower_id FROM access_requests ar 
      JOIN projects p ON ar.project_id = p.id 
@@ -1006,7 +1029,6 @@ app.get('/api/access-requests/:id/messages', authenticateToken, (req, res) => {
         return res.status(404).json({ error: 'Access request not found' });
       }
 
-      // Only borrower or the funder who made the request can access messages
       if (req.user.role === 'borrower' && request.borrower_id !== req.user.id) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -1014,7 +1036,6 @@ app.get('/api/access-requests/:id/messages', authenticateToken, (req, res) => {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Get all messages for this access request
       db.all(
         `SELECT m.*, u.name as sender_name 
          FROM messages m 
@@ -1042,7 +1063,6 @@ app.post('/api/access-requests/:id/messages', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Message is required' });
   }
 
-  // Verify user has access to this conversation
   db.get(
     `SELECT ar.*, p.borrower_id FROM access_requests ar 
      JOIN projects p ON ar.project_id = p.id 
@@ -1053,7 +1073,6 @@ app.post('/api/access-requests/:id/messages', authenticateToken, (req, res) => {
         return res.status(404).json({ error: 'Access request not found' });
       }
 
-      // Only borrower or the funder who made the request can send messages
       if (req.user.role === 'borrower' && request.borrower_id !== req.user.id) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -1061,7 +1080,6 @@ app.post('/api/access-requests/:id/messages', authenticateToken, (req, res) => {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Insert the message
       db.run(
         'INSERT INTO messages (access_request_id, sender_id, sender_role, message, message_type) VALUES (?, ?, ?, ?, ?)',
         [requestId, req.user.id, req.user.role, message.trim(), message_type],
@@ -1096,10 +1114,7 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
   );
 });
 
-// ================================
-// AI BROKER CHAT ROUTES
-// ================================
-
+// AI Broker Chat Routes (unchanged)
 app.post('/api/ai-chat/sessions', authenticateToken, (req, res) => {
   const { project_id, session_title } = req.body;
 
@@ -1136,7 +1151,6 @@ app.get('/api/ai-chat/sessions', authenticateToken, (req, res) => {
 app.get('/api/ai-chat/sessions/:id/messages', authenticateToken, (req, res) => {
   const sessionId = req.params.id;
 
-  // Verify session ownership
   db.get('SELECT user_id FROM ai_chat_sessions WHERE id = ?', [sessionId], (err, session) => {
     if (err || !session) {
       return res.status(404).json({ error: 'Session not found' });
@@ -1168,7 +1182,6 @@ app.post('/api/ai-chat/sessions/:id/messages', authenticateToken, (req, res) => 
     return res.status(400).json({ error: 'Message is required' });
   }
 
-  // Verify session ownership
   db.get('SELECT user_id FROM ai_chat_sessions WHERE id = ?', [sessionId], (err, session) => {
     if (err || !session) {
       return res.status(404).json({ error: 'Session not found' });
@@ -1178,7 +1191,6 @@ app.post('/api/ai-chat/sessions/:id/messages', authenticateToken, (req, res) => 
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Save user message
     db.run(
       'INSERT INTO ai_chat_messages (session_id, message, sender) VALUES (?, ?, ?)',
       [sessionId, message.trim(), 'user'],
@@ -1188,10 +1200,8 @@ app.post('/api/ai-chat/sessions/:id/messages', authenticateToken, (req, res) => 
           return res.status(500).json({ error: 'Failed to save message' });
         }
 
-        // Generate AI response (placeholder - integrate with OpenAI API)
         const aiResponse = generateBrokerAIResponse(message.trim(), req.user.role);
 
-        // Save AI response
         db.run(
           'INSERT INTO ai_chat_messages (session_id, message, sender) VALUES (?, ?, ?)',
           [sessionId, aiResponse, 'ai'],
@@ -1213,7 +1223,6 @@ app.post('/api/ai-chat/sessions/:id/messages', authenticateToken, (req, res) => 
   });
 });
 
-// Placeholder AI response generator (replace with OpenAI integration)
 function generateBrokerAIResponse(message, userRole) {
   const responses = {
     borrower: [
@@ -1236,10 +1245,7 @@ function generateBrokerAIResponse(message, userRole) {
   return userResponses[Math.floor(Math.random() * userResponses.length)];
 }
 
-// ================================
-// PAYMENT ROUTES
-// ================================
-
+// Payment Routes (unchanged)
 app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
   try {
     const { project_id } = req.body;
@@ -1259,7 +1265,6 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       },
     });
 
-    // Store payment record
     db.run(
       'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, project_id, paymentIntent.id, amount, 'project_listing']
@@ -1276,8 +1281,6 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
   }
 });
 
-// Add this endpoint to server.js for testing subscriptions
-// Add this simulation endpoint for funder subscriptions
 app.post('/api/payments/simulate-subscription', authenticateToken, requireRole(['funder']), (req, res) => {
   db.run(
     'UPDATE users SET subscription_status = ? WHERE id = ?',
@@ -1306,11 +1309,9 @@ app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borr
   }
 
   try {
-    // Use a transaction to ensure both updates happen
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
       
-      // Update project
       db.run(
         'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND borrower_id = ?',
         ['paid', payment_intent_id || 'pi_demo_' + Date.now(), project_id, req.user.id],
@@ -1326,7 +1327,6 @@ app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borr
             return res.status(404).json({ error: 'Project not found' });
           }
 
-          // Create payment record
           db.run(
             'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
             [req.user.id, project_id, payment_intent_id || 'pi_demo_' + Date.now(), 49900, 'project_listing', 'completed'],
@@ -1356,12 +1356,10 @@ app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borr
   }
 });
 
-// In server.js - update the create-subscription endpoint
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
   try {
     const { payment_method_id } = req.body;
     
-    // Create or retrieve Stripe customer
     let customerId = req.user.stripe_customer_id;
     
     if (!customerId) {
@@ -1379,7 +1377,6 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       });
       customerId = customer.id;
       
-      // Update user with customer ID
       await new Promise((resolve, reject) => {
         db.run('UPDATE users SET stripe_customer_id = ? WHERE id = ?', 
           [customerId, req.user.id], 
@@ -1387,12 +1384,10 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
         );
       });
     } else {
-      // Attach payment method to existing customer
       await stripe.paymentMethods.attach(payment_method_id, {
         customer: customerId,
       });
       
-      // Set as default payment method
       await stripe.customers.update(customerId, {
         invoice_settings: {
           default_payment_method: payment_method_id,
@@ -1400,7 +1395,6 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       });
     }
 
-    // Create subscription using the price ID from env
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: (process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID || 'price_YOUR_ID').trim() }],
@@ -1411,7 +1405,6 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       expand: ['latest_invoice.payment_intent'],
     });
 
-    // Update user subscription status
     if (subscription.status === 'active' || subscription.status === 'trialing') {
       await new Promise((resolve, reject) => {
         db.run('UPDATE users SET subscription_status = ? WHERE id = ?', 
@@ -1421,20 +1414,18 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       });
     }
 
-    // Return necessary info for frontend
-   const response = {
-  subscription_id: subscription.id,
-  status: subscription.status
-};
+    const response = {
+      subscription_id: subscription.id,
+      status: subscription.status
+    };
 
-    // If payment requires confirmation (3D Secure), include client secret
     if (subscription.latest_invoice && 
-    subscription.latest_invoice.payment_intent && 
-    subscription.latest_invoice.payment_intent.client_secret) {
-  response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
-}
+        subscription.latest_invoice.payment_intent && 
+        subscription.latest_invoice.payment_intent.client_secret) {
+      response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
+    }
 
-res.json(response);
+    res.json(response);
   } catch (error) {
     console.error('Subscription creation error:', error);
     res.status(500).json({ 
@@ -1443,10 +1434,7 @@ res.json(response);
   }
 });
 
-// ================================
-// ADMIN ROUTES
-// ================================
-
+// Admin Routes (unchanged)
 app.get('/api/admin/users', authenticateToken, requireRole(['admin']), (req, res) => {
   db.all(`SELECT id, name, email, role, approved, verification_status, 
           subscription_status, company_name, company_type, created_at 
@@ -1527,10 +1515,7 @@ app.put('/api/admin/system-settings/:key', authenticateToken, requireRole(['admi
   );
 });
 
-// ================================
-// UTILITY ROUTES
-// ================================
-
+// Utility Routes (unchanged)
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -1555,10 +1540,7 @@ app.get('/api/required-documents', authenticateToken, (req, res) => {
   });
 });
 
-// ================================
-// STRIPE WEBHOOKS
-// ================================
-
+// Stripe Webhooks (unchanged)
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -1570,18 +1552,15 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, 
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle the event
   switch (event.type) {
     case 'payment_intent.succeeded':
       const paymentIntent = event.data.object;
       if (paymentIntent.metadata.payment_type === 'project_listing') {
-        // Update project as paid
         db.run(
           'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ? WHERE id = ?',
           ['paid', paymentIntent.id, paymentIntent.metadata.project_id]
         );
         
-        // Update payment record
         db.run(
           'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
           ['completed', paymentIntent.id]
@@ -1592,7 +1571,6 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, 
     case 'invoice.payment_succeeded':
       const invoice = event.data.object;
       if (invoice.subscription) {
-        // Update user subscription status
         db.get('SELECT * FROM users WHERE stripe_customer_id = ?', [invoice.customer], (err, user) => {
           if (user) {
             db.run('UPDATE users SET subscription_status = ? WHERE id = ?', ['active', user.id]);
@@ -1617,10 +1595,7 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, 
   res.json({received: true});
 });
 
-// ================================
-// ERROR HANDLING MIDDLEWARE
-// ================================
-
+// Error Handling Middleware (unchanged)
 app.use((error, req, res, next) => {
   console.error('Server Error:', error);
   
@@ -1641,19 +1616,16 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// ================================
-// SERVER STARTUP
-// ================================
-
+// Server Startup
 app.listen(PORT, () => {
-  console.log(`🚀 Tranch Backend Server v2.0 running on port ${PORT}`);
-  console.log(`📊 Database: SQLite (tranch.db)`);
-  console.log(`🔐 Admin login: admin@tranch.com / admin123`);
+  console.log(`🚀 Tranch Backend Server v2.1 running on port ${PORT}`);
+  console.log(`🔐 Authentication: Clerk (JWT removed)`);
+  console.log(`📊 Database: SQLite (${dbPath})`);
   console.log(`💳 Stripe integration ready`);
   console.log(`📁 File uploads: ./uploads/ (max 50MB)`);
   console.log(`🤖 AI Chat: BrokerAI enabled`);
   console.log(`📈 Features: Enhanced projects, messaging, documents, admin panel`);
-  console.log(`🛡️  Security: JWT auth, role-based access, input validation`);
+  console.log(`🛡️  Security: Clerk auth, role-based access, input validation`);
 });
 
 module.exports = app;

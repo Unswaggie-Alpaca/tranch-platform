@@ -17,6 +17,9 @@
   "author": "Tranch Team",
   "license": "ISC",
   "dependencies": {
+    "@clerk/clerk-react": "^5.31.8",
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/express": "^1.5.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -28,7 +31,8 @@
     "openai": "^4.103.0",
     "pg": "^8.16.0",
     "sqlite3": "^5.1.6",
-    "stripe": "^14.8.0"
+    "stripe": "^14.8.0",
+    "svix": "^1.66.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
