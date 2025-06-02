@@ -91,53 +91,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
-// Add this right after your db.serialize(() => { ... }) block
 
-// Run migrations to add missing columns
-db.serialize(() => {
-  // Check if clerk_user_id column exists, if not add it
-  db.all("PRAGMA table_info(users)", (err, columns) => {
-    if (err) {
-      console.error('Error checking table structure:', err);
-      return;
-    }
-    
-    const hasClerkUserId = columns.some(col => col.name === 'clerk_user_id');
-    
-    if (!hasClerkUserId) {
-      console.log('Adding clerk_user_id column to users table...');
-      db.run('ALTER TABLE users ADD COLUMN clerk_user_id TEXT UNIQUE', (err) => {
-        if (err) {
-          console.error('Error adding clerk_user_id column:', err);
-        } else {
-          console.log('Successfully added clerk_user_id column');
-        }
-      });
-    }
-  });
-  
-  // Check for other potentially missing columns
-  const newColumns = [
-    { table: 'users', column: 'abn', type: 'TEXT' },
-    { table: 'users', column: 'typical_deal_size_min', type: 'INTEGER' },
-    { table: 'users', column: 'typical_deal_size_max', type: 'INTEGER' },
-    // Add any other columns that might be missing
-  ];
-  
-  newColumns.forEach(({ table, column, type }) => {
-    db.all(`PRAGMA table_info(${table})`, (err, columns) => {
-      if (!err && !columns.some(col => col.name === column)) {
-        db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (err) => {
-          if (err) {
-            console.error(`Error adding ${column} to ${table}:`, err);
-          } else {
-            console.log(`Added ${column} to ${table}`);
-          }
-        });
-      }
-    });
-  });
-});
   // Keep all other table definitions exactly the same
   db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -276,6 +230,85 @@ db.serialize(() => {
     ('monthly_subscription_fee', '29900'),
     ('max_file_upload_size', '10485760'),
     ('ai_chat_enabled', 'true')`);
+});
+
+// Add this BEFORE your route definitions and AFTER your database setup
+// Right after the db.serialize(() => { /* CREATE TABLE statements */ });
+
+// Synchronous migration to ensure columns exist before handling requests
+console.log('Checking database schema...');
+try {
+  // Check and add clerk_user_id if missing
+  const userColumns = db.prepare("PRAGMA table_info(users)").all();
+  const hasClerkUserId = userColumns.some(col => col.name === 'clerk_user_id');
+  
+  if (!hasClerkUserId) {
+    console.log('Adding clerk_user_id column...');
+    db.prepare('ALTER TABLE users ADD COLUMN clerk_user_id TEXT UNIQUE').run();
+    console.log('Added clerk_user_id column successfully');
+  }
+} catch (err) {
+  // If using regular sqlite3 (not better-sqlite3), use this approach instead:
+  db.run('ALTER TABLE users ADD COLUMN clerk_user_id TEXT', (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Migration error:', err);
+    } else if (!err) {
+      console.log('Added clerk_user_id column');
+    }
+  });
+}
+
+// Add a delay to ensure migration completes
+setTimeout(() => {
+  console.log('Database migrations completed, starting server...');
+}, 1000);
+
+// Add this right after your db.serialize(() => { ... }) block
+
+// Run migrations to add missing columns
+db.serialize(() => {
+  // Check if clerk_user_id column exists, if not add it
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error('Error checking table structure:', err);
+      return;
+    }
+    
+    const hasClerkUserId = columns.some(col => col.name === 'clerk_user_id');
+    
+    if (!hasClerkUserId) {
+      console.log('Adding clerk_user_id column to users table...');
+      db.run('ALTER TABLE users ADD COLUMN clerk_user_id TEXT UNIQUE', (err) => {
+        if (err) {
+          console.error('Error adding clerk_user_id column:', err);
+        } else {
+          console.log('Successfully added clerk_user_id column');
+        }
+      });
+    }
+  });
+  
+  // Check for other potentially missing columns
+  const newColumns = [
+    { table: 'users', column: 'abn', type: 'TEXT' },
+    { table: 'users', column: 'typical_deal_size_min', type: 'INTEGER' },
+    { table: 'users', column: 'typical_deal_size_max', type: 'INTEGER' },
+    // Add any other columns that might be missing
+  ];
+  
+  newColumns.forEach(({ table, column, type }) => {
+    db.all(`PRAGMA table_info(${table})`, (err, columns) => {
+      if (!err && !columns.some(col => col.name === column)) {
+        db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (err) => {
+          if (err) {
+            console.error(`Error adding ${column} to ${table}:`, err);
+          } else {
+            console.log(`Added ${column} to ${table}`);
+          }
+        });
+      }
+    });
+  });
 });
 
 // File upload configuration (unchanged)
