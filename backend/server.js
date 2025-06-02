@@ -91,7 +91,53 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+// Add this right after your db.serialize(() => { ... }) block
 
+// Run migrations to add missing columns
+db.serialize(() => {
+  // Check if clerk_user_id column exists, if not add it
+  db.all("PRAGMA table_info(users)", (err, columns) => {
+    if (err) {
+      console.error('Error checking table structure:', err);
+      return;
+    }
+    
+    const hasClerkUserId = columns.some(col => col.name === 'clerk_user_id');
+    
+    if (!hasClerkUserId) {
+      console.log('Adding clerk_user_id column to users table...');
+      db.run('ALTER TABLE users ADD COLUMN clerk_user_id TEXT UNIQUE', (err) => {
+        if (err) {
+          console.error('Error adding clerk_user_id column:', err);
+        } else {
+          console.log('Successfully added clerk_user_id column');
+        }
+      });
+    }
+  });
+  
+  // Check for other potentially missing columns
+  const newColumns = [
+    { table: 'users', column: 'abn', type: 'TEXT' },
+    { table: 'users', column: 'typical_deal_size_min', type: 'INTEGER' },
+    { table: 'users', column: 'typical_deal_size_max', type: 'INTEGER' },
+    // Add any other columns that might be missing
+  ];
+  
+  newColumns.forEach(({ table, column, type }) => {
+    db.all(`PRAGMA table_info(${table})`, (err, columns) => {
+      if (!err && !columns.some(col => col.name === column)) {
+        db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (err) => {
+          if (err) {
+            console.error(`Error adding ${column} to ${table}:`, err);
+          } else {
+            console.log(`Added ${column} to ${table}`);
+          }
+        });
+      }
+    });
+  });
+});
   // Keep all other table definitions exactly the same
   db.run(`CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
