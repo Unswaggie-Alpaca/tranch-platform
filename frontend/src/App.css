@@ -1078,27 +1078,147 @@ a:hover {
     display: none;
   }
   
-  /* Features */
-  .features-section {
-    padding: 3rem 1rem;
-  }
-  
-  .section-title {
-    font-size: 2rem;
-  }
-  
-  .section-subtitle {
-    font-size: 1.125rem;
-  }
-  
+  /* Features Section - Fix spacing */
+.features-section {
+  padding: 100px 0;
+  background: #ffffff;
+  overflow: hidden; /* Prevent overflow issues */
+}
+
+.features-section .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.features-section .section-title {
+  font-size: 48px;
+  font-weight: 700;
+  text-align: center;
+  color: #0f172a;
+  margin-bottom: 16px;
+}
+
+.features-section .section-subtitle {
+  font-size: 20px;
+  color: #64748b;
+  text-align: center;
+  margin-bottom: 60px; /* Increased margin to prevent clipping */
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+
+/* Features Grid - Better spacing */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  align-items: stretch;
+}
+
+.feature-card {
+  background: #f8fafc;
+  border-radius: 16px;
+  padding: 40px 32px;
+  height: 100%;
+  transition: all 0.3s ease;
+  border: 1px solid #e2e8f0;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+}
+
+.feature-card.featured {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  grid-column: 3; /* Explicitly place in third column */
+}
+
+.feature-card.featured h3,
+.feature-card.featured p,
+.feature-card.featured li {
+  color: white;
+}
+
+.feature-icon-wrapper {
+  width: 64px;
+  height: 64px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.feature-card.featured .feature-icon-wrapper {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.feature-icon {
+  width: 32px;
+  height: 32px;
+  color: #667eea;
+}
+
+.feature-card.featured .feature-icon {
+  color: white;
+}
+
+.feature-card h3 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #0f172a;
+}
+
+.feature-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feature-card li {
+  padding: 8px 0;
+  font-size: 16px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
   .features-grid {
     grid-template-columns: 1fr;
-    gap: 1.5rem;
+    gap: 24px;
   }
   
   .feature-card.featured {
-    transform: none;
+    grid-column: auto; /* Reset grid placement on mobile */
   }
+}
+
+@media (max-width: 768px) {
+  .features-section {
+    padding: 60px 0;
+  }
+  
+  .features-section .section-title {
+    font-size: 32px;
+  }
+  
+  .features-section .section-subtitle {
+    font-size: 18px;
+    margin-bottom: 40px;
+  }
+  
+  .feature-card {
+    padding: 32px 24px;
+  }
+}
   
   /* Process Timeline */
   .process-timeline {
