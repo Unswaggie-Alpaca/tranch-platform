@@ -3010,14 +3010,15 @@ label .required {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  height: 100%;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  width: 100%; /* Ensure it doesn't overflow */
 }
 
 .detail-item {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--gray-100);
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+  min-width: 0; /* Prevent grid items from overflowing */
 }
 
 .detail-item:last-child,
@@ -4888,6 +4889,7 @@ td {
   font-size: 15px;
   color: #0f172a;
   font-weight: 500;
+  word-break: break-word; /* Handle long text */
 }
 
 /* Risk Grid */
@@ -5024,6 +5026,12 @@ td {
   gap: 16px;
   transition: all 0.2s;
   border: 1px solid #e2e8f0;
+  min-width: 0; /* Prevent overflow */
+  position: relative; /* Contain children */
+}
+
+.document-card .btn-sm {
+  flex-shrink: 0; /* Prevent button from shrinking */
 }
 
 .document-card:hover {
@@ -5050,6 +5058,7 @@ td {
 
 .doc-info {
   flex: 1;
+  min-width: 0; /* Allow text truncation */
 }
 
 .doc-info h4 {
@@ -5057,6 +5066,9 @@ td {
   font-weight: 600;
   color: #0f172a;
   margin: 0 0 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .doc-info p {
@@ -5649,6 +5661,56 @@ td {
   width: 100% !important;
   max-width: 400px !important;
   margin: 0 auto !important;
+}
+
+/* Fix Clerk form text colors */
+.cl-formFieldLabel,
+.cl-formFieldLabel__identifier,
+.cl-formFieldLabelRow,
+.cl-formFieldRadioLabel,
+.cl-formFieldCheckboxLabel {
+  color: #1e293b !important;
+}
+
+.cl-formFieldInput,
+.cl-formFieldInput__identifier,
+.cl-formFieldInput__password {
+  color: #1e293b !important;
+  background: white !important;
+}
+
+.cl-formFieldInputShowPasswordButton {
+  color: #64748b !important;
+}
+
+.cl-footerActionText,
+.cl-footerActionLink,
+.cl-formHeaderTitle,
+.cl-formHeaderSubtitle,
+.cl-socialButtonsBlockButtonText,
+.cl-alternativeMethodsBlockTitle {
+  color: #1e293b !important;
+}
+
+.cl-dividerText {
+  color: #64748b !important;
+}
+
+.cl-identityPreviewText {
+  color: #475569 !important;
+}
+
+.cl-formFieldErrorText {
+  color: #ef4444 !important;
+}
+
+.cl-formFieldSuccessText {
+  color: #10b981 !important;
+}
+
+/* Ensure placeholder text is visible */
+.cl-formFieldInput::placeholder {
+  color: #94a3b8 !important;
 }
 
 /* Style Clerk's card */
