@@ -5299,15 +5299,15 @@ td {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
-/* BrokerAI Chat Window - Fixed positioning */
+/* BrokerAI Floating - Responsive Scaling Fix */
 .broker-ai-floating {
   position: fixed;
   bottom: 100px;
   right: 24px;
   width: 380px;
-  max-width: calc(100vw - 48px); /* Prevent overflow on small screens */
+  max-width: calc(100vw - 48px); /* Prevent overflow */
   height: 600px;
-  max-height: calc(100vh - 120px); /* Prevent overflow vertically */
+  max-height: calc(100vh - 150px); /* Leave space for browser chrome */
   background: white;
   border-radius: 16px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -5315,6 +5315,68 @@ td {
   flex-direction: column;
   z-index: 1000;
   overflow: hidden;
+}
+
+/* Specific fixes for smaller laptop screens */
+@media (max-height: 800px) {
+  .broker-ai-floating {
+    height: 450px; /* Smaller height for laptops */
+    bottom: 80px;
+    width: 350px; /* Slightly narrower */
+  }
+  
+  .broker-ai-messages {
+    padding: 16px; /* Less padding */
+  }
+  
+  .ai-message {
+    margin-bottom: 12px; /* Tighter spacing */
+  }
+}
+
+/* For very small screens or when zoomed */
+@media (max-height: 700px) {
+  .broker-ai-floating {
+    height: 400px;
+    bottom: 70px;
+    width: 320px;
+    right: 16px;
+  }
+  
+  .broker-ai-header {
+    padding: 12px 16px; /* Smaller header */
+  }
+  
+  .broker-ai-header h3 {
+    font-size: 16px;
+  }
+  
+  .broker-ai-input {
+    padding: 12px; /* Smaller input area */
+  }
+  
+  .broker-ai-input input {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+}
+
+/* Ensure the button stays accessible */
+.broker-ai-floating-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  z-index: 999;
+}
+
+/* For laptop screens in general (not mobile) */
+@media (min-width: 768px) and (max-height: 900px) {
+  .broker-ai-floating {
+    height: min(500px, calc(100vh - 200px));
+    width: 360px;
+  }
 }
 
 .broker-ai-floating.open {
