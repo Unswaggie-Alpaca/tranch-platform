@@ -1170,6 +1170,30 @@ const ProtectedRoute = ({ children, roles = [] }) => {
 
 const ClerkAuthWrapper = ({ mode }) => {
   const navigate = useNavigate();
+  const { signOut, isSignedIn, isLoaded } = useClerk();
+  const [signingOut, setSigningOut] = useState(false);
+  
+  useEffect(() => {
+    // If user is trying to sign up but is already signed in, sign them out first
+    if (mode === 'sign-up' && isSignedIn && isLoaded && !signingOut) {
+      setSigningOut(true);
+      signOut().then(() => {
+        setSigningOut(false);
+      });
+    }
+  }, [mode, isSignedIn, isLoaded, signOut, signingOut]);
+  
+  if (signingOut) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card">
+          <div className="auth-header">
+            <h1 className="auth-title">Signing out...</h1>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="auth-container">
