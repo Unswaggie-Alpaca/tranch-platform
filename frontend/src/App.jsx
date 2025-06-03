@@ -821,27 +821,28 @@ const Navigation = () => {
         </Link>
         
         {/* Desktop Navigation */}
-        <div className="nav-menu desktop-only">
-          {filteredLinks.map(link => (
-            <Link 
-              key={link.path}
-              to={link.path} 
-              className={`nav-link ${isActive(link.path) ? 'active' : ''}`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
+       <div className="nav-menu desktop-only">
+  {filteredLinks.map(link => (
+    <Link 
+      key={link.path}
+      to={link.path} 
+      className={`nav-link ${isActive(link.path) ? 'active' : ''}`}
+    >
+      {link.label}
+    </Link>
+  ))}
+</div>
+
         
-        {/* Mobile Menu Button */}
-        <button 
-          className="mobile-menu-btn"
-          onClick={() => setShowMobileMenu(!showMobileMenu)}
-        >
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
+   {/* Mobile Menu Button - Add this check */}
+<button 
+  className="mobile-menu-btn"
+  onClick={() => setShowMobileMenu(!showMobileMenu)}
+>
+  <span></span>
+  <span></span>
+  <span></span>
+</button>
         
         {/* User Section */}
         <div className="nav-user-section">
