@@ -6870,6 +6870,33 @@ const DocumentPreviewModal = ({ document, onClose }) => {
 const LandingPage = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Add this inside the LandingPage component, before the return statement
+useEffect(() => {
+  // Handle swipe indicators
+  const handleScroll = (wrapper, indicators) => {
+    const scrollLeft = wrapper.scrollLeft;
+    const cardWidth = wrapper.firstChild.offsetWidth + 16; // card width + gap
+    const activeIndex = Math.round(scrollLeft / cardWidth);
+    
+    indicators.forEach((dot, index) => {
+      dot.classList.toggle('active', index === activeIndex);
+    });
+  };
+
+  const problemCards = document.querySelector('.problem-cards');
+  const problemDots = document.querySelectorAll('.problem-cards-wrapper .dot');
+  
+  const solutionCards = document.querySelector('.solution-cards');
+  const solutionDots = document.querySelectorAll('.solution-cards-wrapper .dot');
+  
+  if (problemCards && problemDots.length) {
+    problemCards.addEventListener('scroll', () => handleScroll(problemCards, problemDots));
+  }
+  
+  if (solutionCards && solutionDots.length) {
+    solutionCards.addEventListener('scroll', () => handleScroll(solutionCards, solutionDots));
+  }
+}, []);
   
   return (
     <div className="landing-page">
@@ -7014,64 +7041,107 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="features-section">
+      {/* Problem & Solution Section */}
+      <section id="features" className="problem-solution-section">
         <div className="container">
-          <h2 className="section-title">Built for Modern Property Finance</h2>
+          <h2 className="section-title">The Property Finance Problem</h2>
           <p className="section-subtitle">
-            Everything you need to connect, transact, and succeed
+            Traditional funding takes months, lacks transparency, and wastes everyone's time
           </p>
           
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
+          {/* Problem Cards */}
+          <div className="problem-cards-wrapper">
+            <div className="problem-cards">
+              <div className="problem-card">
+                <div className="problem-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                </div>
+                <h3>Months of Delays</h3>
+                <p>Developers spend 3-6 months chasing funders through outdated channels</p>
               </div>
-              <h3>For Developers</h3>
-              <ul>
-                <li>List projects in minutes</li>
-                <li>Access verified funders</li>
-                <li>Secure document sharing</li>
-                <li>Real-time messaging</li>
-                <li>Track deal progress</li>
-              </ul>
+              <div className="problem-card">
+                <div className="problem-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                  </svg>
+                </div>
+                <h3>Hidden Networks</h3>
+                <p>Quality deals never reach the right funders due to closed networks</p>
+              </div>
+              <div className="problem-card">
+                <div className="problem-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                  </svg>
+                </div>
+                <h3>Scattered Communication</h3>
+                <p>Critical documents lost in email chains and missed opportunities</p>
+              </div>
             </div>
-            
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="2" x2="12" y2="22"></line>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                </svg>
-              </div>
-              <h3>For Funders</h3>
-              <ul>
-                <li>Curated deal flow</li>
-                <li>Comprehensive due diligence</li>
-                <li>Risk assessment tools</li>
-                <li>Portfolio management</li>
-                <li>Deal pipeline tracking</li>
-              </ul>
+            <div className="swipe-indicator">
+              <span className="dot active"></span>
+              <span className="dot"></span>
+              <span className="dot"></span>
             </div>
+          </div>
+
+          {/* Transition */}
+          <div className="solution-transition">
+            <div className="transition-line"></div>
+            <div className="transition-text">Enter Tranch</div>
+            <div className="transition-line"></div>
+          </div>
+
+          {/* Solution Overview */}
+          <div className="solution-overview">
+            <h2 className="solution-title">The Intelligent Marketplace</h2>
+            <p className="solution-subtitle">
+              We've built the infrastructure that property finance has been waiting for
+            </p>
             
-            <div className="feature-card featured">
-              <div className="feature-icon-wrapper">
-                <svg className="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                  <circle cx="12" cy="12" r="10"></circle>
-                </svg>
+            <div className="solution-cards-wrapper">
+              <div className="solution-cards">
+                <div className="solution-card">
+                  <div className="solution-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                  </div>
+                  <h4>Instant Connections</h4>
+                  <p>Verified funders see your project within 24 hours of listing</p>
+                </div>
+                <div className="solution-card">
+                  <div className="solution-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+                    </svg>
+                  </div>
+                  <h4>Complete Transparency</h4>
+                  <p>Track every interaction, document, and decision in one place</p>
+                </div>
+                <div className="solution-card">
+                  <div className="solution-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 20h9"></path>
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                      <path d="m15 5 3 3"></path>
+                    </svg>
+                  </div>
+                  <h4>AI-Powered Intelligence</h4>
+                  <p>BrokerAI analyzes deals and provides instant feasibility insights</p>
+                </div>
               </div>
-              <h3>BrokerAI Assistant</h3>
-              <ul>
-                <li>24/7 expert guidance</li>
-                <li>LVR & feasibility analysis</li>
-                <li>Market insights</li>
-                <li>Compliance support</li>
-                <li>Deal structuring help</li>
-              </ul>
+              <div className="swipe-indicator">
+                <span className="dot active"></span>
+                <span className="dot"></span>
+                <span className="dot"></span>
+              </div>
             </div>
           </div>
         </div>

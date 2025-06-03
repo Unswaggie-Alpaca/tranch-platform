@@ -1905,72 +1905,385 @@ label .required {
   50% { transform: translateY(-20px); }
 }
 
-/* Features Section - Complete Fix */
-.features-section {
+/* Problem & Solution Section */
+.problem-solution-section {
   padding: 100px 0;
   background: #ffffff;
+  overflow: hidden;
 }
 
-.features-section .container {
+.problem-solution-section .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
 }
 
-/* Header with proper spacing */
-.features-section .section-header {
-  text-align: center;
-  margin-bottom: 80px; /* Much more space before the cards */
-}
-
-.features-section .section-title {
+.problem-solution-section .section-title {
   font-size: 48px;
   font-weight: 700;
   color: #0f172a;
   margin: 0 0 16px 0;
+  text-align: center;
 }
 
-.features-section .section-subtitle {
+.problem-solution-section .section-subtitle {
   font-size: 20px;
   color: #64748b;
-  margin: 0;
+  margin: 0 0 60px 0;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* Problem Cards */
+.problem-cards-wrapper {
+  margin-bottom: 80px;
+}
+
+.problem-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+
+.problem-card {
+  background: #fef2f2;
+  border: 2px solid #fee2e2;
+  border-radius: 16px;
+  padding: 40px 32px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.problem-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(239, 68, 68, 0.1);
+}
+
+.problem-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 16px;
+}
+
+.problem-icon svg {
+  width: 32px;
+  height: 32px;
+  color: #dc2626;
+}
+
+.problem-card h3 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #991b1b;
+  margin-bottom: 12px;
+}
+
+.problem-card p {
+  font-size: 16px;
+  color: #7f1d1d;
   line-height: 1.6;
 }
 
-/* Features Grid - Fixed layout */
-.features-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 32px;
-  align-items: start; /* Changed from stretch */
+/* Swipe Indicators - Hidden on Desktop */
+.swipe-indicator {
+  display: none;
 }
 
-/* Ensure proper containing */
-.feature-card {
-  background: #f8fafc;
+/* Solution Transition */
+.solution-transition {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin: 80px 0;
+}
+
+.transition-line {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(to right, transparent, #e2e8f0, transparent);
+}
+
+.transition-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  padding: 12px 32px;
+  border: 2px solid #667eea;
+  border-radius: 30px;
+  background: white;
+}
+
+/* Solution Overview */
+.solution-overview {
+  text-align: center;
+}
+
+.solution-title {
+  font-size: 42px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 16px;
+}
+
+.solution-subtitle {
+  font-size: 20px;
+  color: #64748b;
+  margin-bottom: 60px;
+}
+
+.solution-cards-wrapper {
+  margin-bottom: 0;
+}
+
+.solution-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+
+.solution-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border-radius: 16px;
   padding: 40px 32px;
-  height: 100%;
   transition: all 0.3s ease;
   border: 1px solid #e2e8f0;
-  position: relative; /* Ensure proper stacking */
+  text-align: center;
 }
 
-.feature-card.featured {
+.solution-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(102, 126, 234, 0.15);
+  background: white;
+}
+
+.solution-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.solution-icon svg {
+  width: 32px;
+  height: 32px;
   color: white;
 }
 
-/* Alternative fix - wrap the header */
-@media (min-width: 1024px) {
-  .features-section .section-header {
-    position: relative;
-    z-index: 1;
+.solution-card h4 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.solution-card p {
+  font-size: 16px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+/* MOBILE STYLES - STUNNING CENTERED DESIGN */
+@media (max-width: 768px) {
+  .problem-solution-section {
+    padding: 60px 0;
   }
-  
-  .features-grid {
+
+  .problem-solution-section .container {
+    padding: 0;
+  }
+
+  .problem-solution-section .section-title {
+    font-size: 28px;
+    font-weight: 800;
+    padding: 0 20px;
+    line-height: 1.2;
+  }
+
+  .problem-solution-section .section-subtitle {
+    font-size: 16px;
+    padding: 0 30px;
+    margin-bottom: 40px;
+  }
+
+  /* Mobile Problem Cards - Swipeable */
+  .problem-cards-wrapper {
     position: relative;
-    z-index: 2;
+    margin-bottom: 60px;
+    padding: 0 20px;
+  }
+
+  .problem-cards {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    grid-template-columns: unset;
+  }
+
+  .problem-cards::-webkit-scrollbar {
+    display: none;
+  }
+
+  .problem-card {
+    flex: 0 0 85%;
+    scroll-snap-align: center;
+    padding: 32px 24px;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.1);
+  }
+
+  .problem-icon {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 20px;
+  }
+
+  .problem-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .problem-card h3 {
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .problem-card p {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* Mobile Transition */
+  .solution-transition {
+    margin: 50px 20px;
+    gap: 16px;
+  }
+
+  .transition-text {
+    font-size: 14px;
+    padding: 10px 24px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  /* Mobile Solution Cards */
+  .solution-title {
+    font-size: 28px;
+    font-weight: 800;
+    padding: 0 20px;
+    line-height: 1.2;
+  }
+
+  .solution-subtitle {
+    font-size: 16px;
+    padding: 0 30px;
+    margin-bottom: 40px;
+  }
+
+  .solution-cards-wrapper {
+    position: relative;
+    padding: 0 20px;
+  }
+
+  .solution-cards {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    grid-template-columns: unset;
+  }
+
+  .solution-cards::-webkit-scrollbar {
+    display: none;
+  }
+
+  .solution-card {
+    flex: 0 0 85%;
+    scroll-snap-align: center;
+    padding: 32px 24px;
+    background: white;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
+    border: 1px solid rgba(102, 126, 234, 0.2);
+  }
+
+  .solution-icon {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 16px rgba(102, 126, 234, 0.2);
+  }
+
+  .solution-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .solution-card h4 {
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .solution-card p {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* Swipe Indicators */
+  .swipe-indicator {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .swipe-indicator .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    transition: all 0.3s ease;
+  }
+
+  .swipe-indicator .dot.active {
+    width: 24px;
+    border-radius: 4px;
+    background: #667eea;
+  }
+
+  /* Entrance Animations */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .problem-card,
+  .solution-card {
+    animation: fadeInUp 0.6s ease-out;
   }
 }
 
