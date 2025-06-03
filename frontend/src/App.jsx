@@ -7044,10 +7044,14 @@ useEffect(() => {
       {/* Problem & Solution Section */}
       <section id="features" className="problem-solution-section">
         <div className="container">
-          <h2 className="section-title">The Property Finance Problem</h2>
-          <p className="section-subtitle">
-            Traditional funding takes months, lacks transparency, and wastes everyone's time
-          </p>
+<div style={{ textAlign: 'center', width: '100%', marginBottom: '60px' }}>
+  <h2 className="section-title" style={{ textAlign: 'center', width: '100%', margin: '0 auto 16px auto' }}>
+    The Property Finance Problem
+  </h2>
+  <p className="section-subtitle" style={{ textAlign: 'center', width: '100%', margin: '0 auto', maxWidth: '800px' }}>
+    Traditional funding takes months, lacks transparency, and wastes everyone's time
+  </p>
+</div>
           
           {/* Problem Cards */}
           <div className="problem-cards-wrapper">
