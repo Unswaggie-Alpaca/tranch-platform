@@ -6889,26 +6889,26 @@ const LandingPage = () => {
 {/* Add this before the closing </div> of landing-page */}
 {/* Mobile Bottom Navigation */}
 <nav className="mobile-bottom-nav">
-  <div className="nav-item active">
+  <a href="#" className="nav-item active">
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
     </svg>
     <span className="nav-label">Home</span>
-  </div>
-  <div className="nav-item">
+  </a>
+  <a href="#features" className="nav-item">
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
     <span className="nav-label">Features</span>
-  </div>
-  <div className="nav-item">
+  </a>
+  <a href="#pricing" className="nav-item">
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
     <span className="nav-label">Pricing</span>
-  </div>
-  <div className="nav-item">
+  </a>
+  <Link to="/register" className="nav-item">
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
       <circle cx="8.5" cy="7" r="4" />
@@ -6916,7 +6916,7 @@ const LandingPage = () => {
       <line x1="23" y1="11" x2="17" y2="11" />
     </svg>
     <span className="nav-label">Sign Up</span>
-  </div>
+  </Link>
 </nav>
 
 {/* Mobile Floating Action Button */}
