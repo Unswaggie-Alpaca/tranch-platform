@@ -1,38 +1,13 @@
-require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const OpenAI = require('openai');
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('tranch.db'); // Fixed database name
-
-// Auth middleware
-const authMiddleware = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  const jwt = require('jsonwebtoken');
-  const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid token' });
-    }
-    req.user = user;
-    req.db = db;
-    next();
-  });
-};
 
 // Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// System prompt function that takes userRole as parameter
+// System prompt function
 const getSystemPrompt = (userRole) => `You are BrokerAI, a premium property development finance expert for the Tranch platform. You're friendly, knowledgeable, and conversational while maintaining professionalism.
 
 RESPONSE FORMAT EXAMPLE:
@@ -83,9 +58,10 @@ Current user type: ${userRole === 'borrower' ? 'Property Developer' : 'Private C
 Remember: You're helping build Australia's premier property finance platform. Make every interaction valuable and engaging.`;
 
 // Create new chat session
-router.post('/sessions', authMiddleware, async (req, res) => {
+router.post('/sessions', async (req, res) => {
   try {
     const { project_id, session_title } = req.body;
+    const db = req.db;
     
     db.run(
       `INSERT INTO ai_chat_sessions (user_id, project_id, session_title) 
@@ -110,8 +86,10 @@ router.post('/sessions', authMiddleware, async (req, res) => {
 });
 
 // Get user's chat sessions
-router.get('/sessions', authMiddleware, async (req, res) => {
+router.get('/sessions', async (req, res) => {
   try {
+    const db = req.db;
+    
     db.all(
       `SELECT id, session_title, created_at 
        FROM ai_chat_sessions 
@@ -133,8 +111,10 @@ router.get('/sessions', authMiddleware, async (req, res) => {
 });
 
 // Get messages for a session
-router.get('/sessions/:sessionId/messages', authMiddleware, async (req, res) => {
+router.get('/sessions/:sessionId/messages', async (req, res) => {
   try {
+    const db = req.db;
+    
     // First verify the user owns this session
     db.get(
       `SELECT user_id FROM ai_chat_sessions WHERE id = ?`,
@@ -171,10 +151,11 @@ router.get('/sessions/:sessionId/messages', authMiddleware, async (req, res) => 
 });
 
 // Send message and get AI response
-router.post('/sessions/:sessionId/messages', authMiddleware, async (req, res) => {
+router.post('/sessions/:sessionId/messages', async (req, res) => {
   try {
     const { message } = req.body;
     const sessionId = req.params.sessionId;
+    const db = req.db;
     
     if (!message || !message.trim()) {
       return res.status(400).json({ error: 'Message is required' });
@@ -255,40 +236,65 @@ router.post('/sessions/:sessionId/messages', authMiddleware, async (req, res) =>
                     }))
                   ];
                   
-                  // Get AI response
-                  const completion = await openai.chat.completions.create({
-                    model: 'gpt-3.5-turbo',
-                    messages: messages,
-                    temperature: 0.7,
-                    max_tokens: 500,
-                  });
-                  
-                  const aiResponse = completion.choices[0].message.content;
-                  
-                  // Save AI response
-                  db.run(
-                    `INSERT INTO ai_chat_messages (session_id, sender, message) 
-                     VALUES (?, 'ai', ?)`,
-                    [sessionId, aiResponse],
-                    function(err) {
-                      if (err) {
-                        console.error('Save AI message error:', err);
-                        return res.status(500).json({ error: 'Failed to save AI response' });
+                  try {
+                    // Get AI response
+                    const completion = await openai.chat.completions.create({
+                      model: 'gpt-3.5-turbo',
+                      messages: messages,
+                      temperature: 0.7,
+                      max_tokens: 500,
+                    });
+                    
+                    const aiResponse = completion.choices[0].message.content;
+                    
+                    // Save AI response
+                    db.run(
+                      `INSERT INTO ai_chat_messages (session_id, sender, message) 
+                       VALUES (?, 'ai', ?)`,
+                      [sessionId, aiResponse],
+                      function(err) {
+                        if (err) {
+                          console.error('Save AI message error:', err);
+                          return res.status(500).json({ error: 'Failed to save AI response' });
+                        }
+                        
+                        res.json({
+                          user_message_id: userMessageId,
+                          ai_message_id: this.lastID,
+                          ai_response: aiResponse
+                        });
                       }
-                      
-                      res.json({
-                        user_message_id: userMessageId,
-                        ai_message_id: this.lastID,
-                        ai_response: aiResponse
-                      });
-                    }
-                  );
+                    );
+                  } catch (openAIError) {
+                    console.error('OpenAI API error:', openAIError);
+                    
+                    // Use fallback response on API error
+                    const fallbackResponse = generateFallbackResponse(message, req.user.role);
+                    
+                    db.run(
+                      `INSERT INTO ai_chat_messages (session_id, sender, message) 
+                       VALUES (?, 'ai', ?)`,
+                      [sessionId, fallbackResponse],
+                      function(err) {
+                        if (err) {
+                          console.error('Save AI message error:', err);
+                          return res.status(500).json({ error: 'Failed to save AI response' });
+                        }
+                        
+                        res.json({
+                          user_message_id: userMessageId,
+                          ai_message_id: this.lastID,
+                          ai_response: fallbackResponse
+                        });
+                      }
+                    );
+                  }
                 }
               );
             } catch (error) {
-              console.error('OpenAI API error:', error);
+              console.error('Process message error:', error);
               
-              // Use fallback response on API error
+              // Use fallback response on any error
               const fallbackResponse = generateFallbackResponse(message, req.user.role);
               
               db.run(
