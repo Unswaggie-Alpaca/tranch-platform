@@ -19,9 +19,9 @@ const PORT = process.env.PORT || 5000;
 app.set('trust proxy', 1);
 
 // Database path
-const dbPath = process.env.NODE_ENV === 'production' 
-  ? '/var/data/tranch.db'
-  : './tranch.db';
+  const uploadsDir = process.env.NODE_ENV === 'production' 
+  ? '/var/data/uploads'  // Use persistent disk in production
+  : './uploads'; 
 
 // Ensure data directory exists in production
 if (process.env.NODE_ENV === 'production') {
@@ -30,9 +30,7 @@ if (process.env.NODE_ENV === 'production') {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  const uploadsDir = process.env.NODE_ENV === 'production' 
-  ? '/var/data/uploads'  // Use persistent disk in production
-  : './uploads'; 
+
 }
 
 // Initialize database
