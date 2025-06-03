@@ -18,23 +18,26 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 app.set('trust proxy', 1);
 
-// Database path
-  const uploadsDir = process.env.NODE_ENV === 'production' 
-  ? '/var/data/uploads'  // Use persistent disk in production
+// Database path - DEFINE THIS FIRST
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? '/var/data/tranch.db'
+  : './tranch.db';
+
+// Uploads directory path
+const uploadsDir = process.env.NODE_ENV === 'production' 
+  ? '/var/data/uploads'
   : './uploads'; 
 
 // Ensure data directory exists in production
 if (process.env.NODE_ENV === 'production') {
-  const dataDir = path.dirname(dbPath);
+  const dataDir = path.dirname(dbPath);  // Now dbPath is defined!
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
-
-
 }
 
 // Initialize database
-const db = new sqlite3.Database(dbPath);
+const db = new sqlite3.Database(dbPath);  // Now this works!
 
 // Middleware
 app.use(helmet());
