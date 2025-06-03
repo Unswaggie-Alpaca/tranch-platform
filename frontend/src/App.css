@@ -5746,27 +5746,26 @@ td {
 
 .auth-subtitle {
   font-size: 16px;
-  color: rgba(255, 255, 255, 0.9);
+  color: #64748b; /* Gray text instead of white */
   margin: 0;
   line-height: 1.6;
 }
-
 .auth-footer {
   text-align: center;
   margin-top: 24px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.8);
+  color: #64748b; /* Gray text instead of white */
 }
 
 .auth-link {
-  color: white;
+  color: #667eea; /* Purple links */
   text-decoration: none;
   font-weight: 500;
-  transition: opacity 0.2s;
+  transition: color 0.2s;
 }
 
 .auth-link:hover {
-  opacity: 0.8;
+  color: #764ba2; /* Darker purple on hover */
   text-decoration: underline;
 }
 

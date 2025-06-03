@@ -9,6 +9,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 
+
 // Clerk imports
 const { clerkClient } = require('@clerk/clerk-sdk-node');
 const { syncClerkUser, deleteClerkUser } = require('./clerk-webhook');
@@ -28,6 +29,10 @@ if (process.env.NODE_ENV === 'production') {
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
+
+  const uploadsDir = process.env.NODE_ENV === 'production' 
+  ? '/var/data/uploads'  // Use persistent disk in production
+  : './uploads'; 
 }
 
 // Initialize database
@@ -53,13 +58,56 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Create uploads directory
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Static files
-app.use('/uploads', express.static('uploads'));
+// Replace this line:
+// app.use('/uploads', express.static(uploadsDir));
+
+// With this authenticated endpoint:
+app.get('/uploads/:filename', authenticateToken, async (req, res) => {
+  const filename = req.params.filename;
+  const filepath = path.join(uploadsDir, filename);
+  
+  // Check if user has access to this file
+  db.get(
+    `SELECT d.*, p.borrower_id 
+     FROM documents d 
+     JOIN projects p ON d.project_id = p.id 
+     WHERE d.file_path LIKE ?`,
+    [`%${filename}`],
+    (err, document) => {
+      if (err || !document) {
+        return res.status(404).send('Not found');
+      }
+      
+      // Check permissions
+      if (req.user.role === 'borrower' && document.borrower_id !== req.user.id) {
+        return res.status(403).send('Forbidden');
+      }
+      
+      if (req.user.role === 'funder') {
+        // Check if funder has approved access
+        db.get(
+          'SELECT * FROM access_requests WHERE project_id = ? AND funder_id = ? AND status = ?',
+          [document.project_id, req.user.id, 'approved'],
+          (err, access) => {
+            if (!access) {
+              return res.status(403).send('Forbidden');
+            }
+            res.sendFile(filepath);
+          }
+        );
+      } else if (req.user.role === 'admin') {
+        // Admins can access all files
+        res.sendFile(filepath);
+      } else {
+        res.sendFile(filepath);
+      }
+    }
+  );
+});
 
 // Initialize database tables
 db.serialize(() => {
@@ -515,7 +563,7 @@ const requireRole = (roles) => {
 // File upload configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, uploadsDir);  // Use the persistent directory
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -1010,11 +1058,11 @@ app.delete('/api/documents/:id', authenticateToken, requireRole(['borrower']), (
       }
 
       // Delete file from filesystem
-      fs.unlink(document.file_path, (fsErr) => {
-        if (fsErr) {
-          console.error('File deletion error:', fsErr);
-        }
-      });
+      fs.unlink(path.join(uploadsDir, path.basename(document.file_path)), (fsErr) => {
+  if (fsErr) {
+    console.error('File deletion error:', fsErr);
+  }
+});
 
       // Delete from database
       db.run('DELETE FROM documents WHERE id = ?', [documentId], (err) => {
