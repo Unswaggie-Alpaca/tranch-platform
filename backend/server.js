@@ -64,33 +64,34 @@ app.use('/uploads', express.static('uploads'));
 // Initialize database tables
 db.serialize(() => {
   // Users table with Clerk integration
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    clerk_user_id TEXT UNIQUE,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    role TEXT CHECK(role IN ('borrower', 'funder', 'admin')) NOT NULL,
-    approved BOOLEAN DEFAULT FALSE,
-    stripe_customer_id TEXT,
-    subscription_status TEXT DEFAULT 'inactive',
-    
-    -- Funder profile fields
-    company_name TEXT,
-    company_type TEXT,
-    investment_focus TEXT,
-    typical_deal_size_min INTEGER,
-    typical_deal_size_max INTEGER,
-    years_experience INTEGER,
-    aum INTEGER,
-    phone TEXT,
-    linkedin TEXT,
-    bio TEXT,
-    abn TEXT,
-    verification_status TEXT DEFAULT 'pending',
-    
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+  // In server.js, update the users table creation
+db.run(`CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  clerk_user_id TEXT UNIQUE,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  role TEXT CHECK(role IN ('borrower', 'funder', 'admin')) NOT NULL,
+  approved BOOLEAN DEFAULT FALSE,
+  stripe_customer_id TEXT,
+  subscription_status TEXT DEFAULT 'inactive',
+  
+  -- Funder profile fields
+  company_name TEXT,
+  company_type TEXT,
+  investment_focus TEXT,
+  typical_deal_size_min INTEGER,
+  typical_deal_size_max INTEGER,
+  years_experience INTEGER,
+  aum INTEGER,
+  phone TEXT,
+  linkedin TEXT,
+  bio TEXT,
+  abn TEXT,
+  verification_status TEXT DEFAULT 'pending',
+  
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
   // Projects table
   db.run(`CREATE TABLE IF NOT EXISTS projects (
@@ -236,6 +237,82 @@ db.serialize(() => {
     ('monthly_subscription_fee', '29900'),
     ('max_file_upload_size', '10485760'),
     ('ai_chat_enabled', 'true')`);
+});
+
+// Add this after your database tables are created
+// Migration to remove password constraint
+db.get("PRAGMA table_info(users)", (err, rows) => {
+  if (!err && rows) {
+    // Check if we need to migrate
+    db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'", (err, result) => {
+      if (!err && result && result.sql.includes('password')) {
+        console.log('Migrating users table to remove password column...');
+        
+        db.serialize(() => {
+          // Create a new table without password
+          db.run(`CREATE TABLE IF NOT EXISTS users_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clerk_user_id TEXT UNIQUE,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            role TEXT CHECK(role IN ('borrower', 'funder', 'admin')) NOT NULL,
+            approved BOOLEAN DEFAULT FALSE,
+            stripe_customer_id TEXT,
+            subscription_status TEXT DEFAULT 'inactive',
+            company_name TEXT,
+            company_type TEXT,
+            investment_focus TEXT,
+            typical_deal_size_min INTEGER,
+            typical_deal_size_max INTEGER,
+            years_experience INTEGER,
+            aum INTEGER,
+            phone TEXT,
+            linkedin TEXT,
+            bio TEXT,
+            abn TEXT,
+            verification_status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`, (err) => {
+            if (err) {
+              console.error('Failed to create new users table:', err);
+              return;
+            }
+            
+            // Copy data from old table
+            db.run(`INSERT INTO users_new SELECT 
+              id, clerk_user_id, name, email, role, approved, stripe_customer_id, 
+              subscription_status, company_name, company_type, investment_focus,
+              typical_deal_size_min, typical_deal_size_max, years_experience,
+              aum, phone, linkedin, bio, abn, verification_status,
+              created_at, updated_at
+              FROM users`, (err) => {
+              if (err) {
+                console.error('Failed to copy user data:', err);
+                return;
+              }
+              
+              // Drop old table and rename new one
+              db.run('DROP TABLE users', (err) => {
+                if (err) {
+                  console.error('Failed to drop old users table:', err);
+                  return;
+                }
+                
+                db.run('ALTER TABLE users_new RENAME TO users', (err) => {
+                  if (err) {
+                    console.error('Failed to rename users table:', err);
+                  } else {
+                    console.log('Successfully migrated users table');
+                  }
+                });
+              });
+            });
+          });
+        });
+      }
+    });
+  }
 });
 
 // Webhook endpoint must be before body parsing middleware
