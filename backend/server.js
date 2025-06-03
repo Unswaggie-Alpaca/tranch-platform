@@ -296,7 +296,6 @@ app.post('/api/webhooks/clerk',
 // Body parsing middleware (after webhooks)
 app.use(express.json({ limit: '50mb' }));
 
-// Clerk authentication middleware
 const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -327,36 +326,88 @@ const authenticateToken = async (req, res, next) => {
           // User not in database, sync from Clerk
           try {
             const clerkUser = await clerkClient.users.getUser(clerkUserId);
+            
+            // Better error handling for email
+            if (!clerkUser.emailAddresses || clerkUser.emailAddresses.length === 0) {
+              console.error('No email found for Clerk user:', clerkUserId);
+              return res.status(400).json({ error: 'No email address found' });
+            }
+            
             const email = clerkUser.emailAddresses[0]?.emailAddress;
+            if (!email) {
+              console.error('Email is null for Clerk user:', clerkUserId);
+              return res.status(400).json({ error: 'Invalid email address' });
+            }
+            
             const name = clerkUser.firstName ? 
               `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : 
-              email?.split('@')[0] || 'User';
+              email.split('@')[0] || 'User';
             
-            // Create user in database
-            db.run(
-              `INSERT INTO users (clerk_user_id, name, email, role, approved, verification_status) 
-               VALUES (?, ?, ?, 'borrower', 0, 'pending')`,
-              [clerkUserId, name, email],
-              function(err) {
-                if (err) {
-                  console.error('User creation error:', err);
-                  return res.status(500).json({ error: 'Failed to create user' });
-                }
-                
-                // Get newly created user
-                db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (err, newUser) => {
-                  if (err || !newUser) {
-                    return res.status(500).json({ error: 'Failed to retrieve user' });
-                  }
-                  req.user = newUser;
-                  req.db = db;
-                  next();
-                });
+            // Check if email already exists
+            db.get('SELECT id FROM users WHERE email = ?', [email], (emailErr, existingUser) => {
+              if (emailErr) {
+                console.error('Email check error:', emailErr);
+                return res.status(500).json({ error: 'Database error checking email' });
               }
-            );
+              
+              if (existingUser) {
+                // Update existing user with clerk_user_id
+                db.run(
+                  'UPDATE users SET clerk_user_id = ? WHERE email = ?',
+                  [clerkUserId, email],
+                  function(updateErr) {
+                    if (updateErr) {
+                      console.error('User update error:', updateErr);
+                      return res.status(500).json({ error: 'Failed to update user' });
+                    }
+                    
+                    // Get updated user
+                    db.get('SELECT * FROM users WHERE email = ?', [email], (getErr, updatedUser) => {
+                      if (getErr || !updatedUser) {
+                        return res.status(500).json({ error: 'Failed to retrieve user' });
+                      }
+                      req.user = updatedUser;
+                      req.db = db;
+                      next();
+                    });
+                  }
+                );
+              } else {
+                // Create new user
+                db.run(
+                  `INSERT INTO users (clerk_user_id, name, email, role, approved, verification_status) 
+                   VALUES (?, ?, ?, 'borrower', 0, 'pending')`,
+                  [clerkUserId, name, email],
+                  function(createErr) {
+                    if (createErr) {
+                      console.error('User creation error:', createErr);
+                      console.error('Error details:', {
+                        clerkUserId,
+                        name,
+                        email,
+                        error: createErr.message
+                      });
+                      return res.status(500).json({ error: `Failed to create user: ${createErr.message}` });
+                    }
+                    
+                    // Get newly created user
+                    db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (getErr, newUser) => {
+                      if (getErr || !newUser) {
+                        console.error('Failed to retrieve new user:', getErr);
+                        return res.status(500).json({ error: 'Failed to retrieve user' });
+                      }
+                      req.user = newUser;
+                      req.db = db;
+                      next();
+                    });
+                  }
+                );
+              }
+            });
           } catch (syncError) {
             console.error('User sync error:', syncError);
-            return res.status(500).json({ error: 'Failed to sync user' });
+            console.error('Sync error details:', syncError.message);
+            return res.status(500).json({ error: `Failed to sync user: ${syncError.message}` });
           }
         } else {
           req.user = user;
