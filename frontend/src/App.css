@@ -4848,72 +4848,132 @@ td {
   font-size: 1.125rem;
 }
 
-/* Clerk Component Styling */
-.cl-rootBox {
+/* Clerk Auth Styling Fixes */
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 20px;
+}
+
+.auth-card {
   width: 100%;
-  --cl-color-primary: #667eea;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
+/* Clerk-specific overrides */
+.clerk-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* Target Clerk's root element */
+.cl-rootBox,
+.cl-card,
+.clerk-root {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+
+/* Fix Clerk's card positioning */
 .cl-card {
-  background: rgba(255, 255, 255, 0.95) !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 1rem !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 16px !important;
+  border: none !important;
+  background: white !important;
 }
 
-.cl-headerTitle {
-  font-size: 2rem !important;
-  font-weight: 800 !important;
+/* Center all Clerk internal elements */
+.cl-component,
+.cl-main,
+.cl-form,
+.cl-footerPages {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Fix any internal Clerk containers */
+.cl-internal-b3fm6y,
+.cl-internal-1m8vsyu {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* Auth header and footer styling */
+.auth-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.auth-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.cl-headerSubtitle {
-  color: #64748b !important;
-  font-size: 1rem !important;
+.auth-subtitle {
+  font-size: 16px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.6;
 }
 
+.auth-footer {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.auth-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.auth-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+/* Additional Clerk form adjustments */
 .cl-formButtonPrimary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  border: none !important;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25) !important;
-  transition: all 0.3s !important;
+  box-shadow: 0 4px 14px 0 rgba(102, 126, 234, 0.3) !important;
+  transition: all 0.3s ease !important;
 }
 
 .cl-formButtonPrimary:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
 }
 
-.cl-socialButtonsBlockButton {
-  border: 2px solid #e2e8f0 !important;
-  transition: all 0.3s !important;
-}
-
-.cl-socialButtonsBlockButton:hover {
-  background: #f8fafc !important;
-  border-color: #cbd5e1 !important;
-}
-
-.cl-formFieldInput {
-  border: 2px solid #e2e8f0 !important;
-  border-radius: 0.5rem !important;
-  padding: 0.875rem 1rem !important;
-  font-size: 0.9375rem !important;
-}
-
-.cl-formFieldInput:focus {
-  border-color: #667eea !important;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1) !important;
-}
-
-.cl-footerActionLink {
-  color: #667eea !important;
-  font-weight: 600 !important;
+/* Make sure Clerk's elements are responsive */
+@media (max-width: 480px) {
+  .auth-container {
+    padding: 16px;
+  }
+  
+  .auth-card {
+    max-width: 100%;
+  }
+  
+  .auth-title {
+    font-size: 28px;
+  }
 }
 
 /* BrokerAI Floating Button */

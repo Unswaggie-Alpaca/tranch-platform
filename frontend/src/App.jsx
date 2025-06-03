@@ -1214,7 +1214,12 @@ const ClerkAuthWrapper = ({ mode }) => {
               appearance={{
                 elements: {
                   rootBox: "clerk-root",
-                  card: "clerk-card"
+                  card: "clerk-card",
+                  formButtonPrimary: "cl-formButtonPrimary"
+                },
+                layout: {
+                  socialButtonsPlacement: "bottom",
+                  socialButtonsVariant: "iconButton"
                 }
               }}
               afterSignInUrl="/dashboard"
@@ -1224,7 +1229,12 @@ const ClerkAuthWrapper = ({ mode }) => {
               appearance={{
                 elements: {
                   rootBox: "clerk-root",
-                  card: "clerk-card"
+                  card: "clerk-card",
+                  formButtonPrimary: "cl-formButtonPrimary"
+                },
+                layout: {
+                  socialButtonsPlacement: "bottom",
+                  socialButtonsVariant: "iconButton"
                 }
               }}
               afterSignUpUrl="/onboarding"
