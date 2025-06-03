@@ -1489,82 +1489,73 @@ a:hover {
   50% { transform: translateY(-20px); }
 }
 
-/* Features Section */
+/* Features Section - Complete Fix */
 .features-section {
-  padding: 5rem 2rem;
-  background: var(--gray-50);
+  padding: 100px 0;
+  background: #ffffff;
 }
 
-.section-title {
+.features-section .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Header with proper spacing */
+.features-section .section-header {
   text-align: center;
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: var(--gray-900);
-  margin-bottom: 1rem;
-  letter-spacing: -0.02em;
+  margin-bottom: 80px; /* Much more space before the cards */
 }
 
-.section-subtitle {
-  text-align: center;
-  font-size: 1.25rem;
-  color: var(--gray-600);
-  margin-bottom: 3rem;
+.features-section .section-title {
+  font-size: 48px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 16px 0;
 }
 
+.features-section .section-subtitle {
+  font-size: 20px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Features Grid - Fixed layout */
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-  max-width: 1000px;
-  margin: 0 auto;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 32px;
+  align-items: start; /* Changed from stretch */
 }
 
+/* Ensure proper containing */
 .feature-card {
-  background: white;
-  padding: 2rem;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--gray-100);
-  transition: all var(--transition-base);
-}
-
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-xl);
+  background: #f8fafc;
+  border-radius: 16px;
+  padding: 40px 32px;
+  height: 100%;
+  transition: all 0.3s ease;
+  border: 1px solid #e2e8f0;
+  position: relative; /* Ensure proper stacking */
 }
 
 .feature-card.featured {
-  background: var(--gradient-primary);
-  color: white;
-  transform: scale(1.05);
-}
-
-.feature-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-}
-
-.feature-card h3 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
-}
-
-.feature-card.featured h3 {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
 }
 
-.feature-card ul {
-  list-style: none;
-}
-
-.feature-card li {
-  padding: 0.5rem 0;
-  color: var(--gray-700);
-}
-
-.feature-card.featured li {
-  color: rgba(255, 255, 255, 0.9);
+/* Alternative fix - wrap the header */
+@media (min-width: 1024px) {
+  .features-section .section-header {
+    position: relative;
+    z-index: 1;
+  }
+  
+  .features-grid {
+    position: relative;
+    z-index: 2;
+  }
 }
 
 /* How It Works Section - Professional Fintech Style */
