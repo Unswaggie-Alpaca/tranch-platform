@@ -9,7 +9,6 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 
-
 // Clerk imports
 const { clerkClient } = require('@clerk/clerk-sdk-node');
 const { syncClerkUser, deleteClerkUser } = require('./clerk-webhook');
@@ -18,28 +17,35 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 app.set('trust proxy', 1);
 
-// Database path - DEFINE THIS FIRST
+// ===========================
+// DATABASE CONFIGURATION
+// ===========================
 const dbPath = process.env.NODE_ENV === 'production' 
   ? '/var/data/tranch.db'
   : './tranch.db';
 
-// Uploads directory path
 const uploadsDir = process.env.NODE_ENV === 'production' 
   ? '/var/data/uploads'
-  : './uploads'; 
+  : './uploads';
 
-// Ensure data directory exists in production
+// Ensure directories exist
 if (process.env.NODE_ENV === 'production') {
-  const dataDir = path.dirname(dbPath);  // Now dbPath is defined!
+  const dataDir = path.dirname(dbPath);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 }
 
-// Initialize database
-const db = new sqlite3.Database(dbPath);  // Now this works!
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-// Middleware
+// Initialize database
+const db = new sqlite3.Database(dbPath);
+
+// ===========================
+// MIDDLEWARE SETUP
+// ===========================
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
@@ -59,14 +65,248 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// ===========================
+// AUTHENTICATION MIDDLEWARE (DEFINE BEFORE USE!)
+// ===========================
+const authenticateToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Access token required' });
+    }
 
-// Replace this line:
-// app.use('/uploads', express.static(uploadsDir));
+    const token = authHeader.split(' ')[1];
+    
+    // Verify Clerk session token
+    const { verifyToken } = require('@clerk/clerk-sdk-node');
+    
+    try {
+      const payload = await verifyToken(token, {
+        secretKey: process.env.CLERK_SECRET_KEY
+      });
+      
+      const clerkUserId = payload.sub;
+      
+      // Get user from database
+      db.get('SELECT * FROM users WHERE clerk_user_id = ?', [clerkUserId], async (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
 
-// With this authenticated endpoint:
+        if (!user) {
+          // User not in database, sync from Clerk
+          try {
+            const clerkUser = await clerkClient.users.getUser(clerkUserId);
+            
+            // Better error handling for email
+            if (!clerkUser.emailAddresses || clerkUser.emailAddresses.length === 0) {
+              console.error('No email found for Clerk user:', clerkUserId);
+              return res.status(400).json({ error: 'No email address found' });
+            }
+            
+            const email = clerkUser.emailAddresses[0]?.emailAddress;
+            if (!email) {
+              console.error('Email is null for Clerk user:', clerkUserId);
+              return res.status(400).json({ error: 'Invalid email address' });
+            }
+            
+            const name = clerkUser.firstName ? 
+              `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : 
+              email.split('@')[0] || 'User';
+            
+            // Check if email already exists
+            db.get('SELECT id FROM users WHERE email = ?', [email], (emailErr, existingUser) => {
+              if (emailErr) {
+                console.error('Email check error:', emailErr);
+                return res.status(500).json({ error: 'Database error checking email' });
+              }
+              
+              if (existingUser) {
+                // Update existing user with clerk_user_id
+                db.run(
+                  'UPDATE users SET clerk_user_id = ? WHERE email = ?',
+                  [clerkUserId, email],
+                  function(updateErr) {
+                    if (updateErr) {
+                      console.error('User update error:', updateErr);
+                      return res.status(500).json({ error: 'Failed to update user' });
+                    }
+                    
+                    // Get updated user
+                    db.get('SELECT * FROM users WHERE email = ?', [email], (getErr, updatedUser) => {
+                      if (getErr || !updatedUser) {
+                        return res.status(500).json({ error: 'Failed to retrieve user' });
+                      }
+                      req.user = updatedUser;
+                      req.db = db;
+                      next();
+                    });
+                  }
+                );
+              } else {
+                // Create new user
+                db.run(
+                  `INSERT INTO users (clerk_user_id, name, email, role, approved, verification_status) 
+                   VALUES (?, ?, ?, 'borrower', 0, 'pending')`,
+                  [clerkUserId, name, email],
+                  function(createErr) {
+                    if (createErr) {
+                      console.error('User creation error:', createErr);
+                      console.error('Error details:', {
+                        clerkUserId,
+                        name,
+                        email,
+                        error: createErr.message
+                      });
+                      return res.status(500).json({ error: `Failed to create user: ${createErr.message}` });
+                    }
+                    
+                    // Get newly created user
+                    db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (getErr, newUser) => {
+                      if (getErr || !newUser) {
+                        console.error('Failed to retrieve new user:', getErr);
+                        return res.status(500).json({ error: 'Failed to retrieve user' });
+                      }
+                      req.user = newUser;
+                      req.db = db;
+                      next();
+                    });
+                  }
+                );
+              }
+            });
+          } catch (syncError) {
+            console.error('User sync error:', syncError);
+            console.error('Sync error details:', syncError.message);
+            return res.status(500).json({ error: `Failed to sync user: ${syncError.message}` });
+          }
+        } else {
+          req.user = user;
+          req.db = db;
+          next();
+        }
+      });
+    } catch (verifyError) {
+      console.error('Token verification error:', verifyError);
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  } catch (error) {
+    console.error('Auth error:', error);
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
+};
+
+// Role-based access middleware
+const requireRole = (roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+  };
+};
+
+// ===========================
+// FILE UPLOAD CONFIGURATION
+// ===========================
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    cb(null, `${file.fieldname}-${uniqueSuffix}-${sanitizedName}`);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { 
+    fileSize: 50 * 1024 * 1024, // 50MB
+    files: 10
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|xls|xlsx|csv|txt/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype) || 
+                     file.mimetype.includes('document') || 
+                     file.mimetype.includes('spreadsheet');
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only documents, images, and spreadsheets are allowed'));
+    }
+  }
+});
+
+// ===========================
+// WEBHOOK ENDPOINT (MUST BE BEFORE BODY PARSING)
+// ===========================
+app.post('/api/webhooks/clerk', 
+  express.raw({ type: 'application/json' }), 
+  async (req, res) => {
+    const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+    
+    if (!webhookSecret) {
+      console.error('CLERK_WEBHOOK_SECRET not set');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+
+    // Verify webhook signature
+    const svix = require('svix');
+    const webhook = new svix.Webhook(webhookSecret);
+    
+    const headers = {
+      'svix-id': req.headers['svix-id'],
+      'svix-timestamp': req.headers['svix-timestamp'],
+      'svix-signature': req.headers['svix-signature'],
+    };
+
+    let evt;
+    try {
+      evt = webhook.verify(req.body, headers);
+    } catch (err) {
+      console.error('Webhook verification failed:', err);
+      return res.status(400).json({ error: 'Webhook verification failed' });
+    }
+
+    // Handle webhook events
+    const { type, data } = evt;
+    
+    try {
+      switch (type) {
+        case 'user.created':
+        case 'user.updated':
+          await syncClerkUser(data);
+          break;
+          
+        case 'user.deleted':
+          await deleteClerkUser(data.id);
+          break;
+          
+        default:
+          console.log(`Unhandled webhook event: ${type}`);
+      }
+      
+      res.status(200).json({ received: true });
+    } catch (error) {
+      console.error('Webhook processing error:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
+    }
+  }
+);
+
+// ===========================
+// BODY PARSING MIDDLEWARE (AFTER WEBHOOKS)
+// ===========================
+app.use(express.json({ limit: '50mb' }));
+
+// ===========================
+// AUTHENTICATED FILE SERVING
+// ===========================
 app.get('/uploads/:filename', authenticateToken, async (req, res) => {
   const filename = req.params.filename;
   const filepath = path.join(uploadsDir, filename);
@@ -110,7 +350,10 @@ app.get('/uploads/:filename', authenticateToken, async (req, res) => {
   );
 });
 
-// Initialize database tables
+// ===========================
+// DATABASE INITIALIZATION
+// ===========================
+
 db.serialize(() => {
   // Users table with Clerk integration
   // In server.js, update the users table creation
@@ -421,178 +664,6 @@ app.post('/api/webhooks/clerk',
 
 // Body parsing middleware (after webhooks)
 app.use(express.json({ limit: '50mb' }));
-
-const authenticateToken = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Access token required' });
-    }
-
-    const token = authHeader.split(' ')[1];
-    
-    // Verify Clerk session token
-    const { verifyToken } = require('@clerk/clerk-sdk-node');
-    
-    try {
-      const payload = await verifyToken(token, {
-        secretKey: process.env.CLERK_SECRET_KEY
-      });
-      
-      const clerkUserId = payload.sub;
-      
-      // Get user from database
-      db.get('SELECT * FROM users WHERE clerk_user_id = ?', [clerkUserId], async (err, user) => {
-        if (err) {
-          console.error('Database error:', err);
-          return res.status(500).json({ error: 'Database error' });
-        }
-
-        if (!user) {
-          // User not in database, sync from Clerk
-          try {
-            const clerkUser = await clerkClient.users.getUser(clerkUserId);
-            
-            // Better error handling for email
-            if (!clerkUser.emailAddresses || clerkUser.emailAddresses.length === 0) {
-              console.error('No email found for Clerk user:', clerkUserId);
-              return res.status(400).json({ error: 'No email address found' });
-            }
-            
-            const email = clerkUser.emailAddresses[0]?.emailAddress;
-            if (!email) {
-              console.error('Email is null for Clerk user:', clerkUserId);
-              return res.status(400).json({ error: 'Invalid email address' });
-            }
-            
-            const name = clerkUser.firstName ? 
-              `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : 
-              email.split('@')[0] || 'User';
-            
-            // Check if email already exists
-            db.get('SELECT id FROM users WHERE email = ?', [email], (emailErr, existingUser) => {
-              if (emailErr) {
-                console.error('Email check error:', emailErr);
-                return res.status(500).json({ error: 'Database error checking email' });
-              }
-              
-              if (existingUser) {
-                // Update existing user with clerk_user_id
-                db.run(
-                  'UPDATE users SET clerk_user_id = ? WHERE email = ?',
-                  [clerkUserId, email],
-                  function(updateErr) {
-                    if (updateErr) {
-                      console.error('User update error:', updateErr);
-                      return res.status(500).json({ error: 'Failed to update user' });
-                    }
-                    
-                    // Get updated user
-                    db.get('SELECT * FROM users WHERE email = ?', [email], (getErr, updatedUser) => {
-                      if (getErr || !updatedUser) {
-                        return res.status(500).json({ error: 'Failed to retrieve user' });
-                      }
-                      req.user = updatedUser;
-                      req.db = db;
-                      next();
-                    });
-                  }
-                );
-              } else {
-                // Create new user
-                db.run(
-                  `INSERT INTO users (clerk_user_id, name, email, role, approved, verification_status) 
-                   VALUES (?, ?, ?, 'borrower', 0, 'pending')`,
-                  [clerkUserId, name, email],
-                  function(createErr) {
-                    if (createErr) {
-                      console.error('User creation error:', createErr);
-                      console.error('Error details:', {
-                        clerkUserId,
-                        name,
-                        email,
-                        error: createErr.message
-                      });
-                      return res.status(500).json({ error: `Failed to create user: ${createErr.message}` });
-                    }
-                    
-                    // Get newly created user
-                    db.get('SELECT * FROM users WHERE id = ?', [this.lastID], (getErr, newUser) => {
-                      if (getErr || !newUser) {
-                        console.error('Failed to retrieve new user:', getErr);
-                        return res.status(500).json({ error: 'Failed to retrieve user' });
-                      }
-                      req.user = newUser;
-                      req.db = db;
-                      next();
-                    });
-                  }
-                );
-              }
-            });
-          } catch (syncError) {
-            console.error('User sync error:', syncError);
-            console.error('Sync error details:', syncError.message);
-            return res.status(500).json({ error: `Failed to sync user: ${syncError.message}` });
-          }
-        } else {
-          req.user = user;
-          req.db = db;
-          next();
-        }
-      });
-    } catch (verifyError) {
-      console.error('Token verification error:', verifyError);
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-  } catch (error) {
-    console.error('Auth error:', error);
-    return res.status(401).json({ error: 'Authentication failed' });
-  }
-};
-
-// Role-based access middleware
-const requireRole = (roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-  };
-};
-
-// File upload configuration
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);  // Use the persistent directory
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, `${file.fieldname}-${uniqueSuffix}-${sanitizedName}`);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: { 
-    fileSize: 50 * 1024 * 1024, // 50MB
-    files: 10
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|xls|xlsx|csv|txt/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype) || 
-                     file.mimetype.includes('document') || 
-                     file.mimetype.includes('spreadsheet');
-    
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only documents, images, and spreadsheets are allowed'));
-    }
-  }
-});
 
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
