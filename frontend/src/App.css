@@ -1447,65 +1447,238 @@ a:hover {
   color: rgba(255, 255, 255, 0.9);
 }
 
-/* How It Works */
+/* How It Works Section - Professional Fintech Style */
 .how-it-works {
-  padding: 5rem 2rem;
-  background: white;
+  padding: 100px 0;
+  background: #fafbfc;
 }
 
-.process-timeline {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 2rem;
-  max-width: 1000px;
-  margin: 3rem auto;
-  position: relative;
-}
-
-.process-timeline::before {
-  content: '';
-  position: absolute;
-  top: 40px;
-  left: 10%;
-  right: 10%;
-  height: 2px;
-  background: var(--gray-200);
-  z-index: 0;
-}
-
-.process-step {
+.section-header {
   text-align: center;
-  position: relative;
-  z-index: 1;
+  margin-bottom: 60px;
 }
 
-.step-number {
-  width: 80px;
-  height: 80px;
-  background: var(--gradient-primary);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
+.section-title {
+  font-size: 42px;
   font-weight: 700;
-  margin: 0 auto 1rem;
-  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.2);
+  color: #0f172a;
+  margin-bottom: 16px;
 }
 
-.process-step h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--gray-900);
-  margin-bottom: 0.5rem;
-}
-
-.process-step p {
-  color: var(--gray-600);
+.section-subtitle {
+  font-size: 20px;
+  color: #475569;
+  max-width: 700px;
+  margin: 0 auto;
   line-height: 1.6;
 }
 
+/* Value Props */
+.value-props {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  max-width: 1000px;
+  margin: 0 auto 80px;
+}
+
+.value-prop {
+  text-align: center;
+}
+
+.value-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.value-icon svg {
+  width: 32px;
+  height: 32px;
+  color: white;
+}
+
+.value-prop h4 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.value-prop p {
+  font-size: 16px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* User Journeys */
+.user-journeys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.journey-path {
+  background: white;
+  border-radius: 16px;
+  padding: 48px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.journey-header {
+  margin-bottom: 40px;
+}
+
+.journey-header h3 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.journey-header p {
+  font-size: 16px;
+  color: #64748b;
+}
+
+.journey-steps {
+  margin-bottom: 32px;
+}
+
+.journey-step {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.step-number {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  background: #f1f5f9;
+  color: #667eea;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.step-content h4 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.step-content p {
+  font-size: 15px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.journey-feature {
+  background: linear-gradient(135deg, #f0f4ff 0%, #e9e3ff 100%);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.feature-highlight h5 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #667eea;
+  margin-bottom: 8px;
+}
+
+.feature-highlight p {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.journey-cta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.price-note {
+  font-size: 14px;
+  color: #64748b;
+}
+
+/* Platform Benefits */
+.platform-benefits {
+  margin-top: 80px;
+  text-align: center;
+}
+
+.platform-benefits h3 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 48px;
+}
+
+.benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.benefit h4 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.benefit p {
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .user-journeys {
+    grid-template-columns: 1fr;
+  }
+  
+  .benefits-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .value-props {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  
+  .journey-path {
+    padding: 32px 24px;
+  }
+  
+  .benefits-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .section-title {
+    font-size: 32px;
+  }
+}
 /* Pricing Section */
 .pricing-section {
   padding: 5rem 2rem;

@@ -6785,137 +6785,173 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="how-it-works">
-        <div className="container">
-          <h2 className="section-title">Simple, Secure, Efficient</h2>
-          
-          <div className="process-timeline">
-            <div className="process-step">
-              <div className="step-number">1</div>
-              <h3>Create Your Profile</h3>
-              <p>Sign up as a developer or funder with verified credentials</p>
-            </div>
-            
-            <div className="process-step">
-              <div className="step-number">2</div>
-              <h3>List or Browse</h3>
-              <p>Developers list projects, funders browse opportunities</p>
-            </div>
-            
-            <div className="process-step">
-              <div className="step-number">3</div>
-              <h3>Connect & Negotiate</h3>
-              <p>Secure messaging and document sharing platform</p>
-            </div>
-            
-            <div className="process-step">
-              <div className="step-number">4</div>
-              <h3>Close the Deal</h3>
-              <p>Track progress from initial interest to funding</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* How It Works - Professional Redesign */}
+<section id="how-it-works" className="how-it-works">
+  <div className="container">
+    <div className="section-header">
+      <h2 className="section-title">How Tranch Streamlines Property Finance</h2>
+      <p className="section-subtitle">
+        The intelligent marketplace connecting property developers with private credit funders
+      </p>
+    </div>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="pricing-section">
-        <div className="container">
-          <h2 className="section-title">Transparent Pricing</h2>
-          <p className="section-subtitle">Pay only when you succeed</p>
-          
-          <div className="pricing-grid">
-            <div className="pricing-card">
-              <h3>Developers</h3>
-              <div className="price">
-                <span className="currency">$</span>
-                <span className="amount">499</span>
-                <span className="period">per project</span>
-              </div>
-              <ul>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  List unlimited projects
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Access to all funders
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Secure document portal
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  BrokerAI assistance
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Pay only when published
-                </li>
-              </ul>
-              <Link to="/register" className="btn btn-primary btn-block">
-                Start Listing
-              </Link>
+    {/* Value Props */}
+    <div className="value-props">
+      <div className="value-prop">
+        <div className="value-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+        </div>
+        <h4>Rapid Execution</h4>
+        <p>Connect with funders in days, not months</p>
+      </div>
+      <div className="value-prop">
+        <div className="value-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 6v6l4 2"></path>
+          </svg>
+        </div>
+        <h4>Real-Time Intelligence</h4>
+        <p>BrokerAI analyzes deals and provides instant insights</p>
+      </div>
+      <div className="value-prop">
+        <div className="value-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+            <path d="M2 17l10 5 10-5"></path>
+            <path d="M2 12l10 5 10-5"></path>
+          </svg>
+        </div>
+        <h4>Complete Transparency</h4>
+        <p>Track every interaction and document exchange</p>
+      </div>
+    </div>
+
+    {/* Split Paths */}
+    <div className="user-journeys">
+      {/* Developer Journey */}
+      <div className="journey-path developer-path">
+        <div className="journey-header">
+          <h3>For Property Developers</h3>
+          <p>Access capital markets with unprecedented efficiency</p>
+        </div>
+        
+        <div className="journey-steps">
+          <div className="journey-step">
+            <div className="step-number">01</div>
+            <div className="step-content">
+              <h4>Upload Project Documentation</h4>
+              <p>Feasibility studies, development applications, financial models - all secured in our institutional-grade vault</p>
             </div>
-            
-            <div className="pricing-card featured">
-              <span className="badge">Most Popular</span>
-              <h3>Funders</h3>
-              <div className="price">
-                <span className="currency">$</span>
-                <span className="amount">299</span>
-                <span className="period">per month</span>
-              </div>
-              <ul>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Unlimited deal access
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Advanced filters
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Due diligence tools
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Portfolio analytics
-                </li>
-                <li>
-                  <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Cancel anytime
-                </li>
-              </ul>
-              <Link to="/register?role=funder" className="btn btn-primary btn-block">
-                Start Investing
-              </Link>
+          </div>
+          
+          <div className="journey-step">
+            <div className="step-number">02</div>
+            <div className="step-content">
+              <h4>Gain Market Exposure</h4>
+              <p>Your project becomes visible to our network of verified private credit funds and sophisticated investors</p>
+            </div>
+          </div>
+          
+          <div className="journey-step">
+            <div className="step-number">03</div>
+            <div className="step-content">
+              <h4>Manage Capital Raising</h4>
+              <p>Field inquiries, compare terms, and progress multiple funding conversations simultaneously</p>
+            </div>
+          </div>
+
+          <div className="journey-feature">
+            <div className="feature-highlight">
+              <h5>Powered by BrokerAI</h5>
+              <p>Get instant answers on LVR calculations, feasibility metrics, and market comparables</p>
             </div>
           </div>
         </div>
-      </section>
+        
+        <div className="journey-cta">
+          <Link to="/register" className="btn btn-primary">
+            List Your Project
+          </Link>
+          <span className="price-note">$499 per project listing</span>
+        </div>
+      </div>
+
+      {/* Funder Journey */}
+      <div className="journey-path funder-path">
+        <div className="journey-header">
+          <h3>For Private Credit Funds</h3>
+          <p>Source and analyze deals with institutional-grade tools</p>
+        </div>
+        
+        <div className="journey-steps">
+          <div className="journey-step">
+            <div className="step-number">01</div>
+            <div className="step-content">
+              <h4>Access Curated Deal Flow</h4>
+              <p>Filter opportunities by geography, asset class, deal size, and risk parameters</p>
+            </div>
+          </div>
+          
+          <div className="journey-step">
+            <div className="step-number">02</div>
+            <div className="step-content">
+              <h4>Conduct Due Diligence</h4>
+              <p>Review comprehensive project documentation and financial analysis in our secure data room</p>
+            </div>
+          </div>
+          
+          <div className="journey-step">
+            <div className="step-number">03</div>
+            <div className="step-content">
+              <h4>Execute Efficiently</h4>
+              <p>Communicate terms, negotiate directly, and track deal progression through to close</p>
+            </div>
+          </div>
+
+          <div className="journey-feature">
+            <div className="feature-highlight">
+              <h5>BrokerAI Analytics</h5>
+              <p>Leverage AI to assess project viability, market conditions, and comparative returns</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="journey-cta">
+          <Link to="/register?role=funder" className="btn btn-primary">
+            Access Deal Flow
+          </Link>
+          <span className="price-note">$299/month professional access</span>
+        </div>
+      </div>
+    </div>
+
+    {/* Platform Benefits */}
+    <div className="platform-benefits">
+      <h3>The Tranch Advantage</h3>
+      <div className="benefits-grid">
+        <div className="benefit">
+          <h4>Institutional-Grade Security</h4>
+          <p>Bank-level encryption and secure document management protect sensitive financial information</p>
+        </div>
+        <div className="benefit">
+          <h4>Intelligent Deal Analysis</h4>
+          <p>BrokerAI provides 24/7 expert guidance on deal structuring, market analysis, and financial metrics</p>
+        </div>
+        <div className="benefit">
+          <h4>Verified Network</h4>
+          <p>All participants undergo comprehensive verification ensuring quality connections</p>
+        </div>
+        <div className="benefit">
+          <h4>Complete Audit Trail</h4>
+          <p>Every interaction, document exchange, and communication is tracked for compliance</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
       {/* CTA Section */}
       <section className="cta-section">
