@@ -4915,3 +4915,220 @@ td {
   color: #667eea !important;
   font-weight: 600 !important;
 }
+
+/* BrokerAI Floating Button */
+.broker-ai-floating-button {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 1000;
+}
+
+.broker-ai-floating-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 30px rgba(102, 126, 234, 0.5);
+}
+
+.broker-ai-floating-button .ai-icon {
+  font-size: 28px;
+  color: white;
+}
+
+/* BrokerAI Chat Window */
+.broker-ai-floating {
+  position: fixed;
+  bottom: 100px;
+  right: 24px;
+  width: 380px;
+  height: 600px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  display: none;
+  flex-direction: column;
+  z-index: 1001;
+  overflow: hidden;
+}
+
+.broker-ai-floating.open {
+  display: flex;
+}
+
+.broker-ai-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.broker-ai-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.broker-ai-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.broker-ai-controls button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 20px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.broker-ai-controls button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.broker-ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: #f8fafc;
+}
+
+.ai-welcome {
+  text-align: center;
+  padding: 40px 20px;
+  color: #64748b;
+}
+
+.ai-message {
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.ai-message.user {
+  flex-direction: row-reverse;
+}
+
+.ai-message p {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin: 0;
+  max-width: 80%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.ai-message.user p {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 16px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #94a3b8;
+  border-radius: 50%;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+}
+
+.broker-ai-input {
+  padding: 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 12px;
+  background: white;
+}
+
+.broker-ai-input input {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  outline: none;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.broker-ai-input input:focus {
+  border-color: #667eea;
+}
+
+.broker-ai-input button {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 24px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.broker-ai-input button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.broker-ai-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .broker-ai-floating {
+    width: 100%;
+    height: 100%;
+    bottom: 0;
+    right: 0;
+    border-radius: 0;
+  }
+  
+  .broker-ai-floating-button {
+    bottom: 16px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
+  }
+}
