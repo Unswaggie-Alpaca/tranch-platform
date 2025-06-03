@@ -132,16 +132,18 @@ const createApiClient = (getToken) => {
     
     // Document download
     async downloadDocument(filePath) {
-      const token = await getToken();
-      const response = await fetch(`${API_BASE_URL.replace('/api', '')}/${filePath}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) throw new Error('Download failed');
-      return response.blob();
-    },
+  const token = await getToken();
+  // Extract just the filename from any path format
+  const filename = filePath.split('/').pop();
+  const response = await fetch(`${API_BASE_URL.replace('/api', '')}/uploads/${filename}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  
+  if (!response.ok) throw new Error('Download failed');
+  return response.blob();
+},
 
     // Payment endpoints
     createProjectPayment: (projectId) => request('/payments/create-project-payment', {

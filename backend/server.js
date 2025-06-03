@@ -310,6 +310,10 @@ app.use(express.json({ limit: '50mb' }));
 app.get('/uploads/:filename', authenticateToken, async (req, res) => {
   const filename = req.params.filename;
   const filepath = path.join(uploadsDir, filename);
+
+    console.log('Requested file:', filename);
+  console.log('Full path:', filepath);
+  console.log('File exists:', fs.existsSync(filepath));
   
   // Check if user has access to this file
   db.get(
