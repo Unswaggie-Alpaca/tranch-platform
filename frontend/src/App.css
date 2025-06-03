@@ -5351,14 +5351,115 @@ td {
     font-size: 16px;
   }
   
+/* BrokerAI Input Area - Complete Styling */
+.broker-ai-input {
+  padding: 16px;
+  border-top: 1px solid #e2e8f0;
+  background: white;
+  display: flex;
+  gap: 12px;
+}
+
+.broker-ai-input input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  outline: none;
+  font-size: 15px;
+  font-family: inherit;
+  transition: all 0.2s;
+  background: #f8fafc;
+}
+
+.broker-ai-input input:focus {
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.broker-ai-input input::placeholder {
+  color: #94a3b8;
+}
+
+.broker-ai-input button {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.broker-ai-input button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.broker-ai-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Smaller screens adjustment */
+@media (max-height: 700px) {
   .broker-ai-input {
-    padding: 12px; /* Smaller input area */
+    padding: 12px;
+    gap: 8px;
   }
   
   .broker-ai-input input {
-    padding: 8px 14px;
+    padding: 10px 14px;
     font-size: 14px;
   }
+  
+  .broker-ai-input button {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+}}
+
+/* BrokerAI Header Controls - Complete Fix */
+.broker-ai-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.broker-ai-controls button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.broker-ai-controls button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Style each button specifically */
+.broker-ai-controls button:first-child {
+  font-size: 20px;
+  padding-bottom: 4px; /* Adjust minimize button position */
+}
+
+.broker-ai-controls button:last-child {
+  font-size: 22px;
 }
 
 /* Ensure the button stays accessible */
