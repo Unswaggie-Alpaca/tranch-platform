@@ -2103,24 +2103,33 @@ label .required {
     padding: 60px 0;
   }
 
- .problem-solution-section .container {
+.problem-solution-section .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-  .problem-solution-section .section-title {
-    font-size: 28px;
-    font-weight: 800;
-    padding: 0 20px;
-    line-height: 1.2;
-  }
+.problem-solution-section .section-title {
+  font-size: 48px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 16px 0;
+  text-align: center;
+  width: 100%;
+}
 
-  .problem-solution-section .section-subtitle {
-    font-size: 16px;
-    padding: 0 30px;
-    margin-bottom: 40px;
-  }
+.problem-solution-section .section-subtitle {
+  font-size: 20px;
+  color: #64748b;
+  margin: 0 0 60px 0;
+  line-height: 1.6;
+  text-align: center;
+  width: 100%;
+  max-width: 800px;
+}
 
   .problem-solution-section .section-header {
   text-align: center;
@@ -2128,11 +2137,10 @@ label .required {
 }
 
   /* Mobile Problem Cards - Swipeable */
-  .problem-cards-wrapper {
-    position: relative;
-    margin-bottom: 60px;
-    padding: 0 20px;
-  }
+.problem-cards-wrapper {
+  margin-bottom: 80px;
+  width: 100%;
+}
 
   .problem-cards {
     display: flex;
@@ -2300,9 +2308,22 @@ label .required {
   background: #fafbfc;
 }
 
+.how-it-works .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .section-header {
   text-align: center;
   margin-bottom: 60px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .section-title {
@@ -2310,6 +2331,8 @@ label .required {
   font-weight: 700;
   color: #0f172a;
   margin-bottom: 16px;
+  text-align: center;
+  width: 100%;
 }
 
 .section-subtitle {
@@ -2318,6 +2341,8 @@ label .required {
   max-width: 700px;
   margin: 0 auto;
   line-height: 1.6;
+  text-align: center;
+  width: 100%;
 }
 
 /* Value Props */
