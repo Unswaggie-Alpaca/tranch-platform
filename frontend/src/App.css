@@ -1946,8 +1946,8 @@ label .required {
 }
 
 .problem-card {
-  background: #fef2f2;
-  border: 2px solid #fee2e2;
+   background: #f3f4ff;
+  border: 2px solid #e0e7ff;
   border-radius: 16px;
   padding: 40px 32px;
   text-align: center;
@@ -1956,7 +1956,7 @@ label .required {
 
 .problem-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(239, 68, 68, 0.1);
+  box-shadow: 0 12px 24px rgba(102, 126, 234, 0.1);
 }
 
 .problem-icon {
@@ -1966,26 +1966,26 @@ label .required {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(239, 68, 68, 0.1);
+    background: rgba(102, 126, 234, 0.1);
   border-radius: 16px;
 }
 
 .problem-icon svg {
   width: 32px;
   height: 32px;
-  color: #dc2626;
+    color: #667eea;
 }
 
 .problem-card h3 {
   font-size: 22px;
   font-weight: 600;
-  color: #991b1b;
+  color: #4c1d95;
   margin-bottom: 12px;
 }
 
 .problem-card p {
   font-size: 16px;
-  color: #7f1d1d;
+  color: #6b7280;
   line-height: 1.6;
 }
 
@@ -2103,9 +2103,11 @@ label .required {
     padding: 60px 0;
   }
 
-  .problem-solution-section .container {
-    padding: 0;
-  }
+ .problem-solution-section .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
 
   .problem-solution-section .section-title {
     font-size: 28px;
@@ -2119,6 +2121,11 @@ label .required {
     padding: 0 30px;
     margin-bottom: 40px;
   }
+
+  .problem-solution-section .section-header {
+  text-align: center;
+  margin-bottom: 60px;
+}
 
   /* Mobile Problem Cards - Swipeable */
   .problem-cards-wrapper {
