@@ -11,8 +11,6 @@ import {
   useParams 
 } from 'react-router-dom';
 import './App.css';
-import './components/Navbar.css';
-import './components/Modal.css';
 import ReactMarkdown from 'react-markdown';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
