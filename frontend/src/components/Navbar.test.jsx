@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
-import Navigation from './Navigation';
+import Navbar from './Navbar';
 
-describe('Navigation', () => {
+describe('Navbar', () => {
   test('renders brand text', () => {
-    render(<Navigation />);
+    render(<Navbar />);
     expect(screen.getByRole('navigation')).toHaveTextContent('Tranch');
   });
 });
