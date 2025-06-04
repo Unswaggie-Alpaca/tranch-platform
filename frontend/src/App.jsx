@@ -3434,6 +3434,8 @@ const CreateProject = () => {
 // MY PROJECTS PAGE
 // ===========================
 
+// Enhanced My Projects Component with Mobile-First Design
+
 const MyProjects = () => {
   const api = useApi();
   const navigate = useNavigate();
@@ -3477,9 +3479,71 @@ const MyProjects = () => {
     }
   });
 
+  // Mobile Project Card Component
+  const MobileProjectCard = ({ project }) => (
+    <div className="mobile-project-card">
+      <div className="mobile-card-header">
+        <h3 className="mobile-project-title">{project.title}</h3>
+        <div className="mobile-project-status">
+          <span className={`mobile-status-badge ${project.payment_status === 'paid' ? 'status-published' : 'status-draft'}`}>
+            {project.payment_status === 'paid' ? 'Published' : 'Draft'}
+          </span>
+          {project.documents_complete && (
+            <div className="mobile-docs-status complete">
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <div className="mobile-card-content">
+        <div className="mobile-detail-item full-width">
+          <span className="mobile-detail-label">Location</span>
+          <span className="mobile-detail-value">{project.suburb}</span>
+        </div>
+        
+        <div className="mobile-detail-item">
+          <span className="mobile-detail-label">Loan Amount</span>
+          <span className="mobile-detail-value amount">{formatCurrency(project.loan_amount)}</span>
+        </div>
+        
+        <div className="mobile-detail-item">
+          <span className="mobile-detail-label">Created</span>
+          <span className="mobile-detail-value">{formatDate(project.created_at)}</span>
+        </div>
+      </div>
+      
+      <div className="mobile-card-actions">
+        <button
+          onClick={() => navigate(`/project/${project.id}`)}
+          className="btn btn-outline"
+        >
+          <svg className="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+            <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+          </svg>
+          View
+        </button>
+        {project.payment_status === 'unpaid' && (
+          <button
+            onClick={() => navigate(`/project/${project.id}/edit`)}
+            className="btn btn-primary"
+          >
+            <svg className="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+            </svg>
+            Edit
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   if (loading) return <LoadingSpinner />;
 
-   return (
+  return (
     <div className="my-projects-page">
       <div className="page-header">
         <h1>My Projects</h1>
@@ -3545,6 +3609,14 @@ const MyProjects = () => {
             </select>
           </div>
 
+          {/* Mobile Cards Layout */}
+          <div className="mobile-projects-grid">
+            {filteredProjects.map(project => (
+              <MobileProjectCard key={project.id} project={project} />
+            ))}
+          </div>
+
+          {/* Desktop Table Layout */}
           <div className="projects-table">
             <table>
               <thead>
@@ -3572,14 +3644,12 @@ const MyProjects = () => {
                           <svg viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
-                          Complete
                         </span>
                       ) : (
                         <span className="docs-status incomplete">
                           <svg viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                           </svg>
-                          Incomplete
                         </span>
                       )}
                     </td>
@@ -3592,6 +3662,10 @@ const MyProjects = () => {
                         onClick={() => navigate(`/project/${project.id}`)}
                         className="btn btn-sm btn-outline"
                       >
+                        <svg className="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                          <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                        </svg>
                         View
                       </button>
                       {project.payment_status === 'unpaid' && (
@@ -3599,6 +3673,9 @@ const MyProjects = () => {
                           onClick={() => navigate(`/project/${project.id}/edit`)}
                           className="btn btn-sm btn-primary"
                         >
+                          <svg className="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                          </svg>
                           Edit
                         </button>
                       )}
