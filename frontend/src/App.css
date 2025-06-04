@@ -1175,6 +1175,7 @@ label .required {
 }
 
 /* Hero container for better control */
+/* Update hero-container to use grid instead of relying on absolute positioning */
 .hero-container {
   max-width: 1280px;
   margin: 0 auto;
@@ -1184,6 +1185,51 @@ label .required {
   align-items: center;
   gap: 4rem;
   min-height: 90vh;
+  position: relative;
+}
+
+/* Update hero-visual to be relatively positioned */
+.hero-visual {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Make floating cards position relative to their container */
+.floating-card {
+  position: absolute;
+  background: white;
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--gray-100);
+  transition: all var(--transition-slow);
+  cursor: pointer;
+  min-width: 280px;
+}
+
+/* Adjust card positions */
+.card-1 {
+  top: 10%;
+  right: 10%;
+  animation: float 6s ease-in-out infinite;
+}
+
+.card-2 {
+  top: 35%;
+  left: 10%;
+  animation: float 8s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+.card-3 {
+  bottom: 10%;
+  right: 20%;
+  animation: float 7s ease-in-out infinite;
+  animation-delay: 2s;
 }
 
 /* Feature icon wrapper */
