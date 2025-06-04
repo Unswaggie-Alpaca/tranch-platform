@@ -2130,128 +2130,30 @@ label .required {
 
 /* MOBILE STYLES - STUNNING CENTERED DESIGN */
 @media (max-width: 768px) {
-  .problem-solution-section {
-    padding: 60px 0;
-  }
-
-.problem-solution-section .container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.problem-solution-section .section-title {
-  font-size: 48px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 16px 0;
-  text-align: center;
-  width: 100%;
-}
-
-.problem-solution-section .section-subtitle {
-  font-size: 20px;
-  color: #64748b;
-  margin: 0 0 60px 0;
-  line-height: 1.6;
-  text-align: center;
-  width: 100%;
-  max-width: 800px;
-}
-
-  .problem-solution-section .section-header {
-  text-align: center;
-  margin-bottom: 60px;
-}
-
-  /* Mobile Problem Cards - Swipeable */
-.problem-cards-wrapper {
-  margin-bottom: 80px;
-  width: 100%;
-}
-
-  .problem-cards {
-    display: flex;
-    gap: 16px;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    grid-template-columns: unset;
-  }
-
-  .problem-cards::-webkit-scrollbar {
-    display: none;
-  }
-
-  .problem-card {
-    flex: 0 0 85%;
-    scroll-snap-align: center;
-    padding: 32px 24px;
-    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.1);
-  }
-
-  .problem-icon {
-    width: 56px;
-    height: 56px;
-    margin-bottom: 20px;
-  }
-
-  .problem-icon svg {
-    width: 28px;
-    height: 28px;
-  }
-
-  .problem-card h3 {
-    font-size: 20px;
-    font-weight: 700;
-  }
-
-  .problem-card p {
-    font-size: 15px;
-    line-height: 1.6;
-  }
-
-  /* Mobile Transition */
-  .solution-transition {
-    margin: 50px 20px;
-    gap: 16px;
-  }
-
-  .transition-text {
-    font-size: 14px;
-    padding: 10px 24px;
-    letter-spacing: 1px;
-    white-space: nowrap;
-  }
-
-  /* Mobile Solution Cards */
-  .solution-title {
-    font-size: 28px;
-    font-weight: 800;
+  /* Fix the solution section container */
+  .solution-overview {
     padding: 0 20px;
-    line-height: 1.2;
-  }
-
-  .solution-subtitle {
-    font-size: 16px;
-    padding: 0 30px;
-    margin-bottom: 40px;
-  }
-
-  /* Fix for Intelligent Marketplace mobile scaling */
-
-  .solution-cards-wrapper {
-    position: relative;
-    padding: 0;
-    width: 100%;
     overflow: hidden;
   }
 
+  /* Fix the subtitle getting cut off */
+  .solution-subtitle {
+    font-size: 16px;
+    padding: 0 10px;
+    margin-bottom: 40px;
+    line-height: 1.6;
+    word-wrap: break-word;
+  }
+
+  /* Fix the cards wrapper */
+  .solution-cards-wrapper {
+    margin: 0 -20px;
+    padding: 0;
+    width: calc(100% + 40px);
+    position: relative;
+  }
+
+  /* Fix the cards container */
   .solution-cards {
     display: flex;
     gap: 16px;
@@ -2259,17 +2161,31 @@ label .required {
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding: 0 20px;
-    margin: 0 -20px;
-    width: calc(100% + 40px);
+    padding: 0 20px 20px 20px;
   }
 
+  /* Fix the individual cards */
   .solution-card {
-    flex: 0 0 85%;
-    max-width: 320px;
-    margin: 0 auto;
+    flex: 0 0 300px;
+    min-width: 300px;
+    scroll-snap-align: start;
+    margin: 0;
+  }
+
+  /* Ensure first card starts at the edge */
+  .solution-card:first-child {
+    scroll-snap-align: start;
+  }
+
+  /* Ensure last card has padding */
+  .solution-card:last-child::after {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 1px;
   }
 }
+
 
   .solution-icon {
     width: 56px;
@@ -2566,53 +2482,55 @@ label .required {
 
 /* Mobile How It Works - Swipeable Cards */
 @media (max-width: 768px) {
+  /* Fix journey cards container */
   .how-it-works {
     padding: 60px 0 80px;
-    overflow: hidden;
+    overflow: visible;
   }
 
-  .value-props {
-    display: none;
-  }
-
-  .user-journeys {
-    display: flex;
-    gap: 0;
+  .how-it-works .container {
     padding: 0;
-    margin: 0 -20px;
+  }
+
+  /* Journey cards wrapper */
+  .user-journeys {
+    display: flex !important;
+    gap: 20px;
+    padding: 0 20px;
+    margin: 0;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    position: relative;
+    width: 100%;
   }
 
+  /* Hide scrollbar */
   .user-journeys::-webkit-scrollbar {
     display: none;
   }
 
+  /* Individual journey cards */
   .journey-path {
-    flex: 0 0 85vw;
+    flex: 0 0 calc(100vw - 60px);
+    min-width: calc(100vw - 60px);
     max-width: 400px;
-    margin: 0 10px;
-    scroll-snap-align: center;
+    scroll-snap-align: start;
     padding: 32px 24px;
-    border-radius: 24px;
-    background: white;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-    transform: scale(0.95);
-    transition: transform 0.3s ease;
-    position: relative;
-    overflow: visible;
+    margin: 0;
   }
 
-  /* Center card gets bigger */
-  .journey-path.active {
-    transform: scale(1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  /* First card should be visible at start */
+  .journey-path:first-child {
+    margin-left: 0;
   }
 
-  /* Gradient borders for each card */
+  /* Last card needs padding */
+  .journey-path:last-child {
+    margin-right: 20px;
+  }
+
+  /* Keep other journey styling */
   .journey-path.developer-path::before {
     content: '';
     position: absolute;
@@ -2634,6 +2552,7 @@ label .required {
     background: linear-gradient(90deg, #764ba2 0%, #667eea 100%);
     border-radius: 24px 24px 0 0;
   }
+}
 
   /* Price highlight animation */
   .journey-cta {
@@ -2738,6 +2657,233 @@ label .required {
 
   .platform-benefits {
     display: none;
+  }
+
+
+/* Fix for Intelligent Marketplace mobile display */
+@media (max-width: 768px) {
+  /* Fix the container to prevent overflow */
+  .problem-solution-section {
+    padding: 60px 0;
+    overflow: hidden;
+  }
+
+  .problem-solution-section .container {
+    padding: 0;
+    max-width: 100%;
+  }
+
+  /* Fix titles and subtitles */
+  .section-title,
+  .solution-title {
+    font-size: 28px;
+    padding: 0 20px;
+    margin: 0 0 16px 0;
+    word-wrap: break-word;
+    text-align: center;
+    width: 100%;
+  }
+
+  .section-subtitle,
+  .solution-subtitle {
+    font-size: 16px;
+    padding: 0 20px;
+    margin: 0 0 40px 0;
+    line-height: 1.6;
+    text-align: center;
+    width: 100%;
+    word-wrap: break-word;
+  }
+
+  /* Fix solution cards container */
+  .solution-cards-wrapper {
+    width: 100%;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+  }
+
+  .solution-cards {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Critical: Add padding to both sides */
+    padding: 0 20px;
+    /* Remove any negative margins */
+    margin: 0;
+  }
+
+  .solution-cards::-webkit-scrollbar {
+    display: none;
+  }
+
+  .solution-card {
+    /* Fixed width instead of percentage */
+    flex: 0 0 280px;
+    min-width: 280px;
+    scroll-snap-align: center;
+    /* Remove any margins that might cause issues */
+    margin: 0;
+  }
+
+  /* Ensure proper spacing at the end */
+  .solution-cards::after {
+    content: '';
+    display: block;
+    min-width: 20px;
+    height: 1px;
+  }
+
+  /* Fix How It Works section */
+  .how-it-works {
+    padding: 60px 0;
+    overflow: hidden;
+  }
+
+  .how-it-works .container {
+    padding: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  /* Fix journey cards to be visible */
+  .landing-page .user-journeys {
+    display: flex !important; /* Override any hidden rules */
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Add padding to show cards properly */
+    padding: 0 20px;
+    margin: 0;
+    width: 100%;
+  }
+
+  .user-journeys::-webkit-scrollbar {
+    display: none;
+  }
+
+  .journey-path {
+    /* Fixed width that fits mobile screens */
+    flex: 0 0 calc(100vw - 60px);
+    min-width: calc(100vw - 60px);
+    max-width: 340px;
+    scroll-snap-align: center;
+    margin: 0;
+  }
+
+  /* Add spacing at the end */
+  .user-journeys::after {
+    content: '';
+    display: block;
+    min-width: 20px;
+    height: 1px;
+  }
+
+  /* Fix journey indicators */
+  .journey-indicators {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 24px;
+    padding: 0 20px;
+  }
+
+  /* Fix problem cards as well */
+  .problem-cards-wrapper {
+    width: 100%;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+  }
+
+  .problem-cards {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 20px;
+    margin: 0;
+  }
+
+  .problem-cards::-webkit-scrollbar {
+    display: none;
+  }
+
+  .problem-card {
+    flex: 0 0 280px;
+    min-width: 280px;
+    scroll-snap-align: center;
+    margin: 0;
+  }
+
+  .problem-cards::after {
+    content: '';
+    display: block;
+    min-width: 20px;
+    height: 1px;
+  }
+
+  /* Ensure swipe indicators are visible */
+  .swipe-indicator {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding: 0 20px;
+  }
+
+  .swipe-indicator .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+  .swipe-indicator .dot.active {
+    width: 24px;
+    border-radius: 4px;
+    background: #667eea;
+  }
+
+  /* Remove any rules that hide these sections */
+  .landing-page .value-props {
+    display: none !important; /* Keep this hidden */
+  }
+  
+  .landing-page .platform-benefits {
+    display: none !important; /* Keep this hidden */
+  }
+  
+  /* But make sure journey cards are visible */
+  .landing-page .user-journeys {
+    display: flex !important;
+  }
+}
+
+/* Additional fix to ensure nothing is cut off */
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .landing-page {
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  /* Ensure all sections respect viewport width */
+  section {
+    overflow-x: hidden;
+    width: 100%;
   }
 }
 
