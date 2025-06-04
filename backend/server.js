@@ -518,6 +518,75 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES ai_chat_sessions (id)
   )`);
+  // Add these tables after your existing tables
+db.run(`CREATE TABLE IF NOT EXISTS deals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL,
+  access_request_id INTEGER NOT NULL,
+  borrower_id INTEGER NOT NULL,
+  funder_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (project_id) REFERENCES projects (id),
+  FOREIGN KEY (access_request_id) REFERENCES access_requests (id),
+  FOREIGN KEY (borrower_id) REFERENCES users (id),
+  FOREIGN KEY (funder_id) REFERENCES users (id)
+)`);
+
+db.run(`CREATE TABLE IF NOT EXISTS deal_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deal_id INTEGER NOT NULL,
+  uploader_id INTEGER NOT NULL,
+  file_name TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  file_size INTEGER,
+  mime_type TEXT,
+  request_id INTEGER,
+  uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (deal_id) REFERENCES deals (id),
+  FOREIGN KEY (uploader_id) REFERENCES users (id)
+)`);
+
+db.run(`CREATE TABLE IF NOT EXISTS document_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deal_id INTEGER NOT NULL,
+  requester_id INTEGER NOT NULL,
+  document_name TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'pending',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  fulfilled_at DATETIME,
+  FOREIGN KEY (deal_id) REFERENCES deals (id),
+  FOREIGN KEY (requester_id) REFERENCES users (id)
+)`);
+
+db.run(`CREATE TABLE IF NOT EXISTS deal_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deal_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  comment TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (deal_id) REFERENCES deals (id),
+  FOREIGN KEY (user_id) REFERENCES users (id)
+)`);
+
+db.run(`CREATE TABLE IF NOT EXISTS indicative_quotes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deal_id INTEGER NOT NULL,
+  funder_id INTEGER NOT NULL,
+  loan_amount INTEGER NOT NULL,
+  interest_rate REAL NOT NULL,
+  loan_term INTEGER NOT NULL,
+  establishment_fee INTEGER,
+  other_fees TEXT,
+  conditions TEXT,
+  valid_until DATE,
+  status TEXT DEFAULT 'pending',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (deal_id) REFERENCES deals (id),
+  FOREIGN KEY (funder_id) REFERENCES users (id)
+)`);
 
   // System settings table
   db.run(`CREATE TABLE IF NOT EXISTS system_settings (

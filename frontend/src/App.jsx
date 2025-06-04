@@ -794,6 +794,27 @@ const Navigation = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const profileRef = useRef(null);
+  const notificationRef = useRef(null);
+
+
+  
+   useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setShowProfileMenu(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await signOut();
@@ -835,6 +856,7 @@ const Navigation = () => {
   ))}
 </div>
 
+
         
    {/* Mobile Menu Button - Add this check */}
 <button 
@@ -849,7 +871,7 @@ const Navigation = () => {
         {/* User Section */}
         <div className="nav-user-section">
           {/* Notifications */}
-          <div className="notification-area">
+          <div className="notification-area" ref={notificationRef}>
             <button 
               className={`notification-bell ${unreadCount > 0 ? 'has-notifications' : ''}`}
               onClick={() => setShowNotifications(!showNotifications)}
@@ -899,7 +921,7 @@ const Navigation = () => {
           </div>
           
           {/* Profile Dropdown */}
-          <div className="profile-dropdown-container">
+          <div className="profile-dropdown-container" ref={profileRef}>
             <button 
               className="profile-dropdown-toggle"
               onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -984,6 +1006,8 @@ const Navigation = () => {
         </div>
       )}
     </nav>
+
+    
   );
 };
 
@@ -2031,6 +2055,34 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
                 View Full Details
               </button>
             )}
+            {project.access_status === 'approved' && !project.deal_id && (
+  <button 
+    onClick={async () => {
+      try {
+        const response = await api.createDeal(project.id, project.access_request_id);
+        navigate(`/project/${project.id}/deal/${response.deal_id}`);
+      } catch (err) {
+        addNotification({
+          type: 'error',
+          title: 'Failed to create deal room',
+          message: err.message
+        });
+      }
+    }}
+    className="btn btn-primary"
+  >
+    💼 Engage
+  </button>
+)}
+
+{project.deal_id && (
+  <button 
+    onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
+    className="btn btn-primary"
+  >
+    Deal Room
+  </button>
+)}
           </>
         )}
 
@@ -3461,49 +3513,72 @@ const MyProjects = () => {
           <div className="projects-table">
             <table>
               <thead>
-                <tr>
-                  <th>Project Title</th>
-                  <th>Location</th>
-                  <th>Loan Amount</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProjects.map(project => (
-                  <tr key={project.id}>
-                    <td className="project-title-cell">
-                      <strong>{project.title}</strong>
-                      {project.documents_complete && (
-                        <span className="docs-badge">📄 Docs Complete</span>
-                      )}
-                    </td>
-                    <td>{project.suburb}</td>
-                    <td>{formatCurrency(project.loan_amount)}</td>
-                    <td>
-                      <StatusBadge status={project.payment_status === 'paid' ? 'Published' : 'Draft'} />
-                    </td>
-                    <td>{formatDate(project.created_at)}</td>
-                    <td className="actions-cell">
-                      <button
-                        onClick={() => navigate(`/project/${project.id}`)}
-                        className="btn btn-sm btn-outline"
-                      >
-                        View
-                      </button>
-                      {project.payment_status === 'unpaid' && (
-                        <button
-                          onClick={() => navigate(`/project/${project.id}/edit`)}
-                          className="btn btn-sm btn-primary"
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+  <tr>
+    <th>Project Title</th>
+    <th>Location</th>
+    <th>Loan Amount</th>
+    <th>Documents</th>
+    <th>Status</th>
+    <th>Created</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+             // Update the table headers to include Documents column
+<thead>
+  <tr>
+    <th>Project Title</th>
+    <th>Location</th>
+    <th>Loan Amount</th>
+    <th>Documents</th>
+    <th>Status</th>
+    <th>Created</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+
+// Update the table body - remove the docs badge from project title
+<tbody>
+  {filteredProjects.map(project => (
+    <tr key={project.id}>
+      <td className="project-title-cell">
+        <strong>{project.title}</strong>
+      </td>
+      <td>{project.suburb}</td>
+      <td>{formatCurrency(project.loan_amount)}</td>
+      <td>
+        <div className={`docs-status ${project.documents_complete ? 'complete' : 'incomplete'}`}>
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            {project.documents_complete ? (
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            ) : (
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            )}
+          </svg>
+        </div>
+      </td>
+      <td>
+        <StatusBadge status={project.payment_status === 'paid' ? 'Published' : 'Draft'} />
+      </td>
+      <td>{formatDate(project.created_at)}</td>
+      <td className="actions-cell">
+        <button
+          onClick={() => navigate(`/project/${project.id}`)}
+          className="btn btn-sm btn-outline"
+        >
+          View
+        </button>
+        {project.payment_status === 'unpaid' && (
+          <button
+            onClick={() => navigate(`/project/${project.id}/edit`)}
+            className="btn btn-sm btn-primary"
+          >
+            Edit
+          </button>
+        )}
+      </td>
+    </tr>
+  ))}
+</tbody>
             </table>
           </div>
         </>
@@ -4985,9 +5060,16 @@ const MessagesPage = () => {
           
           <div className="conversations-list">
             {conversations.length === 0 ? (
-              <div className="no-conversations">
-                <p>No conversations yet</p>
-              </div>
+              // Replace the existing no-conversations div with this:
+<div className="no-conversations">
+  <div className="empty-message-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  </div>
+  <h3>No conversations yet</h3>
+  <p>Messages from {user.role === 'borrower' ? 'funders' : 'developers'} will appear here</p>
+</div>
             ) : (
               conversations.map((conversation) => (
                 <div
@@ -5131,11 +5213,16 @@ const MessagesPage = () => {
               </div>
             </>
           ) : (
-            <div className="no-conversation-selected">
-              <div className="no-conversation-icon">💼</div>
-              <h3>Select a conversation</h3>
-              <p>Choose a conversation from the sidebar to start messaging.</p>
-            </div>
+            // Replace the no-conversation-selected div content:
+<div className="no-conversation-selected">
+  <div className="empty-chat-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M8 12h8M12 8v8M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+    </svg>
+  </div>
+  <h3>Select a conversation</h3>
+  <p>Choose a conversation from the sidebar to start messaging</p>
+</div>
           )}
         </div>
       </div>
@@ -7946,6 +8033,11 @@ const AppLayout = () => {
               <BrokerAI />
             </ProtectedRoute>
           } />
+          <Route path="/project/:projectId/deal/:dealId" element={
+  <ProtectedRoute roles={['borrower', 'funder']}>
+    <DealRoom />
+  </ProtectedRoute>
+} />
           
           {/* User Routes */}
           <Route path="/profile" element={
