@@ -1677,7 +1677,6 @@ label .required {
   }
 
   /* Hide desktop elements */
-  .landing-page .hero-visual,
   .landing-page .value-props,
   .landing-page .landing-nav {
     display: none !important;
