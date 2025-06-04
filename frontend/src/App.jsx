@@ -6865,6 +6865,13 @@ const DocumentPreviewModal = ({ document, onClose }) => {
   );
 };
 
+// Haptic feedback helper
+const triggerHaptic = () => {
+  if ('vibrate' in navigator) {
+    navigator.vibrate(10);
+  }
+};
+
 // ===========================
 // LANDING PAGE
 // ===========================
@@ -6898,7 +6905,95 @@ useEffect(() => {
   if (solutionCards && solutionDots.length) {
     solutionCards.addEventListener('scroll', () => handleScroll(solutionCards, solutionDots));
   }
+
+    // Add journey cards swipe functionality
+  const journeyContainer = document.querySelector('.user-journeys');
+  const journeyCards = document.querySelectorAll('.journey-path');
+  const indicators = document.querySelectorAll('.journey-indicators .indicator-dot');
+  
+  if (journeyContainer && journeyCards.length > 0) {
+    // Set initial active card
+    journeyCards[0]?.classList.add('active');
+    
+    const handleJourneyScroll = () => {
+      const containerRect = journeyContainer.getBoundingClientRect();
+      const containerCenter = containerRect.left + containerRect.width / 2;
+      
+      let closestCard = null;
+      let closestDistance = Infinity;
+      let activeIndex = 0;
+      
+      journeyCards.forEach((card, index) => {
+        const cardRect = card.getBoundingClientRect();
+        const cardCenter = cardRect.left + cardRect.width / 2;
+        const distance = Math.abs(containerCenter - cardCenter);
+        
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestCard = card;
+          activeIndex = index;
+        }
+        
+        card.classList.remove('active');
+      });
+      
+      if (closestCard) {
+        closestCard.classList.add('active');
+      }
+      
+      // Update indicators
+      indicators.forEach((dot, index) => {
+        dot.classList.toggle('active', index === activeIndex);
+      });
+    };
+    
+    // Snap to card on scroll end
+    let scrollTimeout;
+    journeyContainer.addEventListener('scroll', () => {
+      handleJourneyScroll();
+      
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        const activeCard = document.querySelector('.journey-path.active');
+        if (activeCard) {
+          activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+      }, 150);
+    });
+    
+    // Handle indicator clicks
+    indicators.forEach((dot, index) => {
+      dot.addEventListener('click', () => {
+        journeyCards[index]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      });
+    });
+    
+    // Initial positioning
+    handleJourneyScroll();
+  }
+ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        // Account for mobile header height
+        const offset = window.innerWidth <= 768 ? 60 : 80;
+        const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
+        
+        window.scrollTo({
+          top: targetPosition,
+          behavior: 'smooth'
+        });
+        
+        // Trigger haptic feedback on mobile
+        if ('vibrate' in navigator) {
+          navigator.vibrate(10);
+        }
+      }
+    });
+  });
 }, []);
+
   
   return (
     <div className="landing-page">
@@ -6932,11 +7027,11 @@ useEffect(() => {
     <span className="nav-label">Features</span>
   </a>
   <a href="#pricing" className="nav-item">
-    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-    <span className="nav-label">Pricing</span>
-  </a>
+  <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+  </svg>
+  <span className="nav-label">Pricing</span>
+</a>
   <Link to="/register" className="nav-item">
     <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -7097,11 +7192,22 @@ useEffect(() => {
           </div>
 
           {/* Transition */}
-          <div className="solution-transition">
-            <div className="transition-line"></div>
-            <div className="transition-text">Enter Tranch</div>
-            <div className="transition-line"></div>
-          </div>
+<div className="solution-transition">
+  <div className="transition-line"></div>
+  <button 
+    className="transition-text"
+    onClick={() => {
+      document.querySelector('.solution-overview').scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }}
+    style={{ cursor: 'pointer', border: 'none', background: 'none' }}
+  >
+    Enter Tranch
+  </button>
+  <div className="transition-line"></div>
+</div>
 
           {/* Solution Overview */}
           <div className="solution-overview">
@@ -7162,6 +7268,8 @@ useEffect(() => {
         The intelligent marketplace connecting property developers with private credit funders
       </p>
     </div>
+
+ <div id="pricing" style={{ position: 'absolute', top: '-80px' }}></div>
 
     {/* Value Props */}
     <div className="value-props">
@@ -7328,7 +7436,7 @@ useEffect(() => {
           <p>Join Australia's fastest-growing property finance platform</p>
           <div className="cta-actions">
             <Link to="/register" className="btn btn-primary btn-lg">
-              Get Started Free
+              Get Started
             </Link>
             <a href="mailto:support@tranch.com.au" className="btn btn-outline btn-lg">
               Contact Sales

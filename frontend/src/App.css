@@ -1093,6 +1093,8 @@ label .required {
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+  /* Keep text visible on hover */
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -2212,9 +2214,13 @@ label .required {
     margin-bottom: 40px;
   }
 
+  /* Fix for Intelligent Marketplace mobile scaling */
+
   .solution-cards-wrapper {
     position: relative;
-    padding: 0 20px;
+    padding: 0;
+    width: 100%;
+    overflow: hidden;
   }
 
   .solution-cards {
@@ -2224,21 +2230,17 @@ label .required {
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    grid-template-columns: unset;
-  }
-
-  .solution-cards::-webkit-scrollbar {
-    display: none;
+    padding: 0 20px;
+    margin: 0 -20px;
+    width: calc(100% + 40px);
   }
 
   .solution-card {
     flex: 0 0 85%;
-    scroll-snap-align: center;
-    padding: 32px 24px;
-    background: white;
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
-    border: 1px solid rgba(102, 126, 234, 0.2);
+    max-width: 320px;
+    margin: 0 auto;
   }
+}
 
   .solution-icon {
     width: 56px;
@@ -2300,7 +2302,7 @@ label .required {
   .solution-card {
     animation: fadeInUp 0.6s ease-out;
   }
-}
+
 
 /* How It Works Section - Professional Fintech Style */
 .how-it-works {
@@ -2533,24 +2535,194 @@ label .required {
   }
 }
 
+/* Mobile How It Works - Swipeable Cards */
 @media (max-width: 768px) {
+  .how-it-works {
+    padding: 60px 0 80px;
+    overflow: hidden;
+  }
+
   .value-props {
-    grid-template-columns: 1fr;
-    gap: 24px;
+    display: none;
   }
-  
+
+  .user-journeys {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    margin: 0 -20px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    position: relative;
+  }
+
+  .user-journeys::-webkit-scrollbar {
+    display: none;
+  }
+
   .journey-path {
+    flex: 0 0 85vw;
+    max-width: 400px;
+    margin: 0 10px;
+    scroll-snap-align: center;
     padding: 32px 24px;
+    border-radius: 24px;
+    background: white;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+    position: relative;
+    overflow: visible;
   }
-  
-  .benefits-grid {
-    grid-template-columns: 1fr;
+
+  /* Center card gets bigger */
+  .journey-path.active {
+    transform: scale(1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   }
-  
-  .section-title {
-    font-size: 32px;
+
+  /* Gradient borders for each card */
+  .journey-path.developer-path::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 24px 24px 0 0;
+  }
+
+  .journey-path.funder-path::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #764ba2 0%, #667eea 100%);
+    border-radius: 24px 24px 0 0;
+  }
+
+  /* Price highlight animation */
+  .journey-cta {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 16px;
+    padding: 20px;
+    margin-top: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .journey-cta::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent 30%, rgba(102, 126, 234, 0.1) 50%, transparent 70%);
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+  }
+
+  .price-note {
+    font-size: 18px;
+    font-weight: 700;
+    color: #667eea;
+    text-align: center;
+    margin-bottom: 16px;
+    display: block;
+  }
+
+  /* Swipe indicator dots */
+  .journey-indicators {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 24px;
+    padding: 0 20px;
+  }
+
+  .indicator-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+  .indicator-dot.active {
+    width: 24px;
+    border-radius: 4px;
+    background: #667eea;
+  }
+
+  /* Visual swipe hint */
+  .swipe-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 14px;
+    animation: swipeHint 2s ease-in-out infinite;
+  }
+
+  @keyframes swipeHint {
+    0%, 100% { transform: translateX(-50%) translateX(0); }
+    50% { transform: translateX(-50%) translateX(-10px); }
+  }
+
+  .swipe-hint svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Smooth step transitions */
+  .journey-step {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.5s ease forwards;
+  }
+
+  .journey-step:nth-child(1) { animation-delay: 0.1s; }
+  .journey-step:nth-child(2) { animation-delay: 0.2s; }
+  .journey-step:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes fadeInUp {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .platform-benefits {
+    display: none;
   }
 }
+
+/* Touch feedback */
+@media (hover: none) {
+  .journey-path:active {
+    transform: scale(0.98);
+  }
+  
+  .journey-cta .btn:active {
+    transform: scale(0.95);
+  }
+}
+
 /* Pricing Section */
 .pricing-section {
   padding: 5rem 2rem;
@@ -2639,6 +2811,40 @@ label .required {
 
 .btn-block {
   width: 100%;
+}
+
+/* Pricing section highlight animation */
+#pricing:target ~ .user-journeys {
+  animation: highlightPricing 1s ease-out;
+}
+
+@keyframes highlightPricing {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 40px rgba(102, 126, 234, 0.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Mobile specific targeting */
+@media (max-width: 768px) {
+  #pricing:target ~ .user-journeys .journey-cta {
+    animation: pulsePricing 2s ease-out;
+  }
+  
+  @keyframes pulsePricing {
+    0%, 100% {
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    }
+    50% {
+      background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%);
+    }
+  }
 }
 
 /* CTA Section */
