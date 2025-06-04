@@ -1,0 +1,114 @@
+/* Payment Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  padding: 20px; /* Add padding to prevent edge touching */
+  overflow-y: auto; /* Allow scrolling if needed */
+}
+
+.modal-content {
+  background: white;
+  border-radius: var(--radius-xl);
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-2xl);
+  margin: auto; /* Center it properly */
+  position: relative; /* Ensure proper positioning */
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modal-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin: 0;
+}
+
+.modal-body {
+  padding: 2rem;
+}
+
+.payment-summary {
+  margin-bottom: 2rem;
+}
+
+.payment-summary h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 0.5rem;
+}
+
+.payment-description {
+  color: var(--gray-600);
+  margin-bottom: 1rem;
+}
+
+.payment-amount {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--gray-50);
+  border-radius: var(--radius-lg);
+  font-size: 1.125rem;
+}
+
+.payment-amount strong {
+  color: var(--primary-700);
+  font-size: 1.5rem;
+}
+
+.payment-form {
+  margin: 2rem 0;
+}
+
+.card-element-container {
+  padding: 1rem;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.5rem;
+  transition: all var(--transition-base);
+}
+
+.card-element-container:hover {
+  border-color: var(--gray-300);
+}
+
+.card-element-container:focus-within {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.payment-security {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--gray-50);
+  border-radius: var(--radius-lg);
+  font-size: 0.875rem;
+  color: var(--gray-600);
+}
+
+.payment-security span {
+  font-size: 1.25rem;
+}
+
