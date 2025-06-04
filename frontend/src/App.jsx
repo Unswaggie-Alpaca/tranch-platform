@@ -6879,213 +6879,253 @@ const triggerHaptic = () => {
 const LandingPage = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  // Add this inside the LandingPage component, before the return statement
-useEffect(() => {
-  // Handle swipe indicators
-  const handleScroll = (wrapper, indicators) => {
-    const scrollLeft = wrapper.scrollLeft;
-    const cardWidth = wrapper.firstChild.offsetWidth + 16; // card width + gap
-    const activeIndex = Math.round(scrollLeft / cardWidth);
-    
-    indicators.forEach((dot, index) => {
-      dot.classList.toggle('active', index === activeIndex);
-    });
-  };
+  const [isNavVisible, setIsNavVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
-  const problemCards = document.querySelector('.problem-cards');
-  const problemDots = document.querySelectorAll('.problem-cards-wrapper .dot');
-  
-  const solutionCards = document.querySelector('.solution-cards');
-  const solutionDots = document.querySelectorAll('.solution-cards-wrapper .dot');
-  
-  if (problemCards && problemDots.length) {
-    problemCards.addEventListener('scroll', () => handleScroll(problemCards, problemDots));
-  }
-  
-  if (solutionCards && solutionDots.length) {
-    solutionCards.addEventListener('scroll', () => handleScroll(solutionCards, solutionDots));
-  }
-
-    // Add journey cards swipe functionality
-  const journeyContainer = document.querySelector('.user-journeys');
-  const journeyCards = document.querySelectorAll('.journey-path');
-  const indicators = document.querySelectorAll('.journey-indicators .indicator-dot');
-  
-  if (journeyContainer && journeyCards.length > 0) {
-    // Set initial active card
-    journeyCards[0]?.classList.add('active');
-    
-    const handleJourneyScroll = () => {
-      const containerRect = journeyContainer.getBoundingClientRect();
-      const containerCenter = containerRect.left + containerRect.width / 2;
+  // Add swipe-away functionality for mobile only
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.innerWidth > 768) return; // Only on mobile
       
-      let closestCard = null;
-      let closestDistance = Infinity;
-      let activeIndex = 0;
+      const currentScrollY = window.scrollY;
       
-      journeyCards.forEach((card, index) => {
-        const cardRect = card.getBoundingClientRect();
-        const cardCenter = cardRect.left + cardRect.width / 2;
-        const distance = Math.abs(containerCenter - cardCenter);
-        
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestCard = card;
-          activeIndex = index;
-        }
-        
-        card.classList.remove('active');
-      });
-      
-      if (closestCard) {
-        closestCard.classList.add('active');
+      if (currentScrollY > lastScrollY && currentScrollY > 80) {
+        // Scrolling down
+        setIsNavVisible(false);
+      } else {
+        // Scrolling up
+        setIsNavVisible(true);
       }
       
-      // Update indicators
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [lastScrollY]);
+
+  // Add this inside the LandingPage component, before the return statement
+  useEffect(() => {
+    // Handle swipe indicators
+    const handleScroll = (wrapper, indicators) => {
+      const scrollLeft = wrapper.scrollLeft;
+      const cardWidth = wrapper.firstChild.offsetWidth + 16; // card width + gap
+      const activeIndex = Math.round(scrollLeft / cardWidth);
+      
       indicators.forEach((dot, index) => {
         dot.classList.toggle('active', index === activeIndex);
       });
     };
+
+    const problemCards = document.querySelector('.problem-cards');
+    const problemDots = document.querySelectorAll('.problem-cards-wrapper .dot');
     
-    // Snap to card on scroll end
-    let scrollTimeout;
-    journeyContainer.addEventListener('scroll', () => {
-      handleJourneyScroll();
+    const solutionCards = document.querySelector('.solution-cards');
+    const solutionDots = document.querySelectorAll('.solution-cards-wrapper .dot');
+    
+    if (problemCards && problemDots.length) {
+      problemCards.addEventListener('scroll', () => handleScroll(problemCards, problemDots));
+    }
+    
+    if (solutionCards && solutionDots.length) {
+      solutionCards.addEventListener('scroll', () => handleScroll(solutionCards, solutionDots));
+    }
+
+    // Add journey cards swipe functionality
+    const journeyContainer = document.querySelector('.user-journeys');
+    const journeyCards = document.querySelectorAll('.journey-path');
+    const indicators = document.querySelectorAll('.journey-indicators .indicator-dot');
+    
+    if (journeyContainer && journeyCards.length > 0) {
+      // Set initial active card
+      journeyCards[0]?.classList.add('active');
       
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        const activeCard = document.querySelector('.journey-path.active');
-        if (activeCard) {
-          activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      const handleJourneyScroll = () => {
+        const containerRect = journeyContainer.getBoundingClientRect();
+        const containerCenter = containerRect.left + containerRect.width / 2;
+        
+        let closestCard = null;
+        let closestDistance = Infinity;
+        let activeIndex = 0;
+        
+        journeyCards.forEach((card, index) => {
+          const cardRect = card.getBoundingClientRect();
+          const cardCenter = cardRect.left + cardRect.width / 2;
+          const distance = Math.abs(containerCenter - cardCenter);
+          
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestCard = card;
+            activeIndex = index;
+          }
+          
+          card.classList.remove('active');
+        });
+        
+        if (closestCard) {
+          closestCard.classList.add('active');
         }
-      }, 150);
-    });
+        
+        // Update indicators
+        indicators.forEach((dot, index) => {
+          dot.classList.toggle('active', index === activeIndex);
+        });
+      };
+      
+      // Snap to card on scroll end
+      let scrollTimeout;
+      journeyContainer.addEventListener('scroll', () => {
+        handleJourneyScroll();
+        
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          const activeCard = document.querySelector('.journey-path.active');
+          if (activeCard) {
+            activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+          }
+        }, 150);
+      });
+      
+      // Handle indicator clicks
+      indicators.forEach((dot, index) => {
+        dot.addEventListener('click', () => {
+          journeyCards[index]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        });
+      });
+      
+      // Initial positioning
+      handleJourneyScroll();
+    }
     
-    // Handle indicator clicks
-    indicators.forEach((dot, index) => {
-      dot.addEventListener('click', () => {
-        journeyCards[index]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    // Find this code in your useEffect and REPLACE it
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const targetId = this.getAttribute('href');
+        
+        // Special handling for pricing - scroll to journey section
+        if (targetId === '#pricing') {
+          const journeySection = document.querySelector('.user-journeys');
+          if (journeySection) {
+            const offset = window.innerWidth <= 768 ? 60 : 80;
+            const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
+            
+            window.scrollTo({
+              top: targetPosition,
+              behavior: 'smooth'
+            });
+            
+            // Highlight pricing after scroll
+            setTimeout(() => {
+              const pricingElements = document.querySelectorAll('.price-note');
+              pricingElements.forEach(el => {
+                el.style.animation = 'pulse 2s ease-out';
+              });
+            }, 500);
+          }
+        } else {
+          const target = document.querySelector(targetId);
+          if (target) {
+            const offset = window.innerWidth <= 768 ? 60 : 80;
+            const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
+            
+            window.scrollTo({
+              top: targetPosition,
+              behavior: 'smooth'
+            });
+          }
+        }
+        
+        // Trigger haptic feedback on mobile
+        if ('vibrate' in navigator) {
+          navigator.vibrate(10);
+        }
       });
     });
-    
-    // Initial positioning
-    handleJourneyScroll();
-  }
- // Find this code in your useEffect and REPLACE it
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-  anchor.addEventListener('click', function (e) {
-    e.preventDefault();
-    const targetId = this.getAttribute('href');
-    
-    // Special handling for pricing - scroll to journey section
-    if (targetId === '#pricing') {
-      const journeySection = document.querySelector('.user-journeys');
-      if (journeySection) {
-        const offset = window.innerWidth <= 768 ? 60 : 80;
-        const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
-        
-        window.scrollTo({
-          top: targetPosition,
-          behavior: 'smooth'
-        });
-        
-        // Highlight pricing after scroll
-        setTimeout(() => {
-          const pricingElements = document.querySelectorAll('.price-note');
-          pricingElements.forEach(el => {
-            el.style.animation = 'pulse 2s ease-out';
-          });
-        }, 500);
-      }
-    } else {
-      const target = document.querySelector(targetId);
-      if (target) {
-        const offset = window.innerWidth <= 768 ? 60 : 80;
-        const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
-        
-        window.scrollTo({
-          top: targetPosition,
-          behavior: 'smooth'
-        });
-      }
-    }
-    
-    // Trigger haptic feedback on mobile
-    if ('vibrate' in navigator) {
-      navigator.vibrate(10);
-    }
-  });
-});
-}, []);
+  }, []);
 
-  
   return (
     <div className="landing-page">
-      {/* Add this right after <div className="landing-page"> */}
-{/* Mobile Header */}
-<div className="mobile-header">
-  <div className="mobile-logo">Tranch</div>
-  <button className="mobile-menu-trigger">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="3" y1="12" x2="21" y2="12" />
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <line x1="3" y1="18" x2="21" y2="18" />
-    </svg>
-  </button>
-</div>
+      {/* Mobile Header with swipe-away */}
+      <div className={`mobile-header ${isNavVisible ? '' : 'hidden'}`}>
+        <div className="mobile-logo">Tranch</div>
+        <button 
+          className="mobile-menu-trigger"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      </div>
 
-{/* Add this before the closing </div> of landing-page */}
-{/* Mobile Bottom Navigation */}
-<nav className="mobile-bottom-nav">
-  <a href="#" className="nav-item active">
-    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-    <span className="nav-label">Home</span>
-  </a>
-  <a href="#features" className="nav-item">
-    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-    </svg>
-    <span className="nav-label">Features</span>
-  </a>
-  <a 
-  href="#pricing" 
-  className="nav-item"
-  onClick={(e) => {
-    e.preventDefault();
-    const journeySection = document.querySelector('.user-journeys');
-    if (journeySection) {
-      const offset = 60;
-      const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
-      window.scrollTo({
-        top: targetPosition,
-        behavior: 'smooth'
-      });
-    }
-  }}
->
-  <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-  </svg>
-  <span className="nav-label">Pricing</span>
-</a>
-  <Link to="/register" className="nav-item">
-    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="8.5" cy="7" r="4" />
-      <line x1="20" y1="8" x2="20" y2="14" />
-      <line x1="23" y1="11" x2="17" y2="11" />
-    </svg>
-    <span className="nav-label">Sign Up</span>
-  </Link>
-</nav>
+      {/* Mobile Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="landing-mobile-menu">
+          <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+          <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
+          <a href="#pricing" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+          <Link to="/login" className="btn btn-outline" onClick={() => setMobileMenuOpen(false)}>Sign In</Link>
+          <Link to="/register" className="btn btn-primary" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+        </div>
+      )}
 
-{/* Mobile Floating Action Button */}
-<button className="mobile-fab">
-  <span>+</span>
-</button>
+      {/* Mobile Bottom Navigation */}
+      <nav className="mobile-bottom-nav">
+        <a href="#" className="nav-item active">
+          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          <span className="nav-label">Home</span>
+        </a>
+        <a href="#features" className="nav-item">
+          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+          <span className="nav-label">Features</span>
+        </a>
+        <a 
+          href="#pricing" 
+          className="nav-item"
+          onClick={(e) => {
+            e.preventDefault();
+            const journeySection = document.querySelector('.user-journeys');
+            if (journeySection) {
+              const offset = 60;
+              const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
+              window.scrollTo({
+                top: targetPosition,
+                behavior: 'smooth'
+              });
+            }
+          }}
+        >
+          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+          <span className="nav-label">Pricing</span>
+        </a>
+        <Link to="/register" className="nav-item">
+          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="8.5" cy="7" r="4" />
+            <line x1="20" y1="8" x2="20" y2="14" />
+            <line x1="23" y1="11" x2="17" y2="11" />
+          </svg>
+          <span className="nav-label">Sign Up</span>
+        </Link>
+      </nav>
+
+      {/* Mobile Floating Action Button */}
+      <button className="mobile-fab">
+        <span>+</span>
+      </button>
 
       {/* Navigation */}
       <nav className="landing-nav">
@@ -7180,14 +7220,14 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       {/* Problem & Solution Section */}
       <section id="features" className="problem-solution-section">
         <div className="container">
-<div style={{ textAlign: 'center', width: '100%', marginBottom: '60px' }}>
-  <h2 className="section-title" style={{ textAlign: 'center', width: '100%', margin: '0 auto 16px auto' }}>
-    The Property Finance Problem
-  </h2>
-  <p className="section-subtitle" style={{ textAlign: 'center', width: '100%', margin: '0 auto', maxWidth: '800px' }}>
-    Traditional funding takes months, lacks transparency, and wastes everyone's time
-  </p>
-</div>
+          <div style={{ textAlign: 'center', width: '100%', marginBottom: '60px' }}>
+            <h2 className="section-title" style={{ textAlign: 'center', width: '100%', margin: '0 auto 16px auto' }}>
+              The Property Finance Problem
+            </h2>
+            <p className="section-subtitle" style={{ textAlign: 'center', width: '100%', margin: '0 auto', maxWidth: '800px' }}>
+              Traditional funding takes months, lacks transparency, and wastes everyone's time
+            </p>
+          </div>
           
           {/* Problem Cards */}
           <div className="problem-cards-wrapper">
@@ -7231,22 +7271,22 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
           </div>
 
           {/* Transition */}
-<div className="solution-transition">
-  <div className="transition-line"></div>
-  <button 
-    className="transition-text"
-    onClick={() => {
-      document.querySelector('.solution-overview').scrollIntoView({ 
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }}
-    style={{ cursor: 'pointer', border: 'none', background: 'none' }}
-  >
-    Enter Tranch
-  </button>
-  <div className="transition-line"></div>
-</div>
+          <div className="solution-transition">
+            <div className="transition-line"></div>
+            <button 
+              className="transition-text"
+              onClick={() => {
+                document.querySelector('.solution-overview').scrollIntoView({ 
+                  behavior: 'smooth',
+                  block: 'start'
+                });
+              }}
+              style={{ cursor: 'pointer', border: 'none', background: 'none' }}
+            >
+              Enter Tranch
+            </button>
+            <div className="transition-line"></div>
+          </div>
 
           {/* Solution Overview */}
           <div className="solution-overview">
@@ -7299,174 +7339,180 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       </section>
 
       {/* How It Works - Professional Redesign */}
-<section id="how-it-works" className="how-it-works">
-  <div className="container">
-    <div className="section-header">
-      <h2 className="section-title">How Tranch Streamlines Property Finance</h2>
-      <p className="section-subtitle">
-        The intelligent marketplace connecting property developers with private credit funders
-      </p>
-    </div>
-
- <div id="pricing" style={{ position: 'absolute', top: '-80px' }}></div>
-
-    {/* Value Props */}
-    <div className="value-props">
-      <div className="value-prop">
-        <div className="value-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-          </svg>
-        </div>
-        <h4>Rapid Execution</h4>
-        <p>Connect with funders in days, not months</p>
-      </div>
-      <div className="value-prop">
-        <div className="value-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M12 6v6l4 2"></path>
-          </svg>
-        </div>
-        <h4>Real-Time Intelligence</h4>
-        <p>BrokerAI analyzes deals and provides instant insights</p>
-      </div>
-      <div className="value-prop">
-        <div className="value-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-            <path d="M2 17l10 5 10-5"></path>
-            <path d="M2 12l10 5 10-5"></path>
-          </svg>
-        </div>
-        <h4>Complete Transparency</h4>
-        <p>Track every interaction and document exchange</p>
-      </div>
-    </div>
-
-    {/* Split Paths */}
-    <div className="user-journeys">
-      {/* Developer Journey */}
-      <div className="journey-path developer-path">
-        <div className="journey-header">
-          <h3>For Property Developers</h3>
-          <p>Access capital markets with unprecedented efficiency</p>
-        </div>
-        
-        <div className="journey-steps">
-          <div className="journey-step">
-            <div className="step-number">01</div>
-            <div className="step-content">
-              <h4>Upload Project Documentation</h4>
-              <p>Feasibility studies, development applications, financial models - all secured in our institutional-grade vault</p>
-            </div>
+      <section id="how-it-works" className="how-it-works">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">How Tranch Streamlines Property Finance</h2>
+            <p className="section-subtitle">
+              The intelligent marketplace connecting property developers with private credit funders
+            </p>
           </div>
-          
-          <div className="journey-step">
-            <div className="step-number">02</div>
-            <div className="step-content">
-              <h4>Gain Market Exposure</h4>
-              <p>Your project becomes visible to our network of verified private credit funds and sophisticated investors</p>
+
+          <div id="pricing" style={{ position: 'absolute', top: '-80px' }}></div>
+
+          {/* Value Props */}
+          <div className="value-props">
+            <div className="value-prop">
+              <div className="value-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </div>
+              <h4>Rapid Execution</h4>
+              <p>Connect with funders in days, not months</p>
             </div>
-          </div>
-          
-          <div className="journey-step">
-            <div className="step-number">03</div>
-            <div className="step-content">
-              <h4>Manage Capital Raising</h4>
-              <p>Field inquiries, compare terms, and progress multiple funding conversations simultaneously</p>
+            <div className="value-prop">
+              <div className="value-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 6v6l4 2"></path>
+                </svg>
+              </div>
+              <h4>Real-Time Intelligence</h4>
+              <p>BrokerAI analyzes deals and provides instant insights</p>
+            </div>
+            <div className="value-prop">
+              <div className="value-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                  <path d="M2 17l10 5 10-5"></path>
+                  <path d="M2 12l10 5 10-5"></path>
+                </svg>
+              </div>
+              <h4>Complete Transparency</h4>
+              <p>Track every interaction and document exchange</p>
             </div>
           </div>
 
-          <div className="journey-feature">
-            <div className="feature-highlight">
-              <h5>Powered by BrokerAI</h5>
-              <p>Get instant answers on LVR calculations, feasibility metrics, and market comparables</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="journey-cta">
-          <Link to="/register" className="btn btn-primary">
-            List Your Project
-          </Link>
-          <span className="price-note">$499 per project listing</span>
-        </div>
-      </div>
+          {/* Split Paths */}
+          <div className="user-journeys">
+            {/* Developer Journey */}
+            <div className="journey-path developer-path">
+              <div className="journey-header">
+                <h3>For Property Developers</h3>
+                <p>Access capital markets with unprecedented efficiency</p>
+              </div>
+              
+              <div className="journey-steps">
+                <div className="journey-step">
+                  <div className="step-number">01</div>
+                  <div className="step-content">
+                    <h4>Upload Project Documentation</h4>
+                    <p>Feasibility studies, development applications, financial models - all secured in our institutional-grade vault</p>
+                  </div>
+                </div>
+                
+                <div className="journey-step">
+                  <div className="step-number">02</div>
+                  <div className="step-content">
+                    <h4>Gain Market Exposure</h4>
+                    <p>Your project becomes visible to our network of verified private credit funds and sophisticated investors</p>
+                  </div>
+                </div>
+                
+                <div className="journey-step">
+                  <div className="step-number">03</div>
+                  <div className="step-content">
+                    <h4>Manage Capital Raising</h4>
+                    <p>Field inquiries, compare terms, and progress multiple funding conversations simultaneously</p>
+                  </div>
+                </div>
 
-      {/* Funder Journey */}
-      <div className="journey-path funder-path">
-        <div className="journey-header">
-          <h3>For Private Credit Funds</h3>
-          <p>Source and analyze deals with institutional-grade tools</p>
-        </div>
-        
-        <div className="journey-steps">
-          <div className="journey-step">
-            <div className="step-number">01</div>
-            <div className="step-content">
-              <h4>Access Curated Deal Flow</h4>
-              <p>Filter opportunities by geography, asset class, deal size, and risk parameters</p>
+                <div className="journey-feature">
+                  <div className="feature-highlight">
+                    <h5>Powered by BrokerAI</h5>
+                    <p>Get instant answers on LVR calculations, feasibility metrics, and market comparables</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="journey-cta">
+                <Link to="/register" className="btn btn-primary">
+                  List Your Project
+                </Link>
+                <span className="price-note">$499 per project listing</span>
+              </div>
             </div>
-          </div>
-          
-          <div className="journey-step">
-            <div className="step-number">02</div>
-            <div className="step-content">
-              <h4>Conduct Due Diligence</h4>
-              <p>Review comprehensive project documentation and financial analysis in our secure data room</p>
-            </div>
-          </div>
-          
-          <div className="journey-step">
-            <div className="step-number">03</div>
-            <div className="step-content">
-              <h4>Execute Efficiently</h4>
-              <p>Communicate terms, negotiate directly, and track deal progression through to close</p>
+
+            {/* Funder Journey */}
+            <div className="journey-path funder-path">
+              <div className="journey-header">
+                <h3>For Private Credit Funds</h3>
+                <p>Source and analyze deals with institutional-grade tools</p>
+              </div>
+              
+              <div className="journey-steps">
+                <div className="journey-step">
+                  <div className="step-number">01</div>
+                  <div className="step-content">
+                    <h4>Access Curated Deal Flow</h4>
+                    <p>Filter opportunities by geography, asset class, deal size, and risk parameters</p>
+                  </div>
+                </div>
+                
+                <div className="journey-step">
+                  <div className="step-number">02</div>
+                  <div className="step-content">
+                    <h4>Conduct Due Diligence</h4>
+                    <p>Review comprehensive project documentation and financial analysis in our secure data room</p>
+                  </div>
+                </div>
+                
+                <div className="journey-step">
+                  <div className="step-number">03</div>
+                  <div className="step-content">
+                    <h4>Execute Efficiently</h4>
+                    <p>Communicate terms, negotiate directly, and track deal progression through to close</p>
+                  </div>
+                </div>
+
+                <div className="journey-feature">
+                  <div className="feature-highlight">
+                    <h5>BrokerAI Analytics</h5>
+                    <p>Leverage AI to assess project viability, market conditions, and comparative returns</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="journey-cta">
+                <Link to="/register?role=funder" className="btn btn-primary">
+                  Access Deal Flow
+                </Link>
+                <span className="price-note">$299/month professional access</span>
+              </div>
             </div>
           </div>
 
-          <div className="journey-feature">
-            <div className="feature-highlight">
-              <h5>BrokerAI Analytics</h5>
-              <p>Leverage AI to assess project viability, market conditions, and comparative returns</p>
+          {/* Journey indicators for mobile */}
+          <div className="journey-indicators">
+            <span className="indicator-dot active"></span>
+            <span className="indicator-dot"></span>
+          </div>
+
+          {/* Platform Benefits */}
+          <div className="platform-benefits">
+            <h3>The Tranch Advantage</h3>
+            <div className="benefits-grid">
+              <div className="benefit">
+                <h4>Institutional-Grade Security</h4>
+                <p>Bank-level encryption and secure document management protect sensitive financial information</p>
+              </div>
+              <div className="benefit">
+                <h4>Intelligent Deal Analysis</h4>
+                <p>BrokerAI provides 24/7 expert guidance on deal structuring, market analysis, and financial metrics</p>
+              </div>
+              <div className="benefit">
+                <h4>Verified Network</h4>
+                <p>All participants undergo comprehensive verification ensuring quality connections</p>
+              </div>
+              <div className="benefit">
+                <h4>Complete Audit Trail</h4>
+                <p>Every interaction, document exchange, and communication is tracked for compliance</p>
+              </div>
             </div>
           </div>
         </div>
-        
-        <div className="journey-cta">
-          <Link to="/register?role=funder" className="btn btn-primary">
-            Access Deal Flow
-          </Link>
-          <span className="price-note">$299/month professional access</span>
-        </div>
-      </div>
-    </div>
-
-    {/* Platform Benefits */}
-    <div className="platform-benefits">
-      <h3>The Tranch Advantage</h3>
-      <div className="benefits-grid">
-        <div className="benefit">
-          <h4>Institutional-Grade Security</h4>
-          <p>Bank-level encryption and secure document management protect sensitive financial information</p>
-        </div>
-        <div className="benefit">
-          <h4>Intelligent Deal Analysis</h4>
-          <p>BrokerAI provides 24/7 expert guidance on deal structuring, market analysis, and financial metrics</p>
-        </div>
-        <div className="benefit">
-          <h4>Verified Network</h4>
-          <p>All participants undergo comprehensive verification ensuring quality connections</p>
-        </div>
-        <div className="benefit">
-          <h4>Complete Audit Trail</h4>
-          <p>Every interaction, document exchange, and communication is tracked for compliance</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+      </section>
 
       {/* CTA Section */}
       <section className="cta-section">
