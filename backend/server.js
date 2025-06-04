@@ -1919,4 +1919,373 @@ app.listen(PORT, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
+// ================================
+// DEAL ROUTES
+// ================================
+
+// Create a new deal
+app.post('/api/deals', authenticateToken, async (req, res) => {
+  const { project_id, access_request_id } = req.body;
+  
+  try {
+    // Verify the access request exists and belongs to the user
+    db.get(
+      `SELECT ar.*, p.borrower_id 
+       FROM access_requests ar 
+       JOIN projects p ON ar.project_id = p.id 
+       WHERE ar.id = ? AND ar.status = 'approved' AND (ar.funder_id = ? OR p.borrower_id = ?)`,
+      [access_request_id, req.user.id, req.user.id],
+      (err, accessRequest) => {
+        if (err) {
+          console.error('Access request lookup error:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (!accessRequest) {
+          return res.status(404).json({ error: 'Access request not found or not approved' });
+        }
+
+        // Check if deal already exists
+        db.get(
+          'SELECT id FROM deals WHERE project_id = ? AND access_request_id = ?',
+          [project_id, access_request_id],
+          (err, existingDeal) => {
+            if (err) {
+              console.error('Deal lookup error:', err);
+              return res.status(500).json({ error: 'Database error' });
+            }
+
+            if (existingDeal) {
+              return res.json({ deal_id: existingDeal.id });
+            }
+
+            // Create new deal
+            db.run(
+              `INSERT INTO deals (project_id, access_request_id, borrower_id, funder_id, status) 
+               VALUES (?, ?, ?, ?, 'active')`,
+              [project_id, access_request_id, accessRequest.borrower_id, accessRequest.funder_id],
+              function(err) {
+                if (err) {
+                  console.error('Deal creation error:', err);
+                  return res.status(500).json({ error: 'Failed to create deal' });
+                }
+
+                res.status(201).json({ 
+                  message: 'Deal created successfully',
+                  deal_id: this.lastID 
+                });
+              }
+            );
+          }
+        );
+      }
+    );
+  } catch (err) {
+    console.error('Deal creation error:', err);
+    res.status(500).json({ error: 'Failed to create deal' });
+  }
+});
+
+// Get deal by ID
+app.get('/api/deals/:id', authenticateToken, (req, res) => {
+  const dealId = req.params.id;
+
+  db.get(
+    `SELECT d.*, 
+     p.title as project_title, p.loan_amount, p.suburb,
+     b.name as borrower_name, b.email as borrower_email,
+     f.name as funder_name, f.email as funder_email
+     FROM deals d
+     JOIN projects p ON d.project_id = p.id
+     JOIN users b ON d.borrower_id = b.id
+     JOIN users f ON d.funder_id = f.id
+     WHERE d.id = ? AND (d.borrower_id = ? OR d.funder_id = ? OR ? = 'admin')`,
+    [dealId, req.user.id, req.user.id, req.user.role],
+    (err, deal) => {
+      if (err) {
+        console.error('Deal fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch deal' });
+      }
+
+      if (!deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      res.json(deal);
+    }
+  );
+});
+
+// Get deal documents
+app.get('/api/deals/:id/documents', authenticateToken, (req, res) => {
+  const dealId = req.params.id;
+
+  // First verify user has access to this deal
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      // Get documents
+      db.all(
+        `SELECT dd.*, u.name as uploader_name 
+         FROM deal_documents dd 
+         JOIN users u ON dd.uploader_id = u.id 
+         WHERE dd.deal_id = ? 
+         ORDER BY dd.uploaded_at DESC`,
+        [dealId],
+        (err, documents) => {
+          if (err) {
+            console.error('Documents fetch error:', err);
+            return res.status(500).json({ error: 'Failed to fetch documents' });
+          }
+          res.json(documents);
+        }
+      );
+    }
+  );
+});
+
+// Upload deal documents
+app.post('/api/deals/:id/documents', authenticateToken, upload.array('documents', 10), (req, res) => {
+  const dealId = req.params.id;
+
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: 'No files uploaded' });
+  }
+
+  // Verify user has access to this deal
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      const documentPromises = req.files.map((file) => {
+        return new Promise((resolve, reject) => {
+          db.run(
+            'INSERT INTO deal_documents (deal_id, uploader_id, file_name, file_path, file_size, mime_type) VALUES (?, ?, ?, ?, ?, ?)',
+            [dealId, req.user.id, file.originalname, file.path, file.size, file.mimetype],
+            function(err) {
+              if (err) {
+                reject(err);
+              } else {
+                resolve({
+                  id: this.lastID,
+                  file_name: file.originalname,
+                  file_path: file.path
+                });
+              }
+            }
+          );
+        });
+      });
+
+      Promise.all(documentPromises)
+        .then(documents => {
+          res.status(201).json({
+            message: 'Documents uploaded successfully',
+            documents: documents
+          });
+        })
+        .catch(err => {
+          console.error('Document upload error:', err);
+          res.status(500).json({ error: 'Failed to save documents' });
+        });
+    }
+  );
+});
+
+// Get document requests for a deal
+app.get('/api/deals/:id/document-requests', authenticateToken, (req, res) => {
+  const dealId = req.params.id;
+
+  // Verify user has access to this deal
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      // Get document requests
+      db.all(
+        `SELECT dr.*, u.name as requester_name 
+         FROM document_requests dr 
+         JOIN users u ON dr.requester_id = u.id 
+         WHERE dr.deal_id = ? 
+         ORDER BY dr.created_at DESC`,
+        [dealId],
+        (err, requests) => {
+          if (err) {
+            console.error('Document requests fetch error:', err);
+            return res.status(500).json({ error: 'Failed to fetch document requests' });
+          }
+          res.json(requests);
+        }
+      );
+    }
+  );
+});
+
+// Create document request
+app.post('/api/deals/:id/document-requests', authenticateToken, (req, res) => {
+  const dealId = req.params.id;
+  const { document_name, description } = req.body;
+
+  if (!document_name) {
+    return res.status(400).json({ error: 'Document name is required' });
+  }
+
+  // Verify user has access to this deal
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      db.run(
+        'INSERT INTO document_requests (deal_id, requester_id, document_name, description) VALUES (?, ?, ?, ?)',
+        [dealId, req.user.id, document_name, description],
+        function(err) {
+          if (err) {
+            console.error('Document request creation error:', err);
+            return res.status(500).json({ error: 'Failed to create document request' });
+          }
+
+          res.status(201).json({
+            message: 'Document request created successfully',
+            request_id: this.lastID
+          });
+        }
+      );
+    }
+  );
+});
+
+// Get deal comments
+app.get('/api/deals/:id/comments', authenticateToken, (req, res) => {
+  const dealId = req.params.id;
+
+  // Verify user has access to this deal
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      // Get comments
+      db.all(
+        `SELECT dc.*, u.name as user_name 
+         FROM deal_comments dc 
+         JOIN users u ON dc.user_id = u.id 
+         WHERE dc.deal_id = ? 
+         ORDER BY dc.created_at ASC`,
+        [dealId],
+        (err, comments) => {
+          if (err) {
+            console.error('Comments fetch error:', err);
+            return res.status(500).json({ error: 'Failed to fetch comments' });
+          }
+          res.json(comments);
+        }
+      );
+    }
+  );
+});
+
+// Add deal comment
+app.post('/api/deals/:id/comments', authenticateToken, (req, res) => {
+  const dealId = req.params.id;
+  const { comment } = req.body;
+
+  if (!comment || !comment.trim()) {
+    return res.status(400).json({ error: 'Comment is required' });
+  }
+
+  // Verify user has access to this deal
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      db.run(
+        'INSERT INTO deal_comments (deal_id, user_id, comment) VALUES (?, ?, ?)',
+        [dealId, req.user.id, comment.trim()],
+        function(err) {
+          if (err) {
+            console.error('Comment creation error:', err);
+            return res.status(500).json({ error: 'Failed to create comment' });
+          }
+
+          res.status(201).json({
+            message: 'Comment added successfully',
+            comment_id: this.lastID
+          });
+        }
+      );
+    }
+  );
+});
+
+// Create indicative quote
+app.post('/api/deals/:id/quotes', authenticateToken, requireRole(['funder']), (req, res) => {
+  const dealId = req.params.id;
+  const { 
+    loan_amount, 
+    interest_rate, 
+    loan_term, 
+    establishment_fee, 
+    other_fees,
+    conditions,
+    valid_until 
+  } = req.body;
+
+  if (!loan_amount || !interest_rate || !loan_term) {
+    return res.status(400).json({ error: 'Loan amount, interest rate, and term are required' });
+  }
+
+  // Verify user has access to this deal and is the funder
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND funder_id = ?',
+    [dealId, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      db.run(
+        `INSERT INTO indicative_quotes 
+         (deal_id, funder_id, loan_amount, interest_rate, loan_term, establishment_fee, other_fees, conditions, valid_until) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [dealId, req.user.id, loan_amount, interest_rate, loan_term, establishment_fee, other_fees, conditions, valid_until],
+        function(err) {
+          if (err) {
+            console.error('Quote creation error:', err);
+            return res.status(500).json({ error: 'Failed to create quote' });
+          }
+
+          res.status(201).json({
+            message: 'Quote submitted successfully',
+            quote_id: this.lastID
+          });
+        }
+      );
+    }
+  );
+});
+
 module.exports = app;

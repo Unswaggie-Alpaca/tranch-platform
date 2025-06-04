@@ -2074,17 +2074,22 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
               </button>
             )}
             {project.access_status === 'approved' && !project.deal_id && (
- 
   <button 
     onClick={async () => {
       try {
         const response = await api.createDeal(project.id, project.access_request_id);
+        addNotification({
+          type: 'success',
+          title: 'Deal Room Created',
+          message: 'Successfully created deal room'
+        });
         navigate(`/project/${project.id}/deal/${response.deal_id}`);
       } catch (err) {
+        console.error('Deal creation error:', err);
         addNotification({
           type: 'error',
           title: 'Failed to create deal room',
-          message: err.message
+          message: err.message || 'Could not create deal room'
         });
       }
     }}
@@ -3474,136 +3479,6 @@ const MyProjects = () => {
 
   if (loading) return <LoadingSpinner />;
 
-  return (
-    <div className="my-projects-page">
-      <div className="page-header">
-        <h1>My Projects</h1>
-        <Link to="/create-project" className="btn btn-primary">
-          <span>+</span> Create New Project
-        </Link>
-      </div>
-
-      {projects.length === 0 ? (
-        <EmptyState 
-          icon="📁"
-          title="No projects yet"
-          message="Create your first project to start connecting with funders."
-          action={
-            <Link to="/create-project" className="btn btn-primary">
-              Create Project
-            </Link>
-          }
-        />
-      ) : (
-        <>
-          <div className="projects-controls">
-            <div className="filter-tabs">
-              <button 
-                className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-                onClick={() => setFilter('all')}
-              >
-                All ({projects.length})
-              </button>
-              <button 
-                className={`filter-tab ${filter === 'published' ? 'active' : ''}`}
-                onClick={() => setFilter('published')}
-              >
-                Published ({projects.filter(p => p.payment_status === 'paid').length})
-              </button>
-              <button 
-                className={`filter-tab ${filter === 'draft' ? 'active' : ''}`}
-                onClick={() => setFilter('draft')}
-              >
-                Drafts ({projects.filter(p => p.payment_status === 'unpaid').length})
-              </button>
-            </div>
-            
-            <select 
-              value={sortBy} 
-              onChange={(e) => setSortBy(e.target.value)}
-              className="form-select sort-select"
-            >
-              <option value="created_at">Newest First</option>
-              <option value="loan_amount">Loan Amount</option>
-              <option value="title">Title A-Z</option>
-            </select>
-          </div>
-
-          <div className="projects-table">
-            <table>
-              <thead>
-  <tr>
-    <th>Project Title</th>
-    <th>Location</th>
-    <th>Loan Amount</th>
-    <th>Documents</th>
-    <th>Status</th>
-    <th>Created</th>
-    <th>Actions</th>
-  </tr>
-</thead>
-             // Update the table headers to include Documents column
-<thead>
-  <tr>
-    <th>Project Title</th>
-    <th>Location</th>
-    <th>Loan Amount</th>
-    <th>Documents</th>
-    <th>Status</th>
-    <th>Created</th>
-    <th>Actions</th>
-  </tr>
-</thead>
-
-// Update the table body - remove the docs badge from project title
-<tbody>
-  {filteredProjects.map(project => (
-    <tr key={project.id}>
-      <td className="project-title-cell">
-        <strong>{project.title}</strong>
-      </td>
-      <td>{project.suburb}</td>
-      <td>{formatCurrency(project.loan_amount)}</td>
-      <td>
-        <div className={`docs-status ${project.documents_complete ? 'complete' : 'incomplete'}`}>
-          <svg viewBox="0 0 20 20" fill="currentColor">
-            {project.documents_complete ? (
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            ) : (
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            )}
-          </svg>
-        </div>
-      </td>
-      <td>
-        <StatusBadge status={project.payment_status === 'paid' ? 'Published' : 'Draft'} />
-      </td>
-      <td>{formatDate(project.created_at)}</td>
-      <td className="actions-cell">
-        <button
-          onClick={() => navigate(`/project/${project.id}`)}
-          className="btn btn-sm btn-outline"
-        >
-          View
-        </button>
-        {project.payment_status === 'unpaid' && (
-          <button
-            onClick={() => navigate(`/project/${project.id}/edit`)}
-            className="btn btn-sm btn-primary"
-          >
-            Edit
-          </button>
-        )}
-      </td>
-    </tr>
-  ))}
-</tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
-  );
    return (
     <div className="my-projects-page">
       <div className="page-header">
