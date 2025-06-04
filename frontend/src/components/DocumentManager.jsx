@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 import { formatDate } from '../utils/formatters';
+import { FileIcon, DocumentRequestModal } from "./";
 
 const DocumentManager = ({ dealId, userRole, onUpdate }) => {
   const api = useApi();
