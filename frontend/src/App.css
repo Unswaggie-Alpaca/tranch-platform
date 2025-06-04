@@ -1798,10 +1798,7 @@ label .required {
   .hero-title {
     font-size: 2.5rem;
   }
-  
-  .hero-visual {
-    display: none;
-  }
+
 
   .hero-actions {
     flex-direction: column;
