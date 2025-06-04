@@ -6971,12 +6971,35 @@ useEffect(() => {
     // Initial positioning
     handleJourneyScroll();
   }
- document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-      e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
+ // Find this code in your useEffect and REPLACE it
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function (e) {
+    e.preventDefault();
+    const targetId = this.getAttribute('href');
+    
+    // Special handling for pricing - scroll to journey section
+    if (targetId === '#pricing') {
+      const journeySection = document.querySelector('.user-journeys');
+      if (journeySection) {
+        const offset = window.innerWidth <= 768 ? 60 : 80;
+        const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
+        
+        window.scrollTo({
+          top: targetPosition,
+          behavior: 'smooth'
+        });
+        
+        // Highlight pricing after scroll
+        setTimeout(() => {
+          const pricingElements = document.querySelectorAll('.price-note');
+          pricingElements.forEach(el => {
+            el.style.animation = 'pulse 2s ease-out';
+          });
+        }, 500);
+      }
+    } else {
+      const target = document.querySelector(targetId);
       if (target) {
-        // Account for mobile header height
         const offset = window.innerWidth <= 768 ? 60 : 80;
         const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
         
@@ -6984,14 +7007,15 @@ useEffect(() => {
           top: targetPosition,
           behavior: 'smooth'
         });
-        
-        // Trigger haptic feedback on mobile
-        if ('vibrate' in navigator) {
-          navigator.vibrate(10);
-        }
       }
-    });
+    }
+    
+    // Trigger haptic feedback on mobile
+    if ('vibrate' in navigator) {
+      navigator.vibrate(10);
+    }
   });
+});
 }, []);
 
   
@@ -7026,7 +7050,22 @@ useEffect(() => {
     </svg>
     <span className="nav-label">Features</span>
   </a>
-  <a href="#pricing" className="nav-item">
+  <a 
+  href="#pricing" 
+  className="nav-item"
+  onClick={(e) => {
+    e.preventDefault();
+    const journeySection = document.querySelector('.user-journeys');
+    if (journeySection) {
+      const offset = 60;
+      const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
+      window.scrollTo({
+        top: targetPosition,
+        behavior: 'smooth'
+      });
+    }
+  }}
+>
   <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
   </svg>

@@ -1090,11 +1090,21 @@ label .required {
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
 }
 
+/* Fix button text visibility on hover */
+.hero .cta-button:hover,
 .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
-  /* Keep text visible on hover */
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  color: white !important;
+}
+
+/* Ensure all primary button text stays white */
+.btn-primary,
+.btn-primary:hover,
+.btn-primary:active,
+.btn-primary:focus {
+  color: white !important;
 }
 
 .btn-primary:active:not(:disabled) {
@@ -1589,12 +1599,31 @@ label .required {
   /* Hide desktop elements */
   .landing-page .hero-visual,
   .landing-page .value-props,
-  .landing-page .user-journeys,
-  .landing-page .platform-benefits,
   .landing-page .landing-nav {
     display: none !important;
   }
+ /* Style journey cards for mobile */
+  .landing-page .user-journeys {
+    display: flex !important;
+    gap: 0;
+    padding: 0;
+    margin: 0 -20px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    position: relative;
+  }
 
+  /* Add journey indicators */
+  .landing-page .journey-indicators {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 24px;
+    padding: 0 20px;
+  }
+}
   /* Mobile Bottom Navigation */
   .landing-page .mobile-bottom-nav {
     position: fixed;
@@ -1705,7 +1734,7 @@ label .required {
   .pricing-card.featured {
     transform: none;
   }
-}
+
 
 /* Desktop only helper class */
 .desktop-only {
