@@ -1886,40 +1886,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // ================================
-// ERROR HANDLING
-// ================================
-
-// Multer error handler
-app.use((error, req, res, next) => {
-  if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'File too large. Maximum size is 50MB.' });
-    }
-    if (error.code === 'LIMIT_FILE_COUNT') {
-      return res.status(400).json({ error: 'Too many files. Maximum is 10 files per upload.' });
-    }
-  }
-  
-  console.error('Server Error:', error);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Tranch Backend Server running on port ${PORT}`);
-  console.log(`🔐 Authentication: Clerk`);
-  console.log(`📊 Database: SQLite (${dbPath})`);
-  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Connected' : 'Not configured'}`);
-  console.log(`🤖 OpenAI: ${process.env.OPENAI_API_KEY ? 'Connected' : 'Using fallback responses'}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
-
-// ================================
 // DEAL ROUTES
 // ================================
 
@@ -2287,5 +2253,41 @@ app.post('/api/deals/:id/quotes', authenticateToken, requireRole(['funder']), (r
     }
   );
 });
+
+// ================================
+// ERROR HANDLING
+// ================================
+
+// Multer error handler
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large. Maximum size is 50MB.' });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'Too many files. Maximum is 10 files per upload.' });
+    }
+  }
+  
+  console.error('Server Error:', error);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Tranch Backend Server running on port ${PORT}`);
+  console.log(`🔐 Authentication: Clerk`);
+  console.log(`📊 Database: SQLite (${dbPath})`);
+  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? 'Connected' : 'Not configured'}`);
+  console.log(`🤖 OpenAI: ${process.env.OPENAI_API_KEY ? 'Connected' : 'Using fallback responses'}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+
 
 module.exports = app;
