@@ -1,52 +1,58 @@
 import React, { useState, useEffect } from 'react';
-import { useApi } from '../../hooks/useApi';
 import { formatDate } from '../../utils/formatters';
 
-const DocumentManager = ({ dealId, userRole, onUpdate }) => {
-  const api = useApi();
+const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
   const [documents, setDocuments] = useState([]);
   const [requests, setRequests] = useState([]);
-  const [showRequestModal, setShowRequestModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   
   useEffect(() => {
-    fetchDocuments();
+    // Simulate document data for now
+    setDocuments([
+      {
+        id: 1,
+        file_name: 'Financial_Analysis.pdf',
+        uploader_name: 'Developer',
+        uploaded_at: new Date().toISOString(),
+        file_type: 'pdf'
+      },
+      {
+        id: 2,
+        file_name: 'Construction_Contract.pdf',
+        uploader_name: 'Developer',
+        uploaded_at: new Date().toISOString(),
+        file_type: 'pdf'
+      }
+    ]);
+    
+    setRequests([
+      {
+        id: 1,
+        document_name: 'Insurance Certificate',
+        description: 'Current insurance certificate for the project',
+        requester_name: 'Funder',
+        requester_role: 'funder',
+        created_at: new Date().toISOString()
+      }
+    ]);
   }, [dealId]);
-  
-  const fetchDocuments = async () => {
-    try {
-      const [docs, reqs] = await Promise.all([
-        api.getDealDocuments(dealId),
-        api.getDocumentRequests(dealId)
-      ]);
-      setDocuments(docs);
-      setRequests(reqs);
-    } catch (err) {
-      console.error('Failed to fetch documents:', err);
-    }
-  };
   
   const handleUpload = async (files, requestId = null) => {
     setUploading(true);
-    const formData = new FormData();
     
-    files.forEach(file => {
-      formData.append('documents', file);
-    });
-    
-    if (requestId) {
-      formData.append('request_id', requestId);
-    }
-    
-    try {
-      await api.uploadDealDocuments(dealId, formData);
-      await fetchDocuments();
-      if (onUpdate) onUpdate();
-    } catch (err) {
-      console.error('Upload failed:', err);
-    } finally {
+    // Simulate upload
+    setTimeout(() => {
+      const newDoc = {
+        id: Date.now(),
+        file_name: files[0].name,
+        uploader_name: userRole === 'funder' ? 'Funder' : 'Developer',
+        uploaded_at: new Date().toISOString(),
+        file_type: 'pdf'
+      };
+      setDocuments(prev => [...prev, newDoc]);
       setUploading(false);
-    }
+      if (onUpdate) onUpdate();
+    }, 1000);
   };
   
   return (
@@ -54,10 +60,7 @@ const DocumentManager = ({ dealId, userRole, onUpdate }) => {
       <div className="document-header">
         <h3>Deal Documents</h3>
         <div className="document-actions">
-          <button 
-            onClick={() => setShowRequestModal(true)}
-            className="btn btn-outline"
-          >
+          <button className="btn btn-outline">
             Request Document
           </button>
           <label className="btn btn-primary">
@@ -72,7 +75,6 @@ const DocumentManager = ({ dealId, userRole, onUpdate }) => {
         </div>
       </div>
       
-      {/* Document Requests */}
       {requests.length > 0 && (
         <div className="document-requests">
           <h4>Outstanding Requests</h4>
@@ -100,12 +102,13 @@ const DocumentManager = ({ dealId, userRole, onUpdate }) => {
         </div>
       )}
       
-      {/* Document List */}
       <div className="documents-grid">
         {documents.map(doc => (
           <div key={doc.id} className="document-card">
             <div className="doc-icon">
-              <FileIcon type={doc.file_type} />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
             </div>
             <div className="doc-info">
               <h4>{doc.file_name}</h4>
@@ -113,29 +116,15 @@ const DocumentManager = ({ dealId, userRole, onUpdate }) => {
               <span className="doc-meta">{formatDate(doc.uploaded_at)}</span>
             </div>
             <div className="doc-actions">
-              <button 
-                onClick={() => api.downloadDealDocument(dealId, doc.id)}
-                className="btn btn-sm btn-outline"
-              >
+              <button className="btn btn-sm btn-outline">
                 Download
               </button>
             </div>
           </div>
         ))}
       </div>
-      
-      {showRequestModal && (
-        <DocumentRequestModal
-          onClose={() => setShowRequestModal(false)}
-          onSubmit={async (requestData) => {
-            await api.createDocumentRequest(dealId, requestData);
-            setShowRequestModal(false);
-            fetchDocuments();
-          }}
-        />
-      )}
     </div>
   );
 };
 
-export default DocumentManager;
+export default DealDocumentManager;

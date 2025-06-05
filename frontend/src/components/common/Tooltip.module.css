@@ -1,0 +1,365 @@
+/* Tooltip.module.css */
+
+.tooltipWrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #475569;
+  line-height: 1.5;
+  white-space: normal;
+  width: 280px;
+  z-index: var(--z-tooltip);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+/* Tooltip Positions */
+.top {
+  bottom: calc(100% + 12px);
+  top: auto;
+}
+
+.bottom {
+  top: calc(100% + 12px);
+  bottom: auto;
+}
+
+.left {
+  right: calc(100% + 12px);
+  left: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.right {
+  left: calc(100% + 12px);
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+/* Show tooltip on hover */
+.tooltipWrapper:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltipWrapper:hover .top,
+.tooltipWrapper:hover .bottom {
+  transform: translateX(-50%) translateY(0);
+}
+
+.tooltipWrapper:hover .left,
+.tooltipWrapper:hover .right {
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Tooltip Arrow */
+.tooltip::after {
+  content: '';
+  position: absolute;
+  border: 6px solid transparent;
+}
+
+.top::after {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-top-color: rgba(255, 255, 255, 0.95);
+}
+
+.bottom::after {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-bottom-color: rgba(255, 255, 255, 0.95);
+}
+
+.left::after {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left-color: rgba(255, 255, 255, 0.95);
+}
+
+.right::after {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-right-color: rgba(255, 255, 255, 0.95);
+}
+
+/* Tooltip Variants */
+.dark {
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark.top::after {
+  border-top-color: rgba(0, 0, 0, 0.9);
+}
+
+.dark.bottom::after {
+  border-bottom-color: rgba(0, 0, 0, 0.9);
+}
+
+.dark.left::after {
+  border-left-color: rgba(0, 0, 0, 0.9);
+}
+
+.dark.right::after {
+  border-right-color: rgba(0, 0, 0, 0.9);
+}
+
+/* Size Variants */
+.small {
+  font-size: 12px;
+  padding: 8px 12px;
+  width: 200px;
+}
+
+.large {
+  font-size: 16px;
+  padding: 16px 20px;
+  width: 360px;
+}
+
+/* No Wrap */
+.nowrap {
+  white-space: nowrap;
+  width: auto;
+}
+
+/* Delay Variants */
+.delay {
+  transition-delay: 0.5s;
+}
+
+.delayLong {
+  transition-delay: 1s;
+}
+
+/* Interactive States */
+.tooltipWrapper:focus-visible .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Animations */
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.tooltip.animate {
+  animation: tooltipFadeIn 0.3s ease-out;
+}
+
+/* Force Show State */
+.forceShow {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Error State */
+.error {
+  background: rgba(239, 68, 68, 0.95);
+  color: white;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.error.top::after {
+  border-top-color: rgba(239, 68, 68, 0.95);
+}
+
+.error.bottom::after {
+  border-bottom-color: rgba(239, 68, 68, 0.95);
+}
+
+.error.left::after {
+  border-left-color: rgba(239, 68, 68, 0.95);
+}
+
+.error.right::after {
+  border-right-color: rgba(239, 68, 68, 0.95);
+}
+
+/* Success State */
+.success {
+  background: rgba(16, 185, 129, 0.95);
+  color: white;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.success.top::after {
+  border-top-color: rgba(16, 185, 129, 0.95);
+}
+
+.success.bottom::after {
+  border-bottom-color: rgba(16, 185, 129, 0.95);
+}
+
+.success.left::after {
+  border-left-color: rgba(16, 185, 129, 0.95);
+}
+
+.success.right::after {
+  border-right-color: rgba(16, 185, 129, 0.95);
+}
+
+/* Warning State */
+.warning {
+  background: rgba(245, 158, 11, 0.95);
+  color: white;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.warning.top::after {
+  border-top-color: rgba(245, 158, 11, 0.95);
+}
+
+.warning.bottom::after {
+  border-bottom-color: rgba(245, 158, 11, 0.95);
+}
+
+.warning.left::after {
+  border-left-color: rgba(245, 158, 11, 0.95);
+}
+
+.warning.right::after {
+  border-right-color: rgba(245, 158, 11, 0.95);
+}
+
+/* Edge Detection - Position tooltips inside viewport */
+.tooltipWrapper[data-edge="right"] .tooltip {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
+}
+
+.tooltipWrapper[data-edge="left"] .tooltip {
+  left: 0;
+  right: auto;
+  transform: translateX(0);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .tooltip {
+    width: 240px;
+    font-size: 13px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  
+  /* Force all tooltips to bottom on mobile */
+  .top,
+  .left,
+  .right {
+    top: calc(100% + 12px);
+    bottom: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  
+  /* Update arrows for mobile */
+  .top::after,
+  .left::after,
+  .right::after {
+    bottom: 100%;
+    top: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-bottom-color: rgba(255, 255, 255, 0.95);
+    border-top-color: transparent;
+    border-left-color: transparent;
+    border-right-color: transparent;
+  }
+  
+  .dark.top::after,
+  .dark.left::after,
+  .dark.right::after {
+    border-bottom-color: rgba(0, 0, 0, 0.9);
+  }
+  
+  .error.top::after,
+  .error.left::after,
+  .error.right::after {
+    border-bottom-color: rgba(239, 68, 68, 0.95);
+  }
+  
+  .success.top::after,
+  .success.left::after,
+  .success.right::after {
+    border-bottom-color: rgba(16, 185, 129, 0.95);
+  }
+  
+  .warning.top::after,
+  .warning.left::after,
+  .warning.right::after {
+    border-bottom-color: rgba(245, 158, 11, 0.95);
+  }
+  
+  /* Small size on mobile */
+  .small {
+    width: 180px;
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  
+  /* Large size on mobile */
+  .large {
+    width: 280px;
+    font-size: 14px;
+    padding: 12px 16px;
+  }
+}
+
+/* Touch Device Support */
+@media (hover: none) {
+  .tooltipWrapper:active .tooltip {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+/* Accessibility */
+.tooltipWrapper:focus {
+  outline: none;
+}
+
+.tooltipWrapper:focus-visible {
+  outline: 2px solid var(--primary-600);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
