@@ -5838,12 +5838,38 @@ const DealRoom = () => {
 };
 
 const DealOverview = ({ deal, project }) => {
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
+  const formatNumber = (num) => {
+    if (!num) return 'N/A';
+    return new Intl.NumberFormat('en-AU').format(num);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'TBD';
+    return new Date(dateString).toLocaleDateString('en-AU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
   return (
     <div className="deal-overview">
       <div className="overview-grid">
+        {/* Project Summary Card */}
         <div className="content-card">
           <h3>Project Summary</h3>
-          <p>{project.description || 'No description provided.'}</p>
+          <p className="project-description">
+            {project.description || 'No description provided.'}
+          </p>
           
           <div className="detail-grid">
             <div className="detail-item">
@@ -5855,24 +5881,149 @@ const DealOverview = ({ deal, project }) => {
               <span>{project.development_stage}</span>
             </div>
             <div className="detail-item">
-              <label>Loan Amount</label>
-              <span>{formatCurrency(project.loan_amount)}</span>
+              <label>Project Size</label>
+              <span>{project.project_size_sqm ? `${formatNumber(project.project_size_sqm)} sqm` : 'N/A'}</span>
             </div>
             <div className="detail-item">
-              <label>Location</label>
-              <span>{project.suburb}</span>
+              <label>Number of Units</label>
+              <span>{project.number_of_units ? formatNumber(project.number_of_units) : 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Levels</label>
+              <span>{project.number_of_levels || 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Car Spaces</label>
+              <span>{project.car_spaces || 'N/A'}</span>
             </div>
           </div>
         </div>
-        
+
+        {/* Financial Structure Card */}
         <div className="content-card">
-          <h3>Deal Status</h3>
+          <h3>Financial Structure</h3>
+          <div className="financial-grid">
+            <div className="financial-detail">
+              <label>Loan Amount Required</label>
+              <span className="value primary">{formatCurrency(project.loan_amount)}</span>
+            </div>
+            <div className="financial-detail">
+              <label>Interest Rate</label>
+              <span className="value">{project.interest_rate || 'TBD'}% per annum</span>
+            </div>
+            <div className="financial-detail">
+              <label>Loan Term</label>
+              <span className="value">{project.loan_term || 'TBD'} months</span>
+            </div>
+            <div className="financial-detail">
+              <label>Total Project Cost</label>
+              <span className="value">{project.total_project_cost ? formatCurrency(project.total_project_cost) : 'N/A'}</span>
+            </div>
+            <div className="financial-detail">
+              <label>Equity Contribution</label>
+              <span className="value">{project.equity_contribution ? formatCurrency(project.equity_contribution) : 'N/A'}</span>
+            </div>
+            <div className="financial-detail">
+              <label>LVR</label>
+              <span className="value">{project.lvr ? `${project.lvr.toFixed(1)}%` : 'N/A'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Development Costs Card */}
+        <div className="content-card">
+          <h3>Development Economics</h3>
+          <div className="detail-grid">
+            <div className="detail-item">
+              <label>Land Value</label>
+              <span>{project.land_value ? formatCurrency(project.land_value) : 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Construction Cost</label>
+              <span>{project.construction_cost ? formatCurrency(project.construction_cost) : 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Expected GDC</label>
+              <span>{project.expected_gdc ? formatCurrency(project.expected_gdc) : 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Expected Profit</label>
+              <span>{project.expected_profit ? formatCurrency(project.expected_profit) : 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Profit Margin</label>
+              <span>
+                {project.expected_profit && project.expected_gdc 
+                  ? `${((project.expected_profit / project.expected_gdc) * 100).toFixed(1)}%` 
+                  : 'N/A'}
+              </span>
+            </div>
+            <div className="detail-item">
+              <label>ICR</label>
+              <span>{project.icr ? project.icr.toFixed(2) : 'N/A'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Planning & Compliance Card */}
+        <div className="content-card">
+          <h3>Planning & Timeline</h3>
+          <div className="detail-grid">
+            <div className="detail-item">
+              <label>Zoning</label>
+              <span>{project.zoning || 'N/A'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Planning Status</label>
+              <span>{project.planning_permit_status || 'Not Started'}</span>
+            </div>
+            <div className="detail-item">
+              <label>Expected Start</label>
+              <span>{formatDate(project.expected_start_date)}</span>
+            </div>
+            <div className="detail-item">
+              <label>Expected Completion</label>
+              <span>{formatDate(project.expected_completion_date)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Risk Assessment Card */}
+        {(project.market_risk_rating || project.construction_risk_rating || project.location_risk_rating) && (
+          <div className="content-card">
+            <h3>Risk Assessment</h3>
+            <div className="risk-grid">
+              <div className="risk-item">
+                <label>Market Risk</label>
+                <div className={`risk-badge risk-${project.market_risk_rating}`}>
+                  {project.market_risk_rating?.toUpperCase()}
+                </div>
+              </div>
+              <div className="risk-item">
+                <label>Construction Risk</label>
+                <div className={`risk-badge risk-${project.construction_risk_rating}`}>
+                  {project.construction_risk_rating?.toUpperCase()}
+                </div>
+              </div>
+              <div className="risk-item">
+                <label>Location Risk</label>
+                <div className={`risk-badge risk-${project.location_risk_rating}`}>
+                  {project.location_risk_rating?.toUpperCase()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Deal Timeline Card */}
+        <div className="content-card">
+          <h3>Deal Progress</h3>
           <div className="status-timeline">
             <div className="timeline-item active">
               <div className="timeline-marker"></div>
               <div className="timeline-content">
                 <h4>Deal Room Created</h4>
-                <p>{formatDateTime(deal.created_at)}</p>
+                <p>{formatDate(deal.created_at)}</p>
               </div>
             </div>
             <div className="timeline-item">
@@ -5900,7 +6051,7 @@ const DealOverview = ({ deal, project }) => {
 // The issue is that 'documents' is referenced but the state variable is actually 'dealDocuments'
 
 const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRole, onUpdate }) => {
-  const [dealDocuments, setDealDocuments] = useState([]); // This is the actual state variable
+  const [dealDocuments, setDealDocuments] = useState([]);
   const [requests, setRequests] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -5915,7 +6066,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
   const fetchDocuments = async () => {
     try {
       const docs = await api.getDealDocuments(dealId);
-      setDealDocuments(docs || []); // Ensure it's always an array
+      setDealDocuments(docs || []);
     } catch (err) {
       console.error('Failed to fetch documents:', err);
     }
@@ -5943,7 +6094,9 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     }
     
     try {
-      await api.uploadDealDocuments(dealId, formData);
+      // Upload to project documents (same as project page)
+      await api.uploadDocuments(projectId, formData);
+      
       addNotification({
         type: 'success',
         title: 'Upload Complete',
@@ -5959,6 +6112,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
         });
       }
       
+      // Refresh both document lists
       fetchDocuments();
       fetchRequests();
       onUpdate();
@@ -5973,24 +6127,20 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     }
   };
   
-  const handleDownload = async (document, isProjectDoc = false) => {
+  const handleDownload = async (document) => {
     try {
-      let blob;
-      if (isProjectDoc) {
-        // Download project document
-        blob = await api.downloadDocument(document.file_path);
-      } else {
-        // Download deal document
-        blob = await api.downloadDealDocument(dealId, document.id);
-      }
-      
+      // Always use the same download method as project page
+      const blob = await api.downloadDocument(document.file_path);
       const url = URL.createObjectURL(blob);
       const a = window.document.createElement('a');
       a.href = url;
       a.download = document.file_name;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
+      console.error('Download error:', err);
       addNotification({
         type: 'error',
         title: 'Download Failed',
@@ -5999,7 +6149,6 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     }
   };
 
-  // Helper function for date formatting
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -6010,46 +6159,14 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     });
   };
   
+  // Combine all documents for display
+  const allDocuments = [...projectDocuments, ...dealDocuments];
+  
   return (
     <div className="deal-documents">
-      {/* Project Documents Section */}
-      <div className="document-section">
-        <h4>Project Documents <span className="document-count">{projectDocuments.length}</span></h4>
-        <div className="document-list">
-          {projectDocuments.length > 0 ? (
-            projectDocuments.map(doc => (
-              <div key={doc.id} className="document-item">
-                <div className="document-info">
-                  <div className="document-icon">📄</div>
-                  <div className="document-details">
-                    <h5>{doc.file_name}</h5>
-                    <div className="document-meta">
-                      {doc.document_type} • Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at)}
-                    </div>
-                  </div>
-                </div>
-                <div className="document-actions">
-                  <button 
-                    onClick={() => handleDownload(doc, true)} 
-                    className="btn btn-sm btn-outline"
-                  >
-                    Download
-                  </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="empty-state">
-              <p>No project documents uploaded yet</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Deal Documents Section */}
       <div className="document-section">
         <div className="section-header">
-          <h4>Deal Room Documents <span className="document-count">{dealDocuments.length}</span></h4>
+          <h4>Documents <span className="document-count">{allDocuments.length}</span></h4>
           <div className="section-actions">
             {userRole === 'funder' && (
               <button onClick={() => setShowRequestModal(true)} className="btn btn-sm btn-outline">
@@ -6071,15 +6188,16 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
         </div>
         
         <div className="document-list">
-          {dealDocuments.length > 0 ? (
-            dealDocuments.map(doc => (
+          {allDocuments.length > 0 ? (
+            allDocuments.map(doc => (
               <div key={doc.id} className="document-item">
                 <div className="document-info">
                   <div className="document-icon">📄</div>
                   <div className="document-details">
                     <h5>{doc.file_name}</h5>
                     <div className="document-meta">
-                      Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at)}
+                      {doc.document_type ? `${doc.document_type} • ` : ''}
+                      Uploaded by {doc.uploader_name || 'System'} • {formatDate(doc.uploaded_at)}
                     </div>
                   </div>
                 </div>
@@ -6095,7 +6213,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
             ))
           ) : (
             <div className="empty-state">
-              <p>No deal-specific documents uploaded yet</p>
+              <p>No documents uploaded yet</p>
             </div>
           )}
         </div>
@@ -6296,6 +6414,7 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
   const [responding, setResponding] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [showCounterWizard, setShowCounterWizard] = useState(false);
   
   const handleAccept = async () => {
     setResponding(true);
@@ -6342,11 +6461,7 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
   };
   
   const handleCounter = () => {
-    addNotification({
-      type: 'info',
-      title: 'Coming Soon',
-      message: 'Counter offer functionality will be available soon'
-    });
+    setShowCounterWizard(true);
   };
   
   const showConfirm = (action) => {
@@ -6354,18 +6469,24 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     setShowConfirmDialog(true);
   };
   
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+  
   if (!proposal && userRole === 'funder') {
     return (
       <div className="proposal-section">
         <div className="content-card">
-          <h3>Funding Proposal</h3>
-          <p>Submit an indicative quote to start the negotiation process.</p>
-          
-          <div className="proposal-actions">
-            <button onClick={onShowQuoteWizard} className="btn btn-primary">
-              Submit Indicative Quote
-            </button>
-          </div>
+          <h3>Submit Indicative Quote</h3>
+          <p>No proposal submitted yet. Click below to create your first indicative quote.</p>
+          <button onClick={onShowQuoteWizard} className="btn btn-primary">
+            Create Indicative Quote
+          </button>
         </div>
       </div>
     );
@@ -6375,8 +6496,23 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     return (
       <div className="proposal-section">
         <div className="content-card">
-          <h3>Funding Proposal</h3>
-          <p>No proposal has been submitted yet.</p>
+          <h3>Awaiting Proposal</h3>
+          <p>No proposals have been submitted yet. The funder will submit an indicative quote for your review.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show new proposal button for funders after decline
+  if (userRole === 'funder' && proposal.status === 'declined') {
+    return (
+      <div className="proposal-section">
+        <div className="content-card">
+          <h3>Proposal Declined</h3>
+          <p>Your previous proposal was declined. You can submit a new proposal.</p>
+          <button onClick={onShowQuoteWizard} className="btn btn-primary">
+            Submit New Proposal
+          </button>
         </div>
       </div>
     );
@@ -6384,32 +6520,36 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
   
   return (
     <div className="proposal-section">
-      <div className="proposal-view">
+      <div className="content-card">
+        <h3>Indicative Quote</h3>
         <div className="proposal-header">
-          <h2>Indicative Funding Proposal</h2>
-          <p>Submitted {formatDate(proposal.created_at)}</p>
+          <span>From: {proposal.funder_name}</span>
+          <StatusBadge status={proposal.status || 'pending'} />
         </div>
         
-        <div className="proposal-terms">
+        <div className="proposal-details">
           <div className="term-item">
-            <div className="term-label">Loan Amount</div>
+            <label>Loan Amount</label>
             <div className="term-value">{formatCurrency(proposal.loan_amount)}</div>
           </div>
-          
           <div className="term-item">
-            <div className="term-label">Interest Rate</div>
+            <label>Interest Rate</label>
             <div className="term-value">{proposal.interest_rate}% p.a.</div>
           </div>
-          
           <div className="term-item">
-            <div className="term-label">Loan Term</div>
+            <label>Loan Term</label>
             <div className="term-value">{proposal.loan_term} months</div>
           </div>
-          
           <div className="term-item">
-            <div className="term-label">Establishment Fee</div>
+            <label>Establishment Fee</label>
             <div className="term-value">{formatCurrency(proposal.establishment_fee || 0)}</div>
           </div>
+          {proposal.other_fees && (
+            <div className="term-item">
+              <label>Other Fees</label>
+              <div className="term-value">{proposal.other_fees}</div>
+            </div>
+          )}
         </div>
         
         {proposal.conditions && (
@@ -6461,6 +6601,23 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
           </div>
         )}
       </div>
+      
+      {showCounterWizard && (
+        <CounterOfferWizard
+          originalProposal={proposal}
+          dealId={deal.id}
+          onClose={() => setShowCounterWizard(false)}
+          onSuccess={() => {
+            setShowCounterWizard(false);
+            onUpdate();
+            addNotification({
+              type: 'success',
+              title: 'Counter Offer Sent',
+              message: 'Your counter offer has been sent to the funder'
+            });
+          }}
+        />
+      )}
       
       <ConfirmationDialog
         isOpen={showConfirmDialog}
@@ -6727,6 +6884,110 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
               {submitting ? 'Submitting...' : 'Submit Quote'}
             </button>
           )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+const CounterOfferWizard = ({ originalProposal, dealId, onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    loan_amount: originalProposal.loan_amount,
+    interest_rate: originalProposal.interest_rate,
+    loan_term: originalProposal.loan_term,
+    establishment_fee: originalProposal.establishment_fee || '',
+    other_fees: originalProposal.other_fees || '',
+    conditions: originalProposal.conditions || '',
+    counter_notes: ''
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
+  
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      // For now, create a comment with the counter offer details
+      const counterMessage = `COUNTER OFFER:\n
+Loan Amount: $${formData.loan_amount.toLocaleString()}
+Interest Rate: ${formData.interest_rate}%
+Loan Term: ${formData.loan_term} months
+Establishment Fee: $${formData.establishment_fee || 0}
+${formData.other_fees ? `Other Fees: ${formData.other_fees}\n` : ''}
+${formData.conditions ? `Conditions: ${formData.conditions}\n` : ''}
+${formData.counter_notes ? `\nNotes: ${formData.counter_notes}` : ''}`;
+      
+      await api.createDealComment(dealId, { comment: counterMessage });
+      onSuccess();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Failed to send counter offer',
+        message: err.message
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Counter Offer" size="large">
+      <div className="counter-offer-form">
+        <div className="form-group">
+          <label>Loan Amount</label>
+          <input
+            type="number"
+            value={formData.loan_amount}
+            onChange={(e) => setFormData({ ...formData, loan_amount: e.target.value })}
+            className="form-control"
+          />
+        </div>
+        
+        <div className="form-row">
+          <div className="form-group">
+            <label>Interest Rate (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={formData.interest_rate}
+              onChange={(e) => setFormData({ ...formData, interest_rate: e.target.value })}
+              className="form-control"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Loan Term (months)</label>
+            <input
+              type="number"
+              value={formData.loan_term}
+              onChange={(e) => setFormData({ ...formData, loan_term: e.target.value })}
+              className="form-control"
+            />
+          </div>
+        </div>
+        
+        <div className="form-group">
+          <label>Counter Offer Notes</label>
+          <textarea
+            value={formData.counter_notes}
+            onChange={(e) => setFormData({ ...formData, counter_notes: e.target.value })}
+            placeholder="Explain your counter offer..."
+            className="form-control"
+            rows="4"
+          />
+        </div>
+        
+        <div className="modal-actions">
+          <button onClick={onClose} className="btn btn-outline">
+            Cancel
+          </button>
+          <button 
+            onClick={handleSubmit} 
+            disabled={submitting}
+            className="btn btn-primary"
+          >
+            {submitting ? 'Sending...' : 'Send Counter Offer'}
+          </button>
         </div>
       </div>
     </Modal>
