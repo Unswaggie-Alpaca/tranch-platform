@@ -1981,19 +1981,18 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
   const [accessMessage, setAccessMessage] = useState('');
   const navigate = useNavigate();
   
-  // NEW: State for handling multiple deal rooms
+  // State for handling multiple deal rooms
   const [deals, setDeals] = useState([]);
   const [showDeals, setShowDeals] = useState(false);
   const [loadingDeals, setLoadingDeals] = useState(false);
   
-  // NEW: Fetch deals if borrower and project has deals
+  // Fetch deals if borrower and project has deals
   useEffect(() => {
     if (userRole === 'borrower' && project.deal_count > 0 && project.payment_status === 'paid') {
       fetchDeals();
     }
   }, [project.id, userRole, project.deal_count]);
   
-  // NEW: Function to fetch all deals for this project
   const fetchDeals = async () => {
     setLoadingDeals(true);
     try {
@@ -2123,7 +2122,7 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
                   <Link to={`/project/${project.id}`} className="btn btn-outline">
                     View Details
                   </Link>
-                  {/* NEW: Show deal rooms dropdown if multiple deals, or single button if one deal */}
+                  {/* Only show deal rooms if there are actual deals */}
                   {project.deal_count > 1 ? (
                     <div className="deal-dropdown">
                       <button 
@@ -2154,19 +2153,10 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
                         </div>
                       )}
                     </div>
-                  ) : project.deal_count === 1 ? (
+                  ) : project.deal_count === 1 && deals.length > 0 ? (
                     <Link 
-                      to={`/project/${project.id}/deal/${deals[0]?.id || ''}`} 
+                      to={`/project/${project.id}/deal/${deals[0].id}`} 
                       className="btn btn-primary"
-                      onClick={async (e) => {
-                        if (!deals[0]) {
-                          e.preventDefault();
-                          await fetchDeals();
-                          if (deals[0]) {
-                            navigate(`/project/${project.id}/deal/${deals[0].id}`);
-                          }
-                        }
-                      }}
                     >
                       Deal Room
                     </Link>
@@ -2178,6 +2168,7 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
 
           {userRole === 'funder' && project.payment_status === 'paid' && (
             <>
+              {/* Not approved yet - show request access */}
               {project.access_status !== 'approved' && !showMessageInput && (
                 <button 
                   onClick={() => setShowMessageInput(true)}
@@ -2187,44 +2178,55 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
                   {project.access_status === 'pending' ? '⏳ Request Pending' : '🔓 Request Full Access'}
                 </button>
               )}
-              {project.access_status === 'approved' && (
-                <button 
-                  onClick={() => navigate(`/project/${project.id}`)}
-                  className="btn btn-primary"
-                >
-                  View Full Details
-                </button>
-              )}
+              
+              {/* Approved but no deal - show view details and engage */}
               {project.access_status === 'approved' && !project.deal_id && (
-                <button 
-                  onClick={async () => {
-                    try {
-                      const response = await api.createDeal(project.id, project.access_request_id);
-                      addNotification({
-                        type: 'success',
-                        title: 'Deal Room Created',
-                        message: 'Successfully created deal room'
-                      });
-                      navigate(`/project/${project.id}/deal/${response.deal_id}`);
-                    } catch (err) {
-                      console.error('Deal creation error:', err);
-                      addNotification({
-                        type: 'error',
-                        title: 'Failed to create deal room',
-                        message: err.message || 'Could not create deal room'
-                      });
-                    }
-                  }}
-                  className="btn btn-primary"
-                >
-                  Engage
-                </button>
+                <>
+                  <button 
+                    onClick={() => navigate(`/project/${project.id}`)}
+                    className="btn btn-outline"
+                  >
+                    View Full Details
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const response = await api.createDeal(project.id, project.access_request_id);
+                        addNotification({
+                          type: 'success',
+                          title: 'Deal Room Created',
+                          message: 'Successfully created deal room'
+                        });
+                        navigate(`/project/${project.id}/deal/${response.deal_id}`);
+                      } catch (err) {
+                        console.error('Deal creation error:', err);
+                        addNotification({
+                          type: 'error',
+                          title: 'Failed to create deal room',
+                          message: err.message || 'Could not create deal room'
+                        });
+                      }
+                    }}
+                    className="btn btn-primary"
+                  >
+                    Engage
+                  </button>
+                </>
               )}
-              {/* UPDATED: Only show Deal Room button if funder has engaged */}
-              {project.deal_id && (
-                <Link to={`/project/${project.id}/deal/${project.deal_id}`} className="btn btn-primary">
-                  Deal Room
-                </Link>
+              
+              {/* Has a deal - show view details and deal room */}
+              {project.access_status === 'approved' && project.deal_id && (
+                <>
+                  <button 
+                    onClick={() => navigate(`/project/${project.id}`)}
+                    className="btn btn-outline"
+                  >
+                    View Full Details
+                  </button>
+                  <Link to={`/project/${project.id}/deal/${project.deal_id}`} className="btn btn-primary">
+                    Deal Room
+                  </Link>
+                </>
               )}
             </>
           )}
@@ -2288,7 +2290,6 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
     </>
   );
 };
-
 // ===========================
 // PROJECTS PAGE (FOR FUNDERS)
 // ===========================
