@@ -5621,6 +5621,7 @@ const BrokerAI = () => {
 // DEAL ROOM COMPONENTS - REPLACE THE ENTIRE DealRoom SECTION IN App.jsx
 // ===========================
 
+// Fixed DealRoom Component with better error handling
 const DealRoom = () => {
   const { projectId, dealId } = useParams();
   const { user } = useApp();
@@ -5635,7 +5636,7 @@ const DealRoom = () => {
   const [showQuoteWizard, setShowQuoteWizard] = useState(false);
   const [proposal, setProposal] = useState(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [projectDocuments, setProjectDocuments] = useState([]); // ADD THIS
+  const [projectDocuments, setProjectDocuments] = useState([]);
   
   useEffect(() => {
     fetchDealData();
@@ -5643,17 +5644,31 @@ const DealRoom = () => {
   
   const fetchDealData = async () => {
     try {
-      const [dealData, projectData, proposalData, projectDocs] = await Promise.all([
-        api.getDeal(dealId),
-        api.getProject(projectId),
-        api.getDealProposal(dealId).catch(() => null),
-        api.getProjectDocumentsForDeal(projectId) // ADD THIS
-      ]);
+      // First, try to get the essential data
+      const dealData = await api.getDeal(dealId);
+      const projectData = await api.getProject(projectId);
       
       setDeal(dealData);
       setProject(projectData);
-      setProposal(proposalData);
-      setProjectDocuments(projectDocs); // ADD THIS
+      
+      // Then try to get optional data, but don't fail if these don't work
+      try {
+        const proposalData = await api.getDealProposal(dealId);
+        setProposal(proposalData);
+      } catch (err) {
+        console.log('No proposal yet:', err);
+        setProposal(null);
+      }
+      
+      // Try to get project documents, but don't fail the whole page if it doesn't work
+      try {
+        const projectDocs = await api.getProjectDocumentsForDeal(projectId);
+        setProjectDocuments(projectDocs || []);
+      } catch (err) {
+        console.error('Could not load project documents:', err);
+        setProjectDocuments([]);
+        // Don't navigate away - just log the error
+      }
       
     } catch (err) {
       console.error('Failed to load deal data:', err);
@@ -5662,6 +5677,7 @@ const DealRoom = () => {
         title: 'Load Failed',
         message: 'Failed to load deal room data'
       });
+      // Only navigate away if we couldn't load the essential data
       navigate(`/project/${projectId}`);
     } finally {
       setLoading(false);
@@ -5677,7 +5693,6 @@ const DealRoom = () => {
         message: 'Congratulations on closing this deal! The project has been removed from the live market.'
       });
       
-      // Show completion modal
       setTimeout(() => {
         addNotification({
           type: 'info',
@@ -5763,7 +5778,7 @@ const DealRoom = () => {
         )}
       </div>
       
-       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
       
       <div className="deal-content">
         {activeTab === 'overview' && <DealOverview deal={deal} project={project} />}
@@ -5771,7 +5786,7 @@ const DealRoom = () => {
           <DealDocumentManager 
             dealId={dealId}
             projectId={projectId}
-            projectDocuments={projectDocuments} // ADD THIS
+            projectDocuments={projectDocuments}
             userRole={user.role}
             onUpdate={fetchDealData}
           />
