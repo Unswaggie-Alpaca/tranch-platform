@@ -192,6 +192,9 @@ createDealComment: (dealId, commentData) => request(`/deals/${dealId}/comments`,
   body: JSON.stringify(commentData),
 }),
 
+ getProjectDeals: (projectId) => request(`/projects/${projectId}/deals`),
+
+  getProjectDocumentsForDeal: (projectId) => request(`/projects/${projectId}/documents/deal`),
 // Proposals
 getDealProposal: (dealId) => request(`/deals/${dealId}/proposal`),
 createProposal: (dealId, proposalData) => request(`/deals/${dealId}/proposals`, {
@@ -299,6 +302,9 @@ body: JSON.stringify({ project_id: projectId }),
       body: JSON.stringify({ confirmation }),
     }),
   };
+
+  
+
 };
 
 // ===========================
@@ -1974,6 +1980,31 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
   const [showMessageInput, setShowMessageInput] = useState(false);
   const [accessMessage, setAccessMessage] = useState('');
   const navigate = useNavigate();
+  
+  // NEW: State for handling multiple deal rooms
+  const [deals, setDeals] = useState([]);
+  const [showDeals, setShowDeals] = useState(false);
+  const [loadingDeals, setLoadingDeals] = useState(false);
+  
+  // NEW: Fetch deals if borrower and project has deals
+  useEffect(() => {
+    if (userRole === 'borrower' && project.deal_count > 0 && project.payment_status === 'paid') {
+      fetchDeals();
+    }
+  }, [project.id, userRole, project.deal_count]);
+  
+  // NEW: Function to fetch all deals for this project
+  const fetchDeals = async () => {
+    setLoadingDeals(true);
+    try {
+      const dealsList = await api.getProjectDeals(project.id);
+      setDeals(dealsList);
+    } catch (err) {
+      console.error('Failed to fetch deals:', err);
+    } finally {
+      setLoadingDeals(false);
+    }
+  };
 
   const handleRequestAccess = async () => {
     setRequesting(true);
@@ -1991,280 +2022,270 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
       addNotification({
         type: 'error',
         title: 'Request Failed',
-        message: err.message
+        message: err.message || 'Failed to send access request'
       });
     } finally {
       setRequesting(false);
     }
   };
 
-  const handlePaymentSuccess = async () => {
-    setShowPaymentModal(false);
-    addNotification({
-      type: 'success',
-      title: 'Payment Successful',
-      message: 'Your project is now published and visible to funders.'
-    });
-    
-    if (onProjectUpdate) {
-      await onProjectUpdate();
-    }
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
   };
 
-  const getRiskRatingColor = (rating) => {
-    switch (rating?.toLowerCase()) {
-      case 'low': return 'var(--green-600)';
-      case 'medium': return 'var(--yellow-600)';
-      case 'high': return 'var(--red-600)';
-      default: return 'var(--gray-600)';
-    }
+  const StatusBadge = ({ status }) => {
+    const getStatusClass = (status) => {
+      switch (status) {
+        case 'paid': return 'status-published';
+        case 'unpaid': return 'status-draft';
+        case 'approved': return 'status-approved';
+        case 'pending': return 'status-pending';
+        default: return 'status-draft';
+      }
+    };
+
+    const getStatusText = (status) => {
+      switch (status) {
+        case 'paid': return 'Published';
+        case 'unpaid': return 'Draft';
+        case 'approved': return 'Access Granted';
+        case 'pending': return 'Access Pending';
+        default: return status;
+      }
+    };
+
+    return (
+      <span className={`status-badge ${getStatusClass(status)}`}>
+        {getStatusText(status)}
+      </span>
+    );
   };
 
   return (
-    <div className="project-card enhanced">
-      <PaymentModal 
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        project={project}
-        onSuccess={handlePaymentSuccess}
-      />
-    
-      <div className="project-header">
-        <div className="header-content">
+    <>
+      <div className="project-card">
+        <div className="project-card-header">
           <h3 className="project-title">{project.title}</h3>
-          <div className="project-badges">
-            <StatusBadge status={project.payment_status === 'paid' ? 'Published' : 'Unpublished'} />
-            {project.documents_complete && (
-              <StatusBadge status="Docs Complete" />
-            )}
-          </div>
+          <StatusBadge status={userRole === 'borrower' ? project.payment_status : project.access_status || 'none'} />
         </div>
-        <div className="project-meta">
-          <span className="project-location">📍 {project.suburb}</span>
-          <span className="project-date">📅 {formatDate(project.created_at)}</span>
-        </div>
-      </div>
-
-      <div className="project-financial">
-        <div className="financial-item primary">
-          <label>Loan Amount</label>
-          <span className="value">{formatCurrency(project.loan_amount)}</span>
-        </div>
-        {project.interest_rate && (
-          <div className="financial-item">
-            <label>Interest Rate</label>
-            <span className="value">{project.interest_rate}%</span>
+        
+        <div className="project-info">
+          <div className="info-item">
+            <span className="label">Location:</span>
+            <span className="value">{project.suburb || 'Not specified'}</span>
           </div>
-        )}
-        {project.loan_term && (
-          <div className="financial-item">
-            <label>Loan Term</label>
-            <span className="value">{project.loan_term} months</span>
+          <div className="info-item">
+            <span className="label">Loan Amount:</span>
+            <span className="value">{formatCurrency(project.loan_amount)}</span>
           </div>
-        )}
-        {project.lvr && (
-          <div className="financial-item">
-            <label>LVR</label>
-            <span className="value">{project.lvr.toFixed(1)}%</span>
-          </div>
-        )}
-      </div>
-
-      <div className="project-details">
-        <div className="detail-grid">
-          <div className="detail-item">
-            <span className="label">Property Type</span>
+          <div className="info-item">
+            <span className="label">Property Type:</span>
             <span className="value">{project.property_type || 'Not specified'}</span>
           </div>
-          <div className="detail-item">
-            <span className="label">Development Stage</span>
-            <span className="value">{project.development_stage || 'Planning'}</span>
-          </div>
-          {project.total_project_cost && (
-            <div className="detail-item">
-              <span className="label">Total Project Cost</span>
-              <span className="value">{formatCurrency(project.total_project_cost)}</span>
+          {userRole === 'funder' && project.access_status === 'approved' && (
+            <div className="info-item">
+              <span className="label">Borrower:</span>
+              <span className="value">{project.borrower_name}</span>
             </div>
           )}
-          {project.expected_profit && (
-            <div className="detail-item">
-              <span className="label">Expected Profit</span>
-              <span className="value">{formatCurrency(project.expected_profit)}</span>
+          {userRole === 'borrower' && project.deal_count > 0 && (
+            <div className="info-item">
+              <span className="label">Active Deals:</span>
+              <span className="value">{project.deal_count}</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="project-actions">
+          {userRole === 'borrower' && (
+            <>
+              {project.payment_status !== 'paid' ? (
+                <>
+                  <Link to={`/project/${project.id}`} className="btn btn-outline">
+                    View Details
+                  </Link>
+                  <button 
+                    onClick={() => setShowPaymentModal(true)}
+                    className="btn btn-primary"
+                    disabled={!project.documents_complete}
+                    title={!project.documents_complete ? 'Upload all required documents first' : ''}
+                  >
+                    Pay to Publish ($499)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to={`/project/${project.id}`} className="btn btn-outline">
+                    View Details
+                  </Link>
+                  {/* NEW: Show deal rooms dropdown if multiple deals, or single button if one deal */}
+                  {project.deal_count > 1 ? (
+                    <div className="deal-dropdown">
+                      <button 
+                        onClick={() => setShowDeals(!showDeals)}
+                        className="btn btn-primary"
+                      >
+                        Deal Rooms ({project.deal_count}) ▼
+                      </button>
+                      {showDeals && (
+                        <div className="deal-dropdown-menu">
+                          {loadingDeals ? (
+                            <div className="deal-dropdown-item">Loading...</div>
+                          ) : (
+                            deals.map(deal => (
+                              <Link 
+                                key={deal.id}
+                                to={`/project/${project.id}/deal/${deal.id}`}
+                                className="deal-dropdown-item"
+                                onClick={() => setShowDeals(false)}
+                              >
+                                <span>{deal.funder_name}</span>
+                                {deal.proposal_status === 'accepted' && 
+                                  <span className="deal-status-badge accepted">Accepted</span>
+                                }
+                              </Link>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : project.deal_count === 1 ? (
+                    <Link 
+                      to={`/project/${project.id}/deal/${deals[0]?.id || ''}`} 
+                      className="btn btn-primary"
+                      onClick={async (e) => {
+                        if (!deals[0]) {
+                          e.preventDefault();
+                          await fetchDeals();
+                          if (deals[0]) {
+                            navigate(`/project/${project.id}/deal/${deals[0].id}`);
+                          }
+                        }
+                      }}
+                    >
+                      Deal Room
+                    </Link>
+                  ) : null}
+                </>
+              )}
+            </>
+          )}
+
+          {userRole === 'funder' && project.payment_status === 'paid' && (
+            <>
+              {project.access_status !== 'approved' && !showMessageInput && (
+                <button 
+                  onClick={() => setShowMessageInput(true)}
+                  disabled={project.access_status === 'pending'}
+                  className="btn btn-primary"
+                >
+                  {project.access_status === 'pending' ? '⏳ Request Pending' : '🔓 Request Full Access'}
+                </button>
+              )}
+              {project.access_status === 'approved' && (
+                <button 
+                  onClick={() => navigate(`/project/${project.id}`)}
+                  className="btn btn-primary"
+                >
+                  View Full Details
+                </button>
+              )}
+              {project.access_status === 'approved' && !project.deal_id && (
+                <button 
+                  onClick={async () => {
+                    try {
+                      const response = await api.createDeal(project.id, project.access_request_id);
+                      addNotification({
+                        type: 'success',
+                        title: 'Deal Room Created',
+                        message: 'Successfully created deal room'
+                      });
+                      navigate(`/project/${project.id}/deal/${response.deal_id}`);
+                    } catch (err) {
+                      console.error('Deal creation error:', err);
+                      addNotification({
+                        type: 'error',
+                        title: 'Failed to create deal room',
+                        message: err.message || 'Could not create deal room'
+                      });
+                    }
+                  }}
+                  className="btn btn-primary"
+                >
+                  Engage
+                </button>
+              )}
+              {/* UPDATED: Only show Deal Room button if funder has engaged */}
+              {project.deal_id && (
+                <Link to={`/project/${project.id}/deal/${project.deal_id}`} className="btn btn-primary">
+                  Deal Room
+                </Link>
+              )}
+            </>
+          )}
+
+          {userRole === 'admin' && (
+            <button 
+              onClick={() => navigate(`/project/${project.id}`)}
+              className="btn btn-outline"
+            >
+              Admin View
+            </button>
+          )}
+
+          {userRole === 'funder' && showMessageInput && (
+            <div className="access-request-form">
+              <div className="message-input-container">
+                <label>Message to developer (optional):</label>
+                <textarea
+                  value={accessMessage}
+                  onChange={(e) => setAccessMessage(e.target.value)}
+                  placeholder="Introduce yourself and explain your interest in this project..."
+                  className="message-textarea"
+                  rows="3"
+                  maxLength="500"
+                />
+                <div className="character-count">{accessMessage.length}/500</div>
+              </div>
+              <div className="message-actions">
+                <button 
+                  onClick={() => {
+                    setShowMessageInput(false);
+                    setAccessMessage('');
+                  }}
+                  className="btn btn-sm btn-outline"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRequestAccess}
+                  disabled={requesting}
+                  className="btn btn-sm btn-primary"
+                >
+                  {requesting ? 'Sending...' : 'Send Request'}
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {(project.market_risk_rating || project.construction_risk_rating || project.location_risk_rating) && (
-        <div className="project-risks">
-          <h4>Risk Assessment</h4>
-          <div className="risk-grid">
-            {project.market_risk_rating && (
-              <div className="risk-item">
-                <span className="risk-label">Market Risk</span>
-                <span className="risk-value" style={{ color: getRiskRatingColor(project.market_risk_rating) }}>
-                  {project.market_risk_rating.toUpperCase()}
-                </span>
-              </div>
-            )}
-            {project.construction_risk_rating && (
-              <div className="risk-item">
-                <span className="risk-label">Construction Risk</span>
-                <span className="risk-value" style={{ color: getRiskRatingColor(project.construction_risk_rating) }}>
-                  {project.construction_risk_rating.toUpperCase()}
-                </span>
-              </div>
-            )}
-            {project.location_risk_rating && (
-              <div className="risk-item">
-                <span className="risk-label">Location Risk</span>
-                <span className="risk-value" style={{ color: getRiskRatingColor(project.location_risk_rating) }}>
-                  {project.location_risk_rating.toUpperCase()}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
+      {showPaymentModal && (
+        <PaymentModal 
+          projectId={project.id}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={() => {
+            setShowPaymentModal(false);
+            if (onProjectUpdate) onProjectUpdate();
+          }}
+        />
       )}
-
-      {project.description && (
-        <div className="project-description">
-          <p>{project.description}</p>
-        </div>
-      )}
-
-      {userRole === 'borrower' && (
-  <>
-    {project.payment_status !== 'paid' ? (
-      <>
-        <Link to={`/project/${project.id}`} className="btn btn-outline">
-          View Details
-        </Link>
-        <button 
-          onClick={() => setShowPaymentModal(true)}
-          className="btn btn-primary"
-          disabled={!project.documents_complete}
-          title={!project.documents_complete ? 'Upload all required documents first' : ''}
-        >
-          Pay to Publish ($499)
-        </button>
-      </>
-    ) : (
-      <>
-        <Link to={`/project/${project.id}`} className="btn btn-outline">
-          View Details
-        </Link>
-        {/* ADD THIS: Show Deal Room button if deal exists */}
-        {project.deal_id && (
-          <Link to={`/project/${project.id}/deal/${project.deal_id}`} className="btn btn-primary">
-            Deal Room
-          </Link>
-        )}
-      </>
-    )}
-  </>
-)}
-
-        {userRole === 'funder' && project.payment_status === 'paid' && (
-          <>
-            {project.access_status !== 'approved' && !showMessageInput && (
-              <button 
-                onClick={() => setShowMessageInput(true)}
-                disabled={project.access_status === 'pending'}
-                className="btn btn-primary"
-              >
-                {project.access_status === 'pending' ? '⏳ Request Pending' : '🔓 Request Full Access'}
-              </button>
-            )}
-            {project.access_status === 'approved' && (
-              <button 
-                onClick={() => navigate(`/project/${project.id}`)}
-                className="btn btn-primary"
-              >
-                View Full Details
-              </button>
-            )}
-            {project.access_status === 'approved' && !project.deal_id && (
-  <button 
-    onClick={async () => {
-      try {
-        const response = await api.createDeal(project.id, project.access_request_id);
-        addNotification({
-          type: 'success',
-          title: 'Deal Room Created',
-          message: 'Successfully created deal room'
-        });
-        navigate(`/project/${project.id}/deal/${response.deal_id}`);
-      } catch (err) {
-        console.error('Deal creation error:', err);
-        addNotification({
-          type: 'error',
-          title: 'Failed to create deal room',
-          message: err.message || 'Could not create deal room'
-        });
-      }
-    }}
-    className="btn btn-primary"
-  >
-    Engage
-  </button>
-)}
-
-{project.deal_id && (
-  <button 
-    onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
-    className="btn btn-primary"
-  >
-    Deal Room
-  </button>
-)}
-          </>
-        )}
-
-        {userRole === 'admin' && (
-          <button 
-            onClick={() => navigate(`/project/${project.id}`)}
-            className="btn btn-outline"
-          >
-            Admin View
-          </button>
-        )}
-
-        {userRole === 'funder' && showMessageInput && (
-          <div className="access-request-form">
-            <div className="message-input-container">
-              <label>Message to developer (optional):</label>
-              <textarea
-                value={accessMessage}
-                onChange={(e) => setAccessMessage(e.target.value)}
-                placeholder="Introduce yourself and explain your interest in this project..."
-                className="message-textarea"
-                rows="3"
-                maxLength="500"
-              />
-              <div className="character-count">{accessMessage.length}/500</div>
-            </div>
-            <div className="message-actions">
-              <button 
-                onClick={() => {
-                  setShowMessageInput(false);
-                  setAccessMessage('');
-                }}
-                className="btn btn-sm btn-outline"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleRequestAccess}
-                disabled={requesting}
-                className="btn btn-sm btn-primary"
-              >
-                {requesting ? 'Sending...' : 'Send Request'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+    </>
   );
 };
 
@@ -5605,6 +5626,7 @@ const DealRoom = () => {
   const [showQuoteWizard, setShowQuoteWizard] = useState(false);
   const [proposal, setProposal] = useState(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [projectDocuments, setProjectDocuments] = useState([]); // ADD THIS
   
   useEffect(() => {
     fetchDealData();
@@ -5612,23 +5634,18 @@ const DealRoom = () => {
   
   const fetchDealData = async () => {
     try {
-      const [dealData, projectData, proposalData] = await Promise.all([
+      const [dealData, projectData, proposalData, projectDocs] = await Promise.all([
         api.getDeal(dealId),
         api.getProject(projectId),
-        api.getDealProposal(dealId).catch(() => null) // Handle no proposal gracefully
+        api.getDealProposal(dealId).catch(() => null),
+        api.getProjectDocumentsForDeal(projectId) // ADD THIS
       ]);
       
       setDeal(dealData);
       setProject(projectData);
       setProposal(proposalData);
+      setProjectDocuments(projectDocs); // ADD THIS
       
-      // Send notification when deal room is first created
-      if (user.role === 'funder' && dealData.status === 'active') {
-        api.createNotification(dealId, {
-          type: 'deal_created',
-          message: 'A funder has engaged with your project'
-        }).catch(console.error);
-      }
     } catch (err) {
       console.error('Failed to load deal data:', err);
       addNotification({
@@ -5737,7 +5754,7 @@ const DealRoom = () => {
         )}
       </div>
       
-      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
       
       <div className="deal-content">
         {activeTab === 'overview' && <DealOverview deal={deal} project={project} />}
@@ -5745,6 +5762,7 @@ const DealRoom = () => {
           <DealDocumentManager 
             dealId={dealId}
             projectId={projectId}
+            projectDocuments={projectDocuments} // ADD THIS
             userRole={user.role}
             onUpdate={fetchDealData}
           />
@@ -5854,8 +5872,8 @@ const DealOverview = ({ deal, project }) => {
   );
 };
 
-const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
-  const [documents, setDocuments] = useState([]);
+const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, onUpdate }) => {
+  const [dealDocuments, setDealDocuments] = useState([]);
   const [requests, setRequests] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -5870,7 +5888,7 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
   const fetchDocuments = async () => {
     try {
       const docs = await api.getDealDocuments(dealId);
-      setDocuments(docs);
+      setDealDocuments(docs);
     } catch (err) {
       console.error('Failed to fetch documents:', err);
     }
@@ -5928,9 +5946,17 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
     }
   };
   
-  const handleDownload = async (document) => {
+    const handleDownload = async (document, isProjectDoc = false) => {
     try {
-      const blob = await api.downloadDealDocument(dealId, document.id);
+      let blob;
+      if (isProjectDoc) {
+        // Download project document
+        blob = await api.downloadDocument(document.file_path);
+      } else {
+        // Download deal document
+        blob = await api.downloadDealDocument(dealId, document.id);
+      }
+      
       const url = URL.createObjectURL(blob);
       const a = window.document.createElement('a');
       a.href = url;
@@ -5947,32 +5973,103 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
   };
   
   return (
-    <div className="document-manager">
-      <div className="document-header">
-        <h3>Document Management</h3>
-        <div className="document-actions">
-          {userRole === 'funder' && (
-            <button onClick={() => setShowRequestModal(true)} className="btn btn-outline">
-              Request Document
-            </button>
+    <div className="deal-documents">
+      {/* Project Documents Section */}
+      <div className="document-section">
+        <h4>Project Documents <span className="document-count">{projectDocuments.length}</span></h4>
+        <div className="document-list">
+          {projectDocuments.length > 0 ? (
+            projectDocuments.map(doc => (
+              <div key={doc.id} className="document-item">
+                <div className="document-info">
+                  <div className="document-icon">📄</div>
+                  <div className="document-details">
+                    <h5>{doc.file_name}</h5>
+                    <div className="document-meta">
+                      {doc.document_type} • Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="document-actions">
+                  <button 
+                    onClick={() => handleDownload(doc, true)} 
+                    className="btn btn-sm btn-outline"
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">
+              <p>No project documents uploaded yet</p>
+            </div>
           )}
-          <FileUpload
-            onUpload={handleUpload}
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-            maxSize={10 * 1024 * 1024}
-            multiple={true}
-            disabled={uploading}
-          >
-            <button className="btn btn-primary" disabled={uploading}>
-              {uploading ? 'Uploading...' : 'Upload Documents'}
-            </button>
-          </FileUpload>
         </div>
       </div>
-      
+
+      {/* Deal Documents Section */}
+      <div className="document-section">
+        <div className="section-header">
+          <h4>Deal Room Documents <span className="document-count">{dealDocuments.length}</span></h4>
+          <div className="section-actions">
+            {userRole === 'funder' && (
+              <button onClick={() => setShowRequestModal(true)} className="btn btn-sm btn-outline">
+                Request Document
+              </button>
+            )}
+            <FileUpload
+              onUpload={handleUpload}
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+              maxSize={10 * 1024 * 1024}
+              multiple={true}
+              disabled={uploading}
+            >
+              <button className="btn btn-sm btn-primary" disabled={uploading}>
+                {uploading ? 'Uploading...' : 'Upload Document'}
+              </button>
+            </FileUpload>
+          </div>
+        </div>
+        
+        <div className="document-list">
+          {dealDocuments.length > 0 ? (
+            dealDocuments.map(doc => (
+              <div key={doc.id} className="document-item">
+                <div className="document-info">
+                  <div className="document-icon">📄</div>
+                  <div className="document-details">
+                    <h5>{doc.file_name}</h5>
+                    <div className="document-meta">
+                      Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="document-actions">
+                  <button 
+                    onClick={() => handleDownload(doc)} 
+                    className="btn btn-sm btn-outline"
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">
+              <p>No deal-specific documents uploaded yet</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Document Requests Section */}
       {requests.length > 0 && (
-        <div className="document-requests">
+        <div className="document-section">
           <h4>Pending Document Requests</h4>
+          {/* ... rest of requests section ... */}
+        </div>
+      )}
           {requests.map(request => (
             <div key={request.id} className="request-card">
               <div className="request-info">
@@ -6036,9 +6133,6 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
           }}
         />
       )}
-    </div>
-  );
-};
 
 const DocumentRequestModal = ({ dealId, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
