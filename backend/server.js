@@ -2072,11 +2072,12 @@ app.get('/api/projects/:projectId/documents/deal', authenticateToken, (req, res)
         return res.status(403).json({ error: 'Access denied - no active deal found' });
       }
 
-      // Get project documents - using the correct table name 'documents'
+      // Get project documents with uploader name from project owner
       db.all(
-        `SELECT d.*, u.name as uploader_name
+        `SELECT d.*, p.borrower_id, u.name as uploader_name
          FROM documents d
-         JOIN users u ON d.user_id = u.id
+         JOIN projects p ON d.project_id = p.id
+         JOIN users u ON p.borrower_id = u.id
          WHERE d.project_id = ?
          ORDER BY d.uploaded_at DESC`,
         [projectId],
