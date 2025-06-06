@@ -967,81 +967,118 @@ app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, re
 });
 
 // Get projects
+// STEP 1: Find this line in your server.js:
+// app.get('/api/projects', authenticateToken, (req, res) => {
+
+// STEP 2: REPLACE THE ENTIRE FUNCTION (from app.get to the closing }); ) with this:
+
 app.get('/api/projects', authenticateToken, (req, res) => {
-  let query;
-  let params = [];
-
-  if (req.user.role === 'admin') {
-    query = `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
-             FROM projects p JOIN users u ON p.borrower_id = u.id
-             ORDER BY p.created_at DESC`;
-  } else if (req.user.role === 'borrower') {
-    query = `SELECT * FROM projects WHERE borrower_id = ? ORDER BY created_at DESC`;
-    params = [req.user.id];
+  if (req.user.role === 'borrower') {
+    // Get borrower's own projects with deal information
+    db.all(
+      `SELECT p.*, 
+              d.id as deal_id,
+              (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as document_count
+       FROM projects p
+       LEFT JOIN deals d ON p.id = d.project_id AND d.status = 'active'
+       WHERE p.borrower_id = ?
+       ORDER BY p.created_at DESC`,
+      [req.user.id],
+      (err, projects) => {
+        if (err) {
+          console.error('Projects fetch error:', err);
+          return res.status(500).json({ error: 'Failed to fetch projects' });
+        }
+        res.json(projects);
+      }
+    );
   } else if (req.user.role === 'funder') {
-    if (!req.user.approved) {
-      return res.status(403).json({ error: 'Account pending approval' });
-    }
-    
-    if (req.user.subscription_status !== 'active') {
-      return res.status(403).json({ error: 'Active subscription required' });
-    }
-    
-    query = `SELECT p.id, p.title, p.suburb, p.loan_amount, p.property_type, 
-             p.development_stage, p.visible, p.payment_status, p.created_at,
-             p.description, p.location, p.interest_rate, p.loan_term,
-             p.total_project_cost, p.expected_profit, p.lvr, p.icr,
-             p.project_size_sqm, p.number_of_units,
-             p.market_risk_rating, p.construction_risk_rating, p.location_risk_rating,
-             ar.status as access_status, ar.id as access_request_id
-             FROM projects p 
-             LEFT JOIN access_requests ar ON p.id = ar.project_id AND ar.funder_id = ?
-             WHERE p.payment_status = 'paid' AND p.visible = TRUE
-             ORDER BY p.created_at DESC`;
-    params = [req.user.id];
+    // For funders - show published projects with deal status
+    db.all(
+      `SELECT p.*, 
+              u.name as borrower_name,
+              ar.status as access_status,
+              ar.id as access_request_id,
+              d.id as deal_id
+       FROM projects p
+       LEFT JOIN users u ON p.borrower_id = u.id
+       LEFT JOIN access_requests ar ON p.id = ar.project_id AND ar.funder_id = ?
+       LEFT JOIN deals d ON p.id = d.project_id AND d.funder_id = ? AND d.status = 'active'
+       WHERE p.payment_status = 'paid' AND p.visible = 1
+       ORDER BY p.created_at DESC`,
+      [req.user.id, req.user.id],
+      (err, projects) => {
+        if (err) {
+          console.error('Projects fetch error:', err);
+          return res.status(500).json({ error: 'Failed to fetch projects' });
+        }
+        res.json(projects);
+      }
+    );
+  } else {
+    res.status(403).json({ error: 'Unauthorized role' });
   }
-
-  db.all(query, params, (err, projects) => {
-    if (err) {
-      console.error('Projects fetch error:', err);
-      return res.status(500).json({ error: 'Failed to fetch projects' });
-    }
-    res.json(projects);
-  });
 });
 
 // Get single project
 app.get('/api/projects/:id', authenticateToken, (req, res) => {
   const projectId = req.params.id;
-
-  db.get('SELECT * FROM projects WHERE id = ?', [projectId], (err, project) => {
-    if (err || !project) {
+  
+  // Build query based on user role
+  let query;
+  let params;
+  
+  if (req.user.role === 'borrower') {
+    query = `
+      SELECT p.*, 
+             u.name as borrower_name,
+             d.id as deal_id
+      FROM projects p
+      LEFT JOIN users u ON p.borrower_id = u.id
+      LEFT JOIN deals d ON p.id = d.project_id AND d.status = 'active'
+      WHERE p.id = ? AND p.borrower_id = ?
+    `;
+    params = [projectId, req.user.id];
+  } else if (req.user.role === 'funder') {
+    query = `
+      SELECT p.*, 
+             u.name as borrower_name,
+             ar.status as access_status,
+             ar.id as access_request_id,
+             d.id as deal_id
+      FROM projects p
+      LEFT JOIN users u ON p.borrower_id = u.id
+      LEFT JOIN access_requests ar ON p.id = ar.project_id AND ar.funder_id = ?
+      LEFT JOIN deals d ON p.id = d.project_id AND d.funder_id = ? AND d.status = 'active'
+      WHERE p.id = ?
+    `;
+    params = [req.user.id, req.user.id, projectId];
+  } else if (req.user.role === 'admin') {
+    query = `
+      SELECT p.*, 
+             u.name as borrower_name
+      FROM projects p
+      LEFT JOIN users u ON p.borrower_id = u.id
+      WHERE p.id = ?
+    `;
+    params = [projectId];
+  }
+  
+  db.get(query, params, (err, project) => {
+    if (err) {
+      console.error('Project fetch error:', err);
+      return res.status(500).json({ error: 'Failed to fetch project' });
+    }
+    
+    if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
-
-    // Check access permissions
-    if (req.user.role === 'borrower' && project.borrower_id !== req.user.id) {
+    
+    // Check access permissions for funders
+    if (req.user.role === 'funder' && project.payment_status !== 'paid' && !project.access_status) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
-    if (req.user.role === 'funder') {
-      if (!req.user.approved) {
-        return res.status(403).json({ error: 'Account pending approval' });
-      }
-      
-      db.get(
-        'SELECT status FROM access_requests WHERE project_id = ? AND funder_id = ?', 
-        [projectId, req.user.id], 
-        (err, access) => {
-          if (!access || access.status !== 'approved') {
-            return res.status(403).json({ error: 'Access not granted' });
-          }
-          res.json(project);
-        }
-      );
-      return;
-    }
-
+    
     res.json(project);
   });
 });
