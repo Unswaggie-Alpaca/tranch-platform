@@ -2048,6 +2048,9 @@ app.post('/api/deals', authenticateToken, (req, res) => {
 });
 
 // Add endpoint to get project documents for deal room
+// In server.js, replace the existing endpoint with this fixed version:
+
+// Get project documents for deal room
 app.get('/api/projects/:projectId/documents/deal', authenticateToken, (req, res) => {
   const projectId = req.params.projectId;
   
@@ -2060,24 +2063,29 @@ app.get('/api/projects/:projectId/documents/deal', authenticateToken, (req, res)
      LIMIT 1`,
     [projectId, req.user.id, req.user.id],
     (err, deal) => {
-      if (err || !deal) {
-        return res.status(403).json({ error: 'Access denied' });
+      if (err) {
+        console.error('Deal access check error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!deal) {
+        return res.status(403).json({ error: 'Access denied - no active deal found' });
       }
 
-      // Get project documents
+      // Get project documents - using the correct table name 'documents'
       db.all(
-        `SELECT pd.*, u.name as uploader_name
-         FROM project_documents pd
-         JOIN users u ON pd.user_id = u.id
-         WHERE pd.project_id = ?
-         ORDER BY pd.uploaded_at DESC`,
+        `SELECT d.*, u.name as uploader_name
+         FROM documents d
+         JOIN users u ON d.user_id = u.id
+         WHERE d.project_id = ?
+         ORDER BY d.uploaded_at DESC`,
         [projectId],
         (err, documents) => {
           if (err) {
             console.error('Documents fetch error:', err);
             return res.status(500).json({ error: 'Failed to fetch documents' });
           }
-          res.json(documents);
+          res.json(documents || []);
         }
       );
     }
