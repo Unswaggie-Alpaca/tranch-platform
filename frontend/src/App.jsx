@@ -145,28 +145,78 @@ const createApiClient = (getToken) => {
   return response.blob();
 },
 
-// Add these to your api client object
+// Add these API endpoints to your api client object in App.jsx
+
+// Deal endpoints
 getDeal: (dealId) => request(`/deals/${dealId}`),
 createDeal: (projectId, accessRequestId) => request('/deals', {
   method: 'POST',
   body: JSON.stringify({ project_id: projectId, access_request_id: accessRequestId }),
 }),
+completeDeal: (dealId) => request(`/deals/${dealId}/complete`, {
+  method: 'PUT',
+}),
+
+// Deal documents
 getDealDocuments: (dealId) => request(`/deals/${dealId}/documents`),
 uploadDealDocuments: (dealId, formData) => request(`/deals/${dealId}/documents`, {
   method: 'POST',
   body: formData,
 }),
+downloadDealDocument: async (dealId, documentId) => {
+  const token = await getToken();
+  const response = await fetch(`${API_BASE_URL}/deals/${dealId}/documents/${documentId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  
+  if (!response.ok) throw new Error('Download failed');
+  return response.blob();
+},
+
+// Document requests
 getDocumentRequests: (dealId) => request(`/deals/${dealId}/document-requests`),
 createDocumentRequest: (dealId, requestData) => request(`/deals/${dealId}/document-requests`, {
   method: 'POST',
   body: JSON.stringify(requestData),
 }),
-downloadDealDocument: (dealId, documentId) => request(`/deals/${dealId}/documents/${documentId}`),
+fulfillDocumentRequest: (requestId) => request(`/document-requests/${requestId}/fulfill`, {
+  method: 'PUT',
+}),
 
-    // Payment endpoints
-    createProjectPayment: (projectId) => request('/payments/create-project-payment', {
-      method: 'POST',
-      body: JSON.stringify({ project_id: projectId }),
+// Deal comments
+getDealComments: (dealId) => request(`/deals/${dealId}/comments`),
+createDealComment: (dealId, commentData) => request(`/deals/${dealId}/comments`, {
+  method: 'POST',
+  body: JSON.stringify(commentData),
+}),
+
+// Proposals
+getDealProposal: (dealId) => request(`/deals/${dealId}/proposal`),
+createProposal: (dealId, proposalData) => request(`/deals/${dealId}/proposals`, {
+  method: 'POST',
+  body: JSON.stringify(proposalData),
+}),
+respondToProposal: (proposalId, response) => request(`/proposals/${proposalId}/respond`, {
+  method: 'PUT',
+  body: JSON.stringify(response),
+}),
+
+// Notifications
+createNotification: (dealId, notificationData) => request(`/deals/${dealId}/notifications`, {
+  method: 'POST',
+  body: JSON.stringify(notificationData),
+}),
+getNotifications: () => request('/notifications'),
+markNotificationRead: (notificationId) => request(`/notifications/${notificationId}/read`, {
+  method: 'PUT',
+}),
+
+// Payment endpoints
+createProjectPayment: (projectId) => request('/payments/create-project-payment', {
+method: 'POST',
+body: JSON.stringify({ project_id: projectId }),
     }),
     createSubscription: (paymentMethodId) => request('/payments/create-subscription', {
       method: 'POST',
@@ -795,6 +845,57 @@ const StatusBadge = ({ status, type = 'default' }) => {
     <span className={`status-badge status-${getStatusClass()}`}>
       {status}
     </span>
+  );
+};
+
+// Add this component to your App.jsx file after the StatusBadge component
+
+const FileUpload = ({ onUpload, accept, maxSize, multiple = false, disabled = false, children }) => {
+  const fileInputRef = useRef(null);
+  const { addNotification } = useNotifications();
+  
+  const handleClick = () => {
+    if (!disabled && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+  
+  const handleChange = (e) => {
+    const files = Array.from(e.target.files);
+    
+    // Validate file sizes
+    const oversizedFiles = files.filter(file => file.size > maxSize);
+    if (oversizedFiles.length > 0) {
+      addNotification({
+        type: 'error',
+        title: 'File Too Large',
+        message: `Maximum file size is ${Math.round(maxSize / 1024 / 1024)}MB`
+      });
+      return;
+    }
+    
+    // Call the upload handler
+    if (files.length > 0 && onUpload) {
+      onUpload(files);
+    }
+    
+    // Reset input
+    e.target.value = '';
+  };
+  
+  return (
+    <div className="file-upload-wrapper" onClick={handleClick}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        onChange={handleChange}
+        disabled={disabled}
+        className="file-upload-input"
+      />
+      {children}
+    </div>
   );
 };
 
@@ -5478,7 +5579,7 @@ const BrokerAI = () => {
 };
 
 // ===========================
-// DEAL ROOM COMPONENTS
+// DEAL ROOM COMPONENTS - REPLACE THE ENTIRE DealRoom SECTION IN App.jsx
 // ===========================
 
 const DealRoom = () => {
@@ -5493,6 +5594,8 @@ const DealRoom = () => {
   const [project, setProject] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [showQuoteWizard, setShowQuoteWizard] = useState(false);
+  const [proposal, setProposal] = useState(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
   useEffect(() => {
     fetchDealData();
@@ -5500,21 +5603,23 @@ const DealRoom = () => {
   
   const fetchDealData = async () => {
     try {
-      // For now, simulate deal data since the backend endpoints might not be fully implemented
-      const projectData = await api.getProject(projectId);
-      
-      // Simulate deal data based on what would come from your server
-      const dealData = {
-        id: dealId,
-        project_id: projectId,
-        borrower_name: projectData.borrower_name || 'Developer Name',
-        funder_name: user.name,
-        status: 'active',
-        created_at: new Date().toISOString()
-      };
+      const [dealData, projectData, proposalData] = await Promise.all([
+        api.getDeal(dealId),
+        api.getProject(projectId),
+        api.getDealProposal(dealId).catch(() => null) // Handle no proposal gracefully
+      ]);
       
       setDeal(dealData);
       setProject(projectData);
+      setProposal(proposalData);
+      
+      // Send notification when deal room is first created
+      if (user.role === 'funder' && dealData.status === 'active') {
+        api.createNotification(dealId, {
+          type: 'deal_created',
+          message: 'A funder has engaged with your project'
+        }).catch(console.error);
+      }
     } catch (err) {
       console.error('Failed to load deal data:', err);
       addNotification({
@@ -5526,6 +5631,35 @@ const DealRoom = () => {
     } finally {
       setLoading(false);
     }
+  };
+  
+  const handleDealComplete = async () => {
+    try {
+      await api.completeDeal(dealId);
+      addNotification({
+        type: 'success',
+        title: 'Deal Completed',
+        message: 'Congratulations on closing this deal! The project has been removed from the live market.'
+      });
+      
+      // Show completion modal
+      setTimeout(() => {
+        addNotification({
+          type: 'info',
+          title: 'Next Steps',
+          message: 'Please exchange contact information to continue the deal outside the platform. You can continue using the data room for document storage.'
+        });
+      }, 2000);
+      
+      navigate('/dashboard');
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to complete deal'
+      });
+    }
+    setShowConfirmDialog(false);
   };
   
   const tabs = [
@@ -5565,7 +5699,7 @@ const DealRoom = () => {
         <div className="deal-title-section">
           <h1>{project.title} - Deal Room</h1>
           <div className="deal-status">
-            <StatusBadge status={deal.status} />
+            <StatusBadge status={deal.status === 'accepted' ? 'Offer Accepted' : deal.status} />
           </div>
         </div>
         
@@ -5579,6 +5713,19 @@ const DealRoom = () => {
             <span className="name">{deal.funder_name}</span>
           </div>
         </div>
+        
+        {deal.status === 'accepted' && (
+          <div className="deal-completion-banner">
+            <div className="completion-icon">✓</div>
+            <div className="completion-content">
+              <h3>Deal Accepted!</h3>
+              <p>Congratulations on reaching an agreement. Ready to finalize?</p>
+            </div>
+            <button onClick={() => setShowConfirmDialog(true)} className="btn btn-primary">
+              Complete Deal
+            </button>
+          </div>
+        )}
       </div>
       
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
@@ -5601,8 +5748,10 @@ const DealRoom = () => {
         {activeTab === 'proposal' && (
           <ProposalSection 
             deal={deal}
+            proposal={proposal}
             userRole={user.role}
             onShowQuoteWizard={() => setShowQuoteWizard(true)}
+            onUpdate={fetchDealData}
           />
         )}
       </div>
@@ -5623,6 +5772,15 @@ const DealRoom = () => {
           }}
         />
       )}
+      
+      <ConfirmationDialog
+        isOpen={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleDealComplete}
+        title="Complete Deal"
+        message="Are you sure you want to mark this deal as complete? This will remove it from the live market."
+        confirmText="Complete Deal"
+      />
     </div>
   );
 };
@@ -5690,79 +5848,121 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
   const [documents, setDocuments] = useState([]);
   const [requests, setRequests] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
   
   useEffect(() => {
-    // Simulate document data for now
-    setDocuments([
-      {
-        id: 1,
-        file_name: 'Financial_Analysis.pdf',
-        uploader_name: 'Developer',
-        uploaded_at: new Date().toISOString(),
-        file_type: 'pdf'
-      },
-      {
-        id: 2,
-        file_name: 'Construction_Contract.pdf',
-        uploader_name: 'Developer',
-        uploaded_at: new Date().toISOString(),
-        file_type: 'pdf'
-      }
-    ]);
-    
-    setRequests([
-      {
-        id: 1,
-        document_name: 'Insurance Certificate',
-        description: 'Current insurance certificate for the project',
-        requester_name: 'Funder',
-        requester_role: 'funder',
-        created_at: new Date().toISOString()
-      }
-    ]);
+    fetchDocuments();
+    fetchRequests();
   }, [dealId]);
+  
+  const fetchDocuments = async () => {
+    try {
+      const docs = await api.getDealDocuments(dealId);
+      setDocuments(docs);
+    } catch (err) {
+      console.error('Failed to fetch documents:', err);
+    }
+  };
+  
+  const fetchRequests = async () => {
+    try {
+      const reqs = await api.getDocumentRequests(dealId);
+      setRequests(reqs.filter(r => r.status === 'pending'));
+    } catch (err) {
+      console.error('Failed to fetch requests:', err);
+    }
+  };
   
   const handleUpload = async (files, requestId = null) => {
     setUploading(true);
+    const formData = new FormData();
     
-    // Simulate upload
-    setTimeout(() => {
-      const newDoc = {
-        id: Date.now(),
-        file_name: files[0].name,
-        uploader_name: userRole === 'funder' ? 'Funder' : 'Developer',
-        uploaded_at: new Date().toISOString(),
-        file_type: 'pdf'
-      };
-      setDocuments(prev => [...prev, newDoc]);
+    for (let file of files) {
+      formData.append('documents', file);
+    }
+    
+    if (requestId) {
+      formData.append('request_id', requestId);
+    }
+    
+    try {
+      await api.uploadDealDocuments(dealId, formData);
+      addNotification({
+        type: 'success',
+        title: 'Upload Complete',
+        message: 'Documents uploaded successfully'
+      });
+      
+      if (requestId) {
+        await api.fulfillDocumentRequest(requestId);
+        addNotification({
+          type: 'info',
+          title: 'Request Fulfilled',
+          message: 'Document request has been marked as complete'
+        });
+      }
+      
+      fetchDocuments();
+      fetchRequests();
+      onUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Upload Failed',
+        message: 'Failed to upload documents'
+      });
+    } finally {
       setUploading(false);
-      if (onUpdate) onUpdate();
-    }, 1000);
+    }
+  };
+  
+  const handleDownload = async (document) => {
+    try {
+      const blob = await api.downloadDealDocument(dealId, document.id);
+      const url = URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = document.file_name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Download Failed',
+        message: 'Failed to download document'
+      });
+    }
   };
   
   return (
     <div className="document-manager">
       <div className="document-header">
-        <h3>Deal Documents</h3>
+        <h3>Document Management</h3>
         <div className="document-actions">
-          <button className="btn btn-outline">
-            Request Document
-          </button>
-          <label className="btn btn-primary">
-            Upload Documents
-            <input
-              type="file"
-              multiple
-              onChange={(e) => handleUpload(Array.from(e.target.files))}
-              style={{ display: 'none' }}
-            />
-          </label>
+          {userRole === 'funder' && (
+            <button onClick={() => setShowRequestModal(true)} className="btn btn-outline">
+              Request Document
+            </button>
+          )}
+          <FileUpload
+            onUpload={handleUpload}
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+            maxSize={10 * 1024 * 1024}
+            multiple={true}
+            disabled={uploading}
+          >
+            <button className="btn btn-primary" disabled={uploading}>
+              {uploading ? 'Uploading...' : 'Upload Documents'}
+            </button>
+          </FileUpload>
         </div>
       </div>
       
       {requests.length > 0 && (
         <div className="document-requests">
-          <h4>Outstanding Requests</h4>
+          <h4>Pending Document Requests</h4>
           {requests.map(request => (
             <div key={request.id} className="request-card">
               <div className="request-info">
@@ -5772,15 +5972,17 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
                   Requested by {request.requester_name} • {formatDate(request.created_at)}
                 </span>
               </div>
-              {request.requester_role !== userRole && (
-                <label className="btn btn-sm btn-primary">
-                  Upload Response
-                  <input
-                    type="file"
-                    onChange={(e) => handleUpload(Array.from(e.target.files), request.id)}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+              {userRole === 'borrower' && (
+                <FileUpload
+                  onUpload={(files) => handleUpload(files, request.id)}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  maxSize={10 * 1024 * 1024}
+                  disabled={uploading}
+                >
+                  <button className="btn btn-sm btn-primary">
+                    Upload & Fulfill
+                  </button>
+                </FileUpload>
               )}
             </div>
           ))}
@@ -5791,7 +5993,7 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
         {documents.map(doc => (
           <div key={doc.id} className="document-card">
             <div className="doc-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
             </div>
@@ -5801,54 +6003,133 @@ const DealDocumentManager = ({ dealId, userRole, onUpdate }) => {
               <span className="doc-meta">{formatDate(doc.uploaded_at)}</span>
             </div>
             <div className="doc-actions">
-              <button className="btn btn-sm btn-outline">
+              <button onClick={() => handleDownload(doc)} className="btn btn-sm btn-outline">
                 Download
               </button>
             </div>
           </div>
         ))}
       </div>
+      
+      {showRequestModal && (
+        <DocumentRequestModal
+          dealId={dealId}
+          onClose={() => setShowRequestModal(false)}
+          onSuccess={() => {
+            setShowRequestModal(false);
+            fetchRequests();
+            addNotification({
+              type: 'success',
+              title: 'Request Sent',
+              message: 'Document request sent to the developer'
+            });
+          }}
+        />
+      )}
     </div>
+  );
+};
+
+const DocumentRequestModal = ({ dealId, onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    document_name: '',
+    description: ''
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const api = useApi();
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.document_name.trim()) return;
+    
+    setSubmitting(true);
+    try {
+      await api.createDocumentRequest(dealId, formData);
+      onSuccess();
+    } catch (err) {
+      console.error('Failed to create request:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Request Document" size="medium">
+      <form onSubmit={handleSubmit} className="document-request-form">
+        <div className="form-group">
+          <label>Document Name *</label>
+          <input
+            type="text"
+            value={formData.document_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, document_name: e.target.value }))}
+            placeholder="e.g., Insurance Certificate"
+            required
+          />
+        </div>
+        
+        <div className="form-group">
+          <label>Description</label>
+          <textarea
+            value={formData.description}
+            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+            placeholder="Please provide additional details about this document..."
+            rows="3"
+          />
+        </div>
+        
+        <div className="modal-actions">
+          <button type="button" onClick={onClose} className="btn btn-outline">
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting} className="btn btn-primary">
+            {submitting ? 'Sending...' : 'Send Request'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 };
 
 const DealComments = ({ dealId, userRole }) => {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const { user } = useApp();
+  const api = useApi();
   
   useEffect(() => {
-    // Simulate comments data
-    setComments([
-      {
-        id: 1,
-        user_name: 'Developer',
-        comment: 'Welcome to the deal room! Looking forward to working together.',
-        created_at: new Date(Date.now() - 86400000).toISOString()
-      },
-      {
-        id: 2,
-        user_name: 'Funder',
-        comment: 'Thank you! I\'ve reviewed the initial documents and have a few questions.',
-        created_at: new Date(Date.now() - 43200000).toISOString()
-      }
-    ]);
+    fetchComments();
   }, [dealId]);
   
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!newComment.trim()) return;
-    
-    const comment = {
-      id: Date.now(),
-      user_name: user.name,
-      comment: newComment.trim(),
-      created_at: new Date().toISOString()
-    };
-    
-    setComments(prev => [...prev, comment]);
-    setNewComment('');
+  const fetchComments = async () => {
+    try {
+      const data = await api.getDealComments(dealId);
+      setComments(data);
+    } catch (err) {
+      console.error('Failed to fetch comments:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newComment.trim() || submitting) return;
+    
+    setSubmitting(true);
+    try {
+      await api.createDealComment(dealId, { comment: newComment });
+      setNewComment('');
+      fetchComments();
+    } catch (err) {
+      console.error('Failed to post comment:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+  if (loading) return <LoadingSpinner />;
   
   return (
     <div className="deal-comments">
@@ -5876,122 +6157,455 @@ const DealComments = ({ dealId, userRole }) => {
           placeholder="Add a comment..."
           className="comment-input"
           rows="3"
+          disabled={submitting}
         />
-        <button type="submit" disabled={!newComment.trim()} className="btn btn-primary">
-          Post Comment
+        <button type="submit" disabled={!newComment.trim() || submitting} className="btn btn-primary">
+          {submitting ? 'Posting...' : 'Post Comment'}
         </button>
       </form>
     </div>
   );
 };
 
-const ProposalSection = ({ deal, userRole, onShowQuoteWizard }) => {
-  return (
-    <div className="proposal-section">
-      <div className="content-card">
-        <h3>Funding Proposal</h3>
-        <p>This section will contain the formal funding proposal and terms.</p>
-        
-        {userRole === 'funder' && (
+const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate }) => {
+  const api = useApi();
+  const { addNotification } = useNotifications();
+  const [responding, setResponding] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  
+  const handleAccept = async () => {
+    setResponding(true);
+    try {
+      await api.respondToProposal(proposal.id, { response: 'accept' });
+      addNotification({
+        type: 'success',
+        title: 'Proposal Accepted',
+        message: 'You have accepted the funding proposal'
+      });
+      onUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to accept proposal'
+      });
+    } finally {
+      setResponding(false);
+      setShowConfirmDialog(false);
+    }
+  };
+  
+  const handleDecline = async () => {
+    setResponding(true);
+    try {
+      await api.respondToProposal(proposal.id, { response: 'decline' });
+      addNotification({
+        type: 'info',
+        title: 'Proposal Declined',
+        message: 'You have declined the funding proposal'
+      });
+      onUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to decline proposal'
+      });
+    } finally {
+      setResponding(false);
+      setShowConfirmDialog(false);
+    }
+  };
+  
+  const handleCounter = () => {
+    addNotification({
+      type: 'info',
+      title: 'Coming Soon',
+      message: 'Counter offer functionality will be available soon'
+    });
+  };
+  
+  const showConfirm = (action) => {
+    setConfirmAction(action);
+    setShowConfirmDialog(true);
+  };
+  
+  if (!proposal && userRole === 'funder') {
+    return (
+      <div className="proposal-section">
+        <div className="content-card">
+          <h3>Funding Proposal</h3>
+          <p>Submit an indicative quote to start the negotiation process.</p>
+          
           <div className="proposal-actions">
             <button onClick={onShowQuoteWizard} className="btn btn-primary">
               Submit Indicative Quote
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!proposal) {
+    return (
+      <div className="proposal-section">
+        <div className="content-card">
+          <h3>Funding Proposal</h3>
+          <p>No proposal has been submitted yet.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="proposal-section">
+      <div className="proposal-view">
+        <div className="proposal-header">
+          <h2>Indicative Funding Proposal</h2>
+          <p>Submitted {formatDate(proposal.created_at)}</p>
+        </div>
+        
+        <div className="proposal-terms">
+          <div className="term-item">
+            <div className="term-label">Loan Amount</div>
+            <div className="term-value">{formatCurrency(proposal.loan_amount)}</div>
+          </div>
+          
+          <div className="term-item">
+            <div className="term-label">Interest Rate</div>
+            <div className="term-value">{proposal.interest_rate}% p.a.</div>
+          </div>
+          
+          <div className="term-item">
+            <div className="term-label">Loan Term</div>
+            <div className="term-value">{proposal.loan_term} months</div>
+          </div>
+          
+          <div className="term-item">
+            <div className="term-label">Establishment Fee</div>
+            <div className="term-value">{formatCurrency(proposal.establishment_fee || 0)}</div>
+          </div>
+        </div>
+        
+        {proposal.conditions && (
+          <div className="proposal-conditions">
+            <h4>Conditions</h4>
+            <p>{proposal.conditions}</p>
+          </div>
         )}
         
-        {userRole === 'borrower' && (
-          <div className="proposal-status">
-            <p>Waiting for funder to submit indicative terms...</p>
+        {proposal.status === 'pending' && userRole === 'borrower' && (
+          <div className="proposal-actions">
+            <button 
+              onClick={() => showConfirm('decline')} 
+              disabled={responding}
+              className="btn btn-outline"
+            >
+              Decline
+            </button>
+            <button 
+              onClick={handleCounter} 
+              disabled={responding}
+              className="btn btn-outline"
+            >
+              Counter
+            </button>
+            <button 
+              onClick={() => showConfirm('accept')} 
+              disabled={responding}
+              className="btn btn-primary"
+            >
+              Accept
+            </button>
+          </div>
+        )}
+        
+        {proposal.status === 'accepted' && (
+          <div className="proposal-status accepted">
+            <div className="status-icon">✓</div>
+            <h3>Proposal Accepted</h3>
+            <p>This funding proposal has been accepted.</p>
+          </div>
+        )}
+        
+        {proposal.status === 'declined' && (
+          <div className="proposal-status declined">
+            <div className="status-icon">✗</div>
+            <h3>Proposal Declined</h3>
+            <p>This funding proposal has been declined.</p>
           </div>
         )}
       </div>
+      
+      <ConfirmationDialog
+        isOpen={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={confirmAction === 'accept' ? handleAccept : handleDecline}
+        title={confirmAction === 'accept' ? 'Accept Proposal' : 'Decline Proposal'}
+        message={confirmAction === 'accept' 
+          ? 'Are you sure you want to accept this funding proposal?' 
+          : 'Are you sure you want to decline this funding proposal?'}
+        confirmText={confirmAction === 'accept' ? 'Accept' : 'Decline'}
+        danger={confirmAction === 'decline'}
+      />
     </div>
   );
 };
 
+// Add this component to your App.jsx file after the ProposalSection component
+
 const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
-  const [quote, setQuote] = useState({
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState({
     loan_amount: '',
     interest_rate: '',
     loan_term: '',
     establishment_fee: '',
+    other_fees: '',
     conditions: ''
   });
+  const [submitting, setSubmitting] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
   
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // Simulate quote submission
-    setTimeout(() => {
+  const steps = [
+    { id: 1, title: 'Loan Terms' },
+    { id: 2, title: 'Fees & Charges' },
+    { id: 3, title: 'Conditions' },
+    { id: 4, title: 'Review' }
+  ];
+  
+  const handleNext = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep(prev => prev + 1);
+    }
+  };
+  
+  const handlePrevious = () => {
+    setCurrentStep(prev => prev - 1);
+  };
+  
+  const validateStep = (step) => {
+    switch (step) {
+      case 1:
+        if (!formData.loan_amount || !formData.interest_rate || !formData.loan_term) {
+          addNotification({
+            type: 'error',
+            title: 'Validation Error',
+            message: 'Please fill in all required fields'
+          });
+          return false;
+        }
+        return true;
+      case 2:
+        return true;
+      case 3:
+        return true;
+      default:
+        return true;
+    }
+  };
+  
+  const handleSubmit = async () => {
+    if (!validateStep(currentStep)) return;
+    
+    setSubmitting(true);
+    try {
+      await api.createProposal(dealId, formData);
       onSuccess();
-    }, 1000);
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Submission Failed',
+        message: 'Failed to submit indicative quote'
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <div className="wizard-step-content">
+            <h3>Loan Terms</h3>
+            <div className="form-group">
+              <label>Loan Amount *</label>
+              <input
+                type="number"
+                value={formData.loan_amount}
+                onChange={(e) => setFormData(prev => ({ ...prev, loan_amount: e.target.value }))}
+                placeholder="Enter loan amount"
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Interest Rate (% p.a.) *</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.interest_rate}
+                onChange={(e) => setFormData(prev => ({ ...prev, interest_rate: e.target.value }))}
+                placeholder="e.g., 12.5"
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Loan Term (months) *</label>
+              <input
+                type="number"
+                value={formData.loan_term}
+                onChange={(e) => setFormData(prev => ({ ...prev, loan_term: e.target.value }))}
+                placeholder="e.g., 18"
+                required
+              />
+            </div>
+          </div>
+        );
+        
+      case 2:
+        return (
+          <div className="wizard-step-content">
+            <h3>Fees & Charges</h3>
+            <div className="form-group">
+              <label>Establishment Fee</label>
+              <input
+                type="number"
+                value={formData.establishment_fee}
+                onChange={(e) => setFormData(prev => ({ ...prev, establishment_fee: e.target.value }))}
+                placeholder="Enter establishment fee"
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Other Fees</label>
+              <textarea
+                value={formData.other_fees}
+                onChange={(e) => setFormData(prev => ({ ...prev, other_fees: e.target.value }))}
+                placeholder="List any other fees or charges"
+                rows="3"
+              />
+            </div>
+          </div>
+        );
+        
+      case 3:
+        return (
+          <div className="wizard-step-content">
+            <h3>Conditions</h3>
+            <div className="form-group">
+              <label>Special Conditions</label>
+              <textarea
+                value={formData.conditions}
+                onChange={(e) => setFormData(prev => ({ ...prev, conditions: e.target.value }))}
+                placeholder="Enter any special conditions or requirements for this loan"
+                rows="5"
+              />
+            </div>
+          </div>
+        );
+        
+      case 4:
+        return (
+          <div className="wizard-step-content">
+            <h3>Review Your Quote</h3>
+        <div className="quote-summary">
+          <div className="summary-section">
+            <h4>Loan Terms</h4>
+            <div className="summary-item">
+              <span>Loan Amount:</span>
+              <strong>{formatCurrency(formData.loan_amount)}</strong>
+            </div>
+            <div className="summary-item">
+              <span>Interest Rate:</span>
+              <strong>{formData.interest_rate}% p.a.</strong>
+            </div>
+            <div className="summary-item">
+              <span>Loan Term:</span>
+              <strong>{formData.loan_term} months</strong>
+            </div>
+          </div>
+          
+          {(formData.establishment_fee || formData.other_fees) && (
+            <div className="summary-section">
+              <h4>Fees</h4>
+              {formData.establishment_fee && (
+                <div className="summary-item">
+                  <span>Establishment Fee:</span>
+                  <strong>{formatCurrency(formData.establishment_fee)}</strong>
+                </div>
+              )}
+              {formData.other_fees && (
+                <div className="summary-item">
+                  <span>Other Fees:</span>
+                  <strong>{formData.other_fees}</strong>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {formData.conditions && (
+            <div className="summary-section">
+              <h4>Conditions</h4>
+              <p>{formData.conditions}</p>
+            </div>
+          )}
+        </div>
+          </div>
+        );
+    }
   };
   
   return (
     <Modal isOpen={true} onClose={onClose} title="Submit Indicative Quote" size="large">
-      <form onSubmit={handleSubmit} className="quote-form">
-        <div className="form-row">
-          <div className="form-group">
-            <label>Loan Amount (AUD)</label>
-            <NumberInput
-              value={quote.loan_amount}
-              onChange={(value) => setQuote({ ...quote, loan_amount: value })}
-              prefix="$"
-              placeholder="5,000,000"
-            />
-          </div>
-          <div className="form-group">
-            <label>Interest Rate (%)</label>
-            <NumberInput
-              value={quote.interest_rate}
-              onChange={(value) => setQuote({ ...quote, interest_rate: value })}
-              suffix="%"
-              placeholder="12.5"
-              step={0.1}
-            />
-          </div>
+      <div className="quote-wizard">
+        <div className="wizard-progress">
+          {steps.map((step, index) => (
+            <div 
+              key={step.id} 
+              className={`wizard-step ${currentStep === step.id ? 'active' : ''} ${currentStep > step.id ? 'completed' : ''}`}
+            >
+              <div className="wizard-step-number">
+                {currentStep > step.id ? '✓' : step.id}
+              </div>
+              <span className="wizard-step-title">{step.title}</span>
+            </div>
+          ))}
         </div>
         
-        <div className="form-row">
-          <div className="form-group">
-            <label>Loan Term (months)</label>
-            <NumberInput
-              value={quote.loan_term}
-              onChange={(value) => setQuote({ ...quote, loan_term: value })}
-              placeholder="24"
-            />
-          </div>
-          <div className="form-group">
-            <label>Establishment Fee (AUD)</label>
-            <NumberInput
-              value={quote.establishment_fee}
-              onChange={(value) => setQuote({ ...quote, establishment_fee: value })}
-              prefix="$"
-              placeholder="50,000"
-            />
-          </div>
+        <div className="wizard-content">
+          {renderStepContent()}
         </div>
         
-        <div className="form-group">
-          <label>Conditions & Notes</label>
-          <textarea
-            value={quote.conditions}
-            onChange={(e) => setQuote({ ...quote, conditions: e.target.value })}
-            className="form-textarea"
-            placeholder="Any specific conditions or requirements..."
-            rows="4"
-          />
-        </div>
-        
-        <div className="form-actions">
-          <button type="button" onClick={onClose} className="btn btn-outline">
-            Cancel
+        <div className="wizard-actions">
+          <button 
+            onClick={handlePrevious} 
+            disabled={currentStep === 1}
+            className="btn btn-outline"
+          >
+            Previous
           </button>
-          <button type="submit" className="btn btn-primary">
-            Submit Quote
-          </button>
+          
+          {currentStep < 4 ? (
+            <button onClick={handleNext} className="btn btn-primary">
+              Next
+            </button>
+          ) : (
+            <button 
+              onClick={handleSubmit} 
+              disabled={submitting}
+              className="btn btn-primary"
+            >
+              {submitting ? 'Submitting...' : 'Submit Quote'}
+            </button>
+          )}
         </div>
-      </form>
+      </div>
     </Modal>
   );
 };
