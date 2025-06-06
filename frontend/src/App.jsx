@@ -3827,91 +3827,93 @@ const MyProjects = () => {
 // ===========================
 
 const ProjectDetail = () => {
- const api = useApi();
- const { id } = useParams();
- const { user } = useApp();
- const navigate = useNavigate();
- const { addNotification } = useNotifications();
- const [project, setProject] = useState(null);
- const [documents, setDocuments] = useState([]);
- const [loading, setLoading] = useState(true);
- const [error, setError] = useState('');
- const [activeTab, setActiveTab] = useState('overview');
- const [showPaymentModal, setShowPaymentModal] = useState(false);
- const [previewDocument, setPreviewDocument] = useState(null);
+  const api = useApi();
+  const { id } = useParams();
+  const { user } = useApp();
+  const navigate = useNavigate();
+  const { addNotification } = useNotifications();
+  const [project, setProject] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState(null);
 
- useEffect(() => {
-   fetchProjectDetails();
- }, [id]);
+  useEffect(() => {
+    fetchProjectDetails();
+  }, [id]);
 
- const fetchProjectDetails = async () => {
-   try {
-     const [projectData, docsData] = await Promise.all([
-       api.getProject(id),
-       api.getProjectDocuments(id)
-     ]);
-     setProject(projectData);
-     setDocuments(docsData);
-   } catch (err) {
-     setError(err.message);
-   } finally {
-     setLoading(false);
-   }
- };
+  const fetchProjectDetails = async () => {
+    try {
+      const [projectData, docsData] = await Promise.all([
+        api.getProject(id),
+        api.getProjectDocuments(id)
+      ]);
+      setProject(projectData);
+      setDocuments(docsData || []); // Ensure documents is always an array
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
- const handlePaymentSuccess = async () => {
-   setShowPaymentModal(false);
-   addNotification({
-     type: 'success',
-     title: 'Payment Successful',
-     message: 'Your project is now published and visible to funders.'
-   });
-   await fetchProjectDetails();
- };
+  const handlePaymentSuccess = async () => {
+    setShowPaymentModal(false);
+    addNotification({
+      type: 'success',
+      title: 'Payment Successful',
+      message: 'Your project is now published and visible to funders.'
+    });
+    await fetchProjectDetails();
+  };
 
- const handleDocumentPreview = async (doc) => {
-   if (doc.mime_type?.includes('pdf')) {
-     setPreviewDocument(doc);
-   } else {
-     try {
-       const blob = await api.downloadDocument(doc.file_path);
-       const url = window.URL.createObjectURL(blob);
-       const a = document.createElement('a');
-       a.href = url;
-       a.download = doc.file_name;
-       a.click();
-       window.URL.revokeObjectURL(url);
-     } catch (err) {
-       addNotification({
-         type: 'error',
-         title: 'Download Failed',
-         message: 'Unable to download document'
-       });
-     }
-   }
- };
+  const handleDocumentPreview = async (doc) => {
+    if (doc.mime_type?.includes('pdf')) {
+      setPreviewDocument(doc);
+    } else {
+      try {
+        const blob = await api.downloadDocument(doc.file_path);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.file_name;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        addNotification({
+          type: 'error',
+          title: 'Download Failed',
+          message: 'Unable to download document'
+        });
+      }
+    }
+  };
 
- if (loading) return <LoadingSpinner />;
- if (error) return <ErrorMessage message={error} onClose={() => navigate(-1)} />;
- if (!project) return <div>Project not found</div>;
+  // EARLY RETURNS - before defining tabs
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage message={error} onClose={() => navigate(-1)} />;
+  if (!project) return <div>Project not found</div>;
 
- const tabs = [
-   { id: 'overview', label: 'Overview' },
-   { id: 'financials', label: 'Financials' },
-   { id: 'documents', label: `Documents (${documents.length})` },
-   { id: 'timeline', label: 'Timeline & Milestones' }
- ];
+  // NOW define tabs - after we know documents is loaded
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'financials', label: 'Financials' },
+    { id: 'documents', label: `Documents (${documents?.length || 0})` }, // Safe access with fallback
+    { id: 'timeline', label: 'Timeline & Milestones' }
+  ];
 
- return (
-   <div className="project-detail-page">
-     {/* Breadcrumb Navigation */}
-     <div className="breadcrumb">
-       <Link to="/my-projects" className="breadcrumb-link">My Projects</Link>
-       <svg className="breadcrumb-arrow" viewBox="0 0 20 20" fill="currentColor">
-         <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-       </svg>
-       <span className="breadcrumb-current">{project.title}</span>
-     </div>
+  return (
+    <div className="project-detail-page">
+      {/* Breadcrumb Navigation */}
+      <div className="breadcrumb">
+        <Link to="/my-projects" className="breadcrumb-link">My Projects</Link>
+        <svg className="breadcrumb-arrow" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+        </svg>
+        <span className="breadcrumb-current">{project.title}</span>
+      </div>
 
      {/* Project Header */}
      <div className="project-header">
