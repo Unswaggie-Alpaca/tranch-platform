@@ -7773,3 +7773,193 @@ td {
   margin-bottom: 1rem;
   color: var(--gray-900);
 }
+/* Add these CSS fixes to your App.css */
+
+/* Fix the tab styling */
+.deal-room .tabs {
+  margin-bottom: 2rem;
+}
+
+.deal-room .tab {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--gray-600);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.deal-room .tab:hover {
+  color: var(--gray-900);
+}
+
+.deal-room .tab.active {
+  color: var(--primary-600);
+  border-bottom-color: var(--primary-600);
+}
+
+/* Fix the comment form layout */
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--gray-200);
+}
+
+.comment-input {
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.comment-form .btn {
+  align-self: flex-end;
+}
+
+/* Document sections */
+.document-section {
+  margin-bottom: 3rem;
+}
+
+.document-section h4 {
+  margin-bottom: 1.5rem;
+  color: var(--gray-900);
+  font-weight: 600;
+}
+
+/* Risk badges */
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.risk-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.risk-item label {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+}
+
+.risk-badge {
+  display: inline-block;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.risk-badge.low {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.risk-badge.medium {
+  background: var(--warning-100);
+  color: var(--warning-700);
+}
+
+.risk-badge.high {
+  background: var(--danger-100);
+  color: var(--danger-700);
+}
+
+/* Fix modal backdrop */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.modal-content {
+  background: white;
+  border-radius: var(--radius-xl);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  padding: 2rem;
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--gray-900);
+}
+
+.modal-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--gray-500);
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+}
+
+.modal-body {
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+/* Fix deal content spacing */
+.deal-content {
+  min-height: 600px;
+}
+
+/* Detail grid improvements */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-item label {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+
+.detail-item span {
+  color: var(--gray-900);
+  font-weight: 400;
+}

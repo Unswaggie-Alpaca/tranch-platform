@@ -2135,25 +2135,36 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
 
       <div className="project-actions">
         {userRole === 'borrower' && (
-          <>
-            {project.payment_status === 'unpaid' && (
-              <button 
-                onClick={() => setShowPaymentModal(true)}
-                disabled={!project.documents_complete}
-                className="btn btn-primary"
-                title={!project.documents_complete ? 'Upload all required documents first' : ''}
-              >
-                Pay to Publish ($499)
-              </button>
-            )}
-            <button 
-              onClick={() => navigate(`/project/${project.id}`)}
-              className="btn btn-outline"
-            >
-              View Details
-            </button>
-          </>
+  <>
+    {project.payment_status !== 'paid' ? (
+      <>
+        <Link to={`/project/${project.id}`} className="btn btn-outline">
+          View Details
+        </Link>
+        <button 
+          onClick={() => setShowPaymentModal(true)}
+          className="btn btn-primary"
+          disabled={!project.documents_complete}
+          title={!project.documents_complete ? 'Upload all required documents first' : ''}
+        >
+          Pay to Publish ($499)
+        </button>
+      </>
+    ) : (
+      <>
+        <Link to={`/project/${project.id}`} className="btn btn-outline">
+          View Details
+        </Link>
+        {/* ADD THIS: Show Deal Room button if deal exists */}
+        {project.deal_id && (
+          <Link to={`/project/${project.id}/deal/${project.deal_id}`} className="btn btn-primary">
+            Deal Room
+          </Link>
         )}
+      </>
+    )}
+  </>
+)}
 
         {userRole === 'funder' && project.payment_status === 'paid' && (
           <>
@@ -5735,6 +5746,7 @@ const DealRoom = () => {
         {activeTab === 'documents' && (
           <DealDocumentManager 
             dealId={dealId}
+            projectId={projectId}
             userRole={user.role}
             onUpdate={fetchDealData}
           />
