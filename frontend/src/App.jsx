@@ -6085,9 +6085,14 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     setUploading(true);
     const formData = new FormData();
     
+    // Add files to formData
     for (let file of files) {
       formData.append('documents', file);
     }
+    
+    // Add document types (mark as "other" for deal documents)
+    const documentTypes = Array(files.length).fill('other');
+    formData.append('document_types', JSON.stringify(documentTypes));
     
     if (requestId) {
       formData.append('request_id', requestId);
@@ -6113,14 +6118,14 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
       }
       
       // Refresh both document lists
-      fetchDocuments();
+      await onUpdate(); // This will refresh projectDocuments
       fetchRequests();
-      onUpdate();
     } catch (err) {
+      console.error('Upload error:', err);
       addNotification({
         type: 'error',
         title: 'Upload Failed',
-        message: 'Failed to upload documents'
+        message: err.message || 'Failed to upload documents'
       });
     } finally {
       setUploading(false);
@@ -6132,7 +6137,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
       // Always use the same download method as project page
       const blob = await api.downloadDocument(document.file_path);
       const url = URL.createObjectURL(blob);
-      const a = window.document.createElement('a');
+      const a = document.createElement('a');
       a.href = url;
       a.download = document.file_name;
       document.body.appendChild(a);
@@ -6159,14 +6164,11 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     });
   };
   
-  // Combine all documents for display
-  const allDocuments = [...projectDocuments, ...dealDocuments];
-  
   return (
     <div className="deal-documents">
       <div className="document-section">
         <div className="section-header">
-          <h4>Documents <span className="document-count">{allDocuments.length}</span></h4>
+          <h4>Documents <span className="document-count">{projectDocuments.length}</span></h4>
           <div className="section-actions">
             {userRole === 'funder' && (
               <button onClick={() => setShowRequestModal(true)} className="btn btn-sm btn-outline">
@@ -6188,16 +6190,16 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
         </div>
         
         <div className="document-list">
-          {allDocuments.length > 0 ? (
-            allDocuments.map(doc => (
-              <div key={doc.id} className="document-item">
+          {projectDocuments.length > 0 ? (
+            projectDocuments.map(doc => (
+              <div key={`doc-${doc.id}`} className="document-item">
                 <div className="document-info">
                   <div className="document-icon">📄</div>
                   <div className="document-details">
                     <h5>{doc.file_name}</h5>
                     <div className="document-meta">
-                      {doc.document_type ? `${doc.document_type} • ` : ''}
-                      Uploaded by {doc.uploader_name || 'System'} • {formatDate(doc.uploaded_at)}
+                      {doc.document_type ? `${doc.document_type.replace(/_/g, ' ')} • ` : ''}
+                      Uploaded by {doc.uploader_name || 'Developer'} • {formatDate(doc.uploaded_at)}
                     </div>
                   </div>
                 </div>
@@ -6240,7 +6242,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
                     maxSize={10 * 1024 * 1024}
                     disabled={uploading}
                   >
-                    <button className="btn btn-sm btn-primary">
+                    <button className="btn btn-sm btn-primary" disabled={uploading}>
                       Upload & Fulfill
                     </button>
                   </FileUpload>
@@ -6478,6 +6480,7 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     }).format(amount);
   };
   
+  // No proposal yet - show create button for funders
   if (!proposal && userRole === 'funder') {
     return (
       <div className="proposal-section">
@@ -6492,6 +6495,26 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     );
   }
   
+  // Proposal was declined - show re-apply button for funders
+  if (proposal && proposal.status === 'declined' && userRole === 'funder') {
+    return (
+      <div className="proposal-section">
+        <div className="content-card">
+          <h3>Proposal Declined</h3>
+          <div className="proposal-status declined">
+            <div className="status-icon">✗</div>
+            <p>Your previous proposal was declined by the developer.</p>
+          </div>
+          <p style={{ marginTop: '2rem' }}>You can submit a new proposal with revised terms.</p>
+          <button onClick={onShowQuoteWizard} className="btn btn-primary">
+            Submit New Proposal
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // No proposal yet - show waiting message for borrowers
   if (!proposal) {
     return (
       <div className="proposal-section">
@@ -6503,21 +6526,7 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     );
   }
   
-  // Show new proposal button for funders after decline
-  if (userRole === 'funder' && proposal.status === 'declined') {
-    return (
-      <div className="proposal-section">
-        <div className="content-card">
-          <h3>Proposal Declined</h3>
-          <p>Your previous proposal was declined. You can submit a new proposal.</p>
-          <button onClick={onShowQuoteWizard} className="btn btn-primary">
-            Submit New Proposal
-          </button>
-        </div>
-      </div>
-    );
-  }
-  
+  // Show the proposal details
   return (
     <div className="proposal-section">
       <div className="content-card">
@@ -6593,11 +6602,11 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
           </div>
         )}
         
-        {proposal.status === 'declined' && (
+        {proposal.status === 'declined' && userRole === 'borrower' && (
           <div className="proposal-status declined">
             <div className="status-icon">✗</div>
             <h3>Proposal Declined</h3>
-            <p>This funding proposal has been declined.</p>
+            <p>You declined this funding proposal.</p>
           </div>
         )}
       </div>
