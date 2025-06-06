@@ -519,6 +519,7 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
     FOREIGN KEY (session_id) REFERENCES ai_chat_sessions (id)
   )`);
   // Add these tables after your existing tables
+// Update the deals table creation (add this after your existing table creation)
 db.run(`CREATE TABLE IF NOT EXISTS deals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL,
@@ -531,7 +532,8 @@ db.run(`CREATE TABLE IF NOT EXISTS deals (
   FOREIGN KEY (project_id) REFERENCES projects (id),
   FOREIGN KEY (access_request_id) REFERENCES access_requests (id),
   FOREIGN KEY (borrower_id) REFERENCES users (id),
-  FOREIGN KEY (funder_id) REFERENCES users (id)
+  FOREIGN KEY (funder_id) REFERENCES users (id),
+  UNIQUE(project_id, funder_id) -- This ensures one deal per funder per project
 )`);
 
 db.run(`CREATE TABLE IF NOT EXISTS deal_documents (
@@ -973,26 +975,29 @@ app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, re
 // STEP 2: REPLACE THE ENTIRE FUNCTION (from app.get to the closing }); ) with this:
 
 app.get('/api/projects', authenticateToken, (req, res) => {
-  if (req.user.role === 'borrower') {
+if (req.user.role === 'borrower') {
   db.all(
     `SELECT p.*, 
             u.name as borrower_name,
-            d.id as deal_id
+            COUNT(DISTINCT d.id) as deal_count
      FROM projects p
      LEFT JOIN users u ON p.borrower_id = u.id
-     LEFT JOIN deals d ON p.id = d.project_id AND d.borrower_id = ? AND d.status = 'active'
+     LEFT JOIN deals d ON p.id = d.project_id AND d.status = 'active'
      WHERE p.borrower_id = ?
+     GROUP BY p.id
      ORDER BY p.created_at DESC`,
-    [req.user.id, req.user.id],
-      (err, projects) => {
-        if (err) {
-          console.error('Projects fetch error:', err);
-          return res.status(500).json({ error: 'Failed to fetch projects' });
-        }
-        res.json(projects);
+    [req.user.id],
+    (err, projects) => {
+      if (err) {
+        console.error('Projects fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch projects' });
       }
-    );
-  } else if (req.user.role === 'funder') {
+      res.json(projects);
+       }
+);
+}
+
+   else if (req.user.role === 'funder') {
     // For funders - show published projects with deal status
     db.all(
       `SELECT p.*, 
@@ -1081,6 +1086,34 @@ app.get('/api/projects/:id', authenticateToken, (req, res) => {
     
     res.json(project);
   });
+});
+
+// Add endpoint to get all deals for a project (for borrowers)
+app.get('/api/projects/:projectId/deals', authenticateToken, (req, res) => {
+  const projectId = req.params.projectId;
+  
+  // Check if user owns the project or is a funder with a deal
+  db.all(
+    `SELECT d.*, 
+            f.name as funder_name, 
+            f.email as funder_email,
+            iq.status as proposal_status
+     FROM deals d
+     JOIN users f ON d.funder_id = f.id
+     LEFT JOIN indicative_quotes iq ON d.id = iq.deal_id AND iq.status = 'accepted'
+     WHERE d.project_id = ? 
+     AND (d.borrower_id = ? OR d.funder_id = ?)
+     AND d.status = 'active'
+     ORDER BY d.created_at DESC`,
+    [projectId, req.user.id, req.user.id],
+    (err, deals) => {
+      if (err) {
+        console.error('Deals fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch deals' });
+      }
+      res.json(deals);
+    }
+  );
 });
 
 // Update project
@@ -1939,17 +1972,23 @@ app.get('/api/health', (req, res) => {
 // DEAL ROUTES
 // ================================
 
-// Create a new deal
-app.post('/api/deals', authenticateToken, async (req, res) => {
+// Update the deal creation to handle multiple funders properly
+app.post('/api/deals', authenticateToken, (req, res) => {
   const { project_id, access_request_id } = req.body;
-  
+
+  if (!project_id || !access_request_id) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
   try {
-    // Verify the access request exists and belongs to the user
+    // Verify the access request is approved
     db.get(
-      `SELECT ar.*, p.borrower_id 
-       FROM access_requests ar 
-       JOIN projects p ON ar.project_id = p.id 
-       WHERE ar.id = ? AND ar.status = 'approved' AND (ar.funder_id = ? OR p.borrower_id = ?)`,
+      `SELECT ar.*, p.borrower_id, p.title as project_title
+       FROM access_requests ar
+       JOIN projects p ON ar.project_id = p.id
+       WHERE ar.id = ? 
+       AND ar.status = 'approved' 
+       AND (ar.funder_id = ? OR p.borrower_id = ?)`,
       [access_request_id, req.user.id, req.user.id],
       (err, accessRequest) => {
         if (err) {
@@ -1961,10 +2000,10 @@ app.post('/api/deals', authenticateToken, async (req, res) => {
           return res.status(404).json({ error: 'Access request not found or not approved' });
         }
 
-        // Check if deal already exists
+        // Check if deal already exists for this funder
         db.get(
-          'SELECT id FROM deals WHERE project_id = ? AND access_request_id = ?',
-          [project_id, access_request_id],
+          'SELECT id FROM deals WHERE project_id = ? AND funder_id = ? AND status = "active"',
+          [project_id, accessRequest.funder_id],
           (err, existingDeal) => {
             if (err) {
               console.error('Deal lookup error:', err);
@@ -1986,6 +2025,12 @@ app.post('/api/deals', authenticateToken, async (req, res) => {
                   return res.status(500).json({ error: 'Failed to create deal' });
                 }
 
+                // Send notification to borrower
+                db.run(
+                  'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
+                  [accessRequest.borrower_id, 'deal_created', `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, this.lastID]
+                );
+
                 res.status(201).json({ 
                   message: 'Deal created successfully',
                   deal_id: this.lastID 
@@ -2000,6 +2045,43 @@ app.post('/api/deals', authenticateToken, async (req, res) => {
     console.error('Deal creation error:', err);
     res.status(500).json({ error: 'Failed to create deal' });
   }
+});
+
+// Add endpoint to get project documents for deal room
+app.get('/api/projects/:projectId/documents/deal', authenticateToken, (req, res) => {
+  const projectId = req.params.projectId;
+  
+  // Verify user has access via a deal
+  db.get(
+    `SELECT d.* FROM deals d 
+     WHERE d.project_id = ? 
+     AND (d.borrower_id = ? OR d.funder_id = ?)
+     AND d.status = 'active'
+     LIMIT 1`,
+    [projectId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Get project documents
+      db.all(
+        `SELECT pd.*, u.name as uploader_name
+         FROM project_documents pd
+         JOIN users u ON pd.user_id = u.id
+         WHERE pd.project_id = ?
+         ORDER BY pd.uploaded_at DESC`,
+        [projectId],
+        (err, documents) => {
+          if (err) {
+            console.error('Documents fetch error:', err);
+            return res.status(500).json({ error: 'Failed to fetch documents' });
+          }
+          res.json(documents);
+        }
+      );
+    }
+  );
 });
 
 // Get deal by ID
@@ -2719,7 +2801,6 @@ app.listen(PORT, () => {
   console.log(`🤖 OpenAI: ${process.env.OPENAI_API_KEY ? 'Connected' : 'Using fallback responses'}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
-
 
 
 module.exports = app;
