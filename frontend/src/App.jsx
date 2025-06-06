@@ -2133,8 +2133,7 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
         </div>
       )}
 
-      <div className="project-actions">
-        {userRole === 'borrower' && (
+      {userRole === 'borrower' && (
   <>
     {project.payment_status !== 'paid' ? (
       <>
@@ -2266,7 +2265,6 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
           </div>
         )}
       </div>
-    </div>
   );
 };
 
