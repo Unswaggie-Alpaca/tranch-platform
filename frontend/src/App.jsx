@@ -2137,29 +2137,31 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
                             <div className="deal-dropdown-item">Loading...</div>
                           ) : (
                             deals.map(deal => (
-                              <Link 
+                              <button
                                 key={deal.id}
-                                to={`/project/${project.id}/deal/${deal.id}`}
+                                onClick={() => {
+                                  setShowDeals(false);
+                                  navigate(`/project/${project.id}/deal/${deal.id}`);
+                                }}
                                 className="deal-dropdown-item"
-                                onClick={() => setShowDeals(false)}
                               >
                                 <span>{deal.funder_name}</span>
                                 {deal.proposal_status === 'accepted' && 
                                   <span className="deal-status-badge accepted">Accepted</span>
                                 }
-                              </Link>
+                              </button>
                             ))
                           )}
                         </div>
                       )}
                     </div>
                   ) : project.deal_count === 1 && deals.length > 0 ? (
-                    <Link 
-                      to={`/project/${project.id}/deal/${deals[0].id}`} 
+                    <button 
+                      onClick={() => navigate(`/project/${project.id}/deal/${deals[0].id}`)}
                       className="btn btn-primary"
                     >
                       Deal Room
-                    </Link>
+                    </button>
                   ) : null}
                 </>
               )}
@@ -2223,9 +2225,12 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
                   >
                     View Full Details
                   </button>
-                  <Link to={`/project/${project.id}/deal/${project.deal_id}`} className="btn btn-primary">
+                  <button 
+                    onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
+                    className="btn btn-primary"
+                  >
                     Deal Room
-                  </Link>
+                  </button>
                 </>
               )}
             </>
@@ -2290,6 +2295,7 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
     </>
   );
 };
+
 // ===========================
 // PROJECTS PAGE (FOR FUNDERS)
 // ===========================

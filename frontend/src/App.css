@@ -4327,6 +4327,133 @@ label .required {
   text-decoration: none;
   border-bottom: 1px solid var(--gray-100);
   transition: all var(--transition-base);
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--gray-100);
+  text-align: left;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.deal-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.deal-dropdown-item:hover {
+  background: var(--gray-50);
+  color: var(--primary-600);
+}
+
+.deal-status-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.deal-status-badge.accepted {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+/* Access Request Form */
+.access-request-form {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-top: 0.5rem;
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+}
+
+.message-input-container {
+  margin-bottom: 1rem;
+}
+
+.message-input-container label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gray-700);
+  margin-bottom: 0.5rem;
+}
+
+.message-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  resize: vertical;
+  transition: all var(--transition-base);
+}
+
+.message-textarea:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.character-count {
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+.message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .project-actions {
+    flex-direction: column;
+  }
+  
+  .project-actions .btn {
+    width: 100%;
+  }
+  
+  .deal-dropdown-menu {
+    left: 0;
+    right: 0;
+  }
+}
+
+.deal-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  min-width: 250px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.deal-dropdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  color: var(--gray-900);
+  text-decoration: none;
+  border-bottom: 1px solid var(--gray-100);
+  transition: all var(--transition-base);
 }
 
 .deal-dropdown-item:last-child {
