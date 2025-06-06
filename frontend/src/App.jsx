@@ -6130,21 +6130,6 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
   );
 };
       
-      {showRequestModal && (
-        <DocumentRequestModal
-          dealId={dealId}
-          onClose={() => setShowRequestModal(false)}
-          onSuccess={() => {
-            setShowRequestModal(false);
-            fetchRequests();
-            addNotification({
-              type: 'success',
-              title: 'Request Sent',
-              message: 'Document request sent to the developer'
-            });
-          }}
-        />
-      )}
 
 const DocumentRequestModal = ({ dealId, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
