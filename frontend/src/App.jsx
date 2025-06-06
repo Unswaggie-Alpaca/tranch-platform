@@ -5874,8 +5874,11 @@ const DealOverview = ({ deal, project }) => {
   );
 };
 
-const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, onUpdate }) => {
-  const [dealDocuments, setDealDocuments] = useState([]);
+// Fix for DealDocumentManager component
+// The issue is that 'documents' is referenced but the state variable is actually 'dealDocuments'
+
+const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRole, onUpdate }) => {
+  const [dealDocuments, setDealDocuments] = useState([]); // This is the actual state variable
   const [requests, setRequests] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -5890,7 +5893,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, on
   const fetchDocuments = async () => {
     try {
       const docs = await api.getDealDocuments(dealId);
-      setDealDocuments(docs);
+      setDealDocuments(docs || []); // Ensure it's always an array
     } catch (err) {
       console.error('Failed to fetch documents:', err);
     }
@@ -5899,7 +5902,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, on
   const fetchRequests = async () => {
     try {
       const reqs = await api.getDocumentRequests(dealId);
-      setRequests(reqs.filter(r => r.status === 'pending'));
+      setRequests(reqs.filter(r => r.status === 'pending') || []);
     } catch (err) {
       console.error('Failed to fetch requests:', err);
     }
@@ -5948,7 +5951,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, on
     }
   };
   
-    const handleDownload = async (document, isProjectDoc = false) => {
+  const handleDownload = async (document, isProjectDoc = false) => {
     try {
       let blob;
       if (isProjectDoc) {
@@ -5972,6 +5975,17 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, on
         message: 'Failed to download document'
       });
     }
+  };
+
+  // Helper function for date formatting
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-AU', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
   };
   
   return (
@@ -6069,56 +6083,52 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments, userRole, on
       {requests.length > 0 && (
         <div className="document-section">
           <h4>Pending Document Requests</h4>
-          {/* ... rest of requests section ... */}
-        </div>
-      )}
-          {requests.map(request => (
-            <div key={request.id} className="request-card">
-              <div className="request-info">
-                <h5>{request.document_name}</h5>
-                <p>{request.description}</p>
-                <span className="request-meta">
-                  Requested by {request.requester_name} • {formatDate(request.created_at)}
-                </span>
+          <div className="document-list">
+            {requests.map(request => (
+              <div key={request.id} className="request-card">
+                <div className="request-info">
+                  <h5>{request.document_name}</h5>
+                  <p>{request.description}</p>
+                  <span className="request-meta">
+                    Requested by {request.requester_name} • {formatDate(request.created_at)}
+                  </span>
+                </div>
+                {userRole === 'borrower' && (
+                  <FileUpload
+                    onUpload={(files) => handleUpload(files, request.id)}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    maxSize={10 * 1024 * 1024}
+                    disabled={uploading}
+                  >
+                    <button className="btn btn-sm btn-primary">
+                      Upload & Fulfill
+                    </button>
+                  </FileUpload>
+                )}
               </div>
-              {userRole === 'borrower' && (
-                <FileUpload
-                  onUpload={(files) => handleUpload(files, request.id)}
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                  maxSize={10 * 1024 * 1024}
-                  disabled={uploading}
-                >
-                  <button className="btn btn-sm btn-primary">
-                    Upload & Fulfill
-                  </button>
-                </FileUpload>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
       
-      <div className="documents-grid">
-        {documents.map(doc => (
-          <div key={doc.id} className="document-card">
-            <div className="doc-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div className="doc-info">
-              <h4>{doc.file_name}</h4>
-              <p>Uploaded by {doc.uploader_name}</p>
-              <span className="doc-meta">{formatDate(doc.uploaded_at)}</span>
-            </div>
-            <div className="doc-actions">
-              <button onClick={() => handleDownload(doc)} className="btn btn-sm btn-outline">
-                Download
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      {showRequestModal && (
+        <DocumentRequestModal
+          dealId={dealId}
+          onClose={() => setShowRequestModal(false)}
+          onSuccess={() => {
+            setShowRequestModal(false);
+            fetchRequests();
+            addNotification({
+              type: 'success',
+              title: 'Request Sent',
+              message: 'Document request sent to the developer'
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+};
       
       {showRequestModal && (
         <DocumentRequestModal
