@@ -974,16 +974,16 @@ app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, re
 
 app.get('/api/projects', authenticateToken, (req, res) => {
   if (req.user.role === 'borrower') {
-    // Get borrower's own projects with deal information
-    db.all(
-      `SELECT p.*, 
-              d.id as deal_id,
-              (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as document_count
-       FROM projects p
-       LEFT JOIN deals d ON p.id = d.project_id AND d.status = 'active'
-       WHERE p.borrower_id = ?
-       ORDER BY p.created_at DESC`,
-      [req.user.id],
+  db.all(
+    `SELECT p.*, 
+            u.name as borrower_name,
+            d.id as deal_id
+     FROM projects p
+     LEFT JOIN users u ON p.borrower_id = u.id
+     LEFT JOIN deals d ON p.id = d.project_id AND d.borrower_id = ? AND d.status = 'active'
+     WHERE p.borrower_id = ?
+     ORDER BY p.created_at DESC`,
+    [req.user.id, req.user.id],
       (err, projects) => {
         if (err) {
           console.error('Projects fetch error:', err);
