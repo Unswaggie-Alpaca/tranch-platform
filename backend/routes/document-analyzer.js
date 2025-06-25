@@ -7,7 +7,7 @@ const mammoth = require('mammoth');
 const XLSX = require('xlsx');
 const fs = require('fs').promises;
 const path = require('path');
-const { authenticateToken } = require('../middleware/auth');
+
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -58,7 +58,7 @@ async function extractTextFromFile(filePath, mimeType) {
 }
 
 // Analyze documents with GPT-4
-router.post('/analyze', authenticateToken, upload.array('documents', 10), async (req, res) => {
+router.post('/analyze', upload.array('documents', 10), async (req, res) => {
   const uploadedFiles = req.files;
   const projectType = req.body.projectType || 'unknown';
   
