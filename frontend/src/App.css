@@ -1229,6 +1229,59 @@ label .required {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
 }
 
+.actions-cell a,
+.actions-cell .btn {
+  text-decoration: none !important;
+  color: inherit !important;
+}
+
+/* Proper View Button Styling */
+.btn.btn-sm.btn-outline {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 8px 20px !important;
+  background: white !important;
+  color: #667eea !important;
+  border: 2px solid #667eea !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  white-space: nowrap !important;
+}
+
+.btn.btn-sm.btn-outline:hover {
+  background: #667eea !important;
+  color: white !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+  text-decoration: none !important;
+}
+
+/* Ensure button text doesn't get link styling */
+.projects-table .btn {
+  color: #667eea !important;
+  text-decoration: none !important;
+}
+
+.projects-table .btn:hover {
+  color: white !important;
+  text-decoration: none !important;
+}
+
+/* Fix button wrapping issues */
+.actions-cell {
+  white-space: nowrap !important;
+}
+
+/* Hide the icon if it's causing issues */
+.btn.btn-sm .btn-icon {
+  display: none !important;
+}
+
 /* Ensure consistent button height in table rows */
 .actions-cell {
   display: flex;
