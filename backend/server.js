@@ -8,6 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const documentAnalyzer = require('./routes/document-analyzer');
 
 // Clerk imports
 const { clerkClient } = require('@clerk/clerk-sdk-node');
@@ -53,7 +54,7 @@ app.use(cors({
     : 'http://localhost:3000',
   credentials: true
 }));
-
+app.use('/api/document-analyzer', documentAnalyzer);
 app.options('*', cors());
 
 // Rate limiting
@@ -298,6 +299,9 @@ app.post('/api/webhooks/clerk',
     }
   }
 );
+
+
+
 
 // ===========================
 // BODY PARSING MIDDLEWARE (AFTER WEBHOOKS)
@@ -615,7 +619,41 @@ db.run(`CREATE TABLE IF NOT EXISTS notifications (
     ('monthly_subscription_fee', '29900'),
     ('max_file_upload_size', '10485760'),
     ('ai_chat_enabled', 'true')`);
+// In server.js, after the existing CREATE TABLE statements, add:
 
+// Add new columns to projects table
+db.run(`ALTER TABLE projects ADD COLUMN development_type TEXT`);
+db.run(`ALTER TABLE projects ADD COLUMN state TEXT`);
+db.run(`ALTER TABLE projects ADD COLUMN postcode TEXT`);
+db.run(`ALTER TABLE projects ADD COLUMN land_area_sqm REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN land_value REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN construction_cost REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN total_units INTEGER`);
+db.run(`ALTER TABLE projects ADD COLUMN total_lots INTEGER`);
+db.run(`ALTER TABLE projects ADD COLUMN total_gfa REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN total_development_cost REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN total_revenue REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN development_profit REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN profit_margin REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN return_on_cost REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN lvr REAL`);
+db.run(`ALTER TABLE projects ADD COLUMN construction_duration INTEGER`);
+db.run(`ALTER TABLE projects ADD COLUMN presales_achieved INTEGER`);
+db.run(`ALTER TABLE projects ADD COLUMN ai_analyzed BOOLEAN DEFAULT 0`);
+db.run(`ALTER TABLE projects ADD COLUMN zoning TEXT`);
+db.run(`ALTER TABLE projects ADD COLUMN builder_name TEXT`);
+db.run(`ALTER TABLE projects ADD COLUMN architect_name TEXT`);
+
+// Create unit_mix table
+db.run(`CREATE TABLE IF NOT EXISTS project_unit_mix (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL,
+  unit_type TEXT NOT NULL,
+  unit_count INTEGER NOT NULL,
+  unit_size REAL,
+  unit_price REAL,
+  FOREIGN KEY (project_id) REFERENCES projects (id)
+)`);
     
 });
 
@@ -936,24 +974,45 @@ app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, re
   const icr = expected_profit && loan_amount ? (expected_profit / loan_amount * 100) : null;
 
   db.run(
-    `INSERT INTO projects (
-      borrower_id, title, description, location, suburb, loan_amount, 
-      interest_rate, loan_term, property_type, development_stage,
-      total_project_cost, equity_contribution, land_value, construction_cost,
-      expected_gdc, expected_profit, lvr, icr,
-      project_size_sqm, number_of_units, number_of_levels, car_spaces,
-      zoning, planning_permit_status, expected_start_date, expected_completion_date,
-      market_risk_rating, construction_risk_rating, location_risk_rating
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      req.user.id, title, description, location, suburb, loan_amount,
-      interest_rate, loan_term, property_type, development_stage,
-      total_project_cost, equity_contribution, land_value, construction_cost,
-      expected_gdc, expected_profit, lvr, icr,
-      project_size_sqm, number_of_units, number_of_levels, car_spaces,
-      zoning, planning_permit_status, expected_start_date, expected_completion_date,
-      market_risk_rating, construction_risk_rating, location_risk_rating
-    ],
+     `INSERT INTO projects (
+        user_id, title, description, location, suburb, state, postcode,
+        property_type, development_type, development_stage,
+        land_area_sqm, land_value, construction_cost,
+        total_units, total_lots, total_gfa,
+        loan_amount, loan_term, total_development_cost,
+        total_revenue, development_profit, profit_margin,
+        return_on_cost, lvr, ai_analyzed,
+        created_at, payment_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        projectData.user_id,
+        projectData.title,
+        projectData.description,
+        projectData.location,
+        projectData.suburb,
+        projectData.state,
+        projectData.postcode,
+        projectData.property_type,
+        projectData.development_type,
+        projectData.development_stage,
+        projectData.land_area_sqm,
+        projectData.land_value,
+        projectData.construction_cost,
+        projectData.total_units,
+        projectData.total_lots,
+        projectData.total_gfa,
+        projectData.loan_amount,
+        projectData.loan_term,
+        projectData.total_development_cost,
+        projectData.total_revenue,
+        projectData.development_profit,
+        projectData.profit_margin,
+        projectData.return_on_cost,
+        projectData.lvr,
+        projectData.ai_analyzed,
+        projectData.created_at,
+        projectData.payment_status
+      ],
     function(err) {
       if (err) {
         console.error('Project creation error:', err);
@@ -1163,65 +1222,168 @@ const REQUIRED_DOCUMENT_TYPES = [
   'environmental_report'
 ];
 
-// Upload documents
-app.post('/api/projects/:id/documents', authenticateToken, requireRole(['borrower']), upload.array('documents', 10), (req, res) => {
-  const projectId = req.params.id;
-  const { document_types } = req.body;
-
-  if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'No files uploaded' });
-  }
-
-  // Verify project ownership
-  db.get(
-    'SELECT * FROM projects WHERE id = ? AND borrower_id = ?', 
-    [projectId, req.user.id], 
-    (err, project) => {
-      if (err || !project) {
-        return res.status(404).json({ error: 'Project not found or access denied' });
-      }
-
-      const documentPromises = req.files.map((file, index) => {
-        return new Promise((resolve, reject) => {
-          const documentType = document_types ? 
-            (Array.isArray(document_types) ? document_types[index] : JSON.parse(document_types)[index]) 
-            : 'other';
-          
-          db.run(
-            'INSERT INTO documents (project_id, document_type, file_name, file_path, file_size, mime_type) VALUES (?, ?, ?, ?, ?, ?)',
-            [projectId, documentType, file.originalname, file.path, file.size, file.mimetype],
-            function(err) {
-              if (err) {
-                reject(err);
-              } else {
-                resolve({
-                  id: this.lastID,
-                  document_type: documentType,
-                  file_name: file.originalname,
-                  file_path: file.path
-                });
-              }
-            }
-          );
-        });
-      });
-
-      Promise.all(documentPromises)
-        .then(documents => {
-          checkDocumentCompleteness(projectId);
-          
-          res.status(201).json({
-            message: 'Documents uploaded successfully',
-            documents: documents
+// Replace the existing app.post('/api/projects'...) with this:
+app.post('/api/projects', authenticateToken, async (req, res) => {
+  try {
+    const projectData = {
+      ...req.body,
+      borrower_id: req.user.id, // Note: changed from user_id to borrower_id
+      created_at: new Date().toISOString(),
+      payment_status: 'unpaid',
+      ai_analyzed: req.body.ai_analyzed || false
+    };
+    
+    // Insert with all new fields
+    db.run(
+      `INSERT INTO projects (
+        borrower_id, title, description, location, suburb, state, postcode,
+        property_type, development_type, development_stage,
+        land_area_sqm, land_value, construction_cost,
+        total_units, total_lots, total_gfa,
+        loan_amount, loan_term, total_development_cost,
+        total_revenue, development_profit, profit_margin,
+        return_on_cost, lvr, ai_analyzed,
+        created_at, payment_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        projectData.borrower_id,
+        projectData.title,
+        projectData.description,
+        projectData.location,
+        projectData.suburb,
+        projectData.state,
+        projectData.postcode,
+        projectData.property_type,
+        projectData.development_type,
+        projectData.development_stage,
+        projectData.land_area_sqm,
+        projectData.land_value,
+        projectData.construction_cost,
+        projectData.total_units,
+        projectData.total_lots,
+        projectData.total_gfa,
+        projectData.loan_amount,
+        projectData.loan_term,
+        projectData.total_development_cost,
+        projectData.total_revenue,
+        projectData.development_profit,
+        projectData.profit_margin,
+        projectData.return_on_cost,
+        projectData.lvr,
+        projectData.ai_analyzed,
+        projectData.created_at,
+        projectData.payment_status
+      ],
+      function(err) {
+        if (err) {
+          console.error('Project creation error:', err);
+          return res.status(500).json({ error: 'Failed to create project' });
+        }
+        
+        const projectId = this.lastID;
+        
+        // If unit mix data exists, insert it
+        if (req.body.unit_mix && req.body.unit_mix.length > 0) {
+          req.body.unit_mix.forEach(unit => {
+            db.run(
+              `INSERT INTO project_unit_mix (project_id, unit_type, unit_count, unit_size, unit_price) 
+               VALUES (?, ?, ?, ?, ?)`,
+              [projectId, unit.type, unit.count, unit.size, unit.price]
+            );
           });
-        })
-        .catch(err => {
-          console.error('Document upload error:', err);
-          res.status(500).json({ error: 'Failed to save documents' });
+        }
+        
+        res.json({ 
+          id: projectId, 
+          message: 'Project created successfully' 
         });
-    }
-  );
+      }
+    );
+  } catch (error) {
+    console.error('Error creating project:', error);
+    res.status(500).json({ error: 'Failed to create project' });
+  }
 });
+
+// Add after other project endpoints
+app.get('/api/projects/:id/generate-package', authenticateToken, async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    
+    // Fetch complete project data
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM projects WHERE id = ?',
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    // Fetch unit mix if applicable
+    const unitMix = await new Promise((resolve, reject) => {
+      db.all(
+        'SELECT * FROM project_unit_mix WHERE project_id = ?',
+        [projectId],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        }
+      );
+    });
+    
+    project.unit_mix = unitMix;
+    
+    // Generate market data (integrate with real APIs if available)
+    const marketData = await generateMarketAnalysis(project.suburb, project.state);
+    
+    // Create Excel package
+    const TranchExcelGenerator = require('./utils/excel-generator');
+    const generator = new TranchExcelGenerator();
+    const workbook = await generator.generateComprehensivePackage(project, marketData);
+    
+    // Set response headers
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Tranch_${project.title.replace(/\s/g, '_')}_Complete_Analysis.xlsx"`);
+    
+    // Send file
+    await workbook.xlsx.write(res);
+    res.end();
+    
+  } catch (error) {
+    console.error('Error generating package:', error);
+    res.status(500).json({ error: 'Failed to generate analysis package' });
+  }
+});
+
+// Market analysis function - add after the endpoint
+async function generateMarketAnalysis(suburb, state) {
+  // This is where you'd integrate with real estate APIs
+  // For now, return sample data
+  return {
+    median_price: 850000,
+    yearly_growth: 12.5,
+    rental_yield: 4.2,
+    days_on_market: 28,
+    comparable_sales: [
+      {
+        address: '123 Example St',
+        price: 820000,
+        date: '2024-12-15',
+        beds: 2,
+        baths: 2
+      }
+    ],
+    demographics: {
+      population: 45000,
+      median_income: 95000,
+      median_age: 35
+    }
+  };
+}
+
 
 // Get project documents
 app.get('/api/projects/:id/documents', authenticateToken, (req, res) => {
