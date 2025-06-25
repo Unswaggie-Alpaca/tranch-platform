@@ -621,27 +621,53 @@ db.run(`CREATE TABLE IF NOT EXISTS notifications (
 // In server.js, after the existing CREATE TABLE statements, add:
 
 // Add new columns to projects table
-db.run(`ALTER TABLE projects ADD COLUMN development_type TEXT`);
-db.run(`ALTER TABLE projects ADD COLUMN state TEXT`);
-db.run(`ALTER TABLE projects ADD COLUMN postcode TEXT`);
-db.run(`ALTER TABLE projects ADD COLUMN land_area_sqm REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN land_value REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN construction_cost REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN total_units INTEGER`);
-db.run(`ALTER TABLE projects ADD COLUMN total_lots INTEGER`);
-db.run(`ALTER TABLE projects ADD COLUMN total_gfa REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN total_development_cost REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN total_revenue REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN development_profit REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN profit_margin REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN return_on_cost REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN lvr REAL`);
-db.run(`ALTER TABLE projects ADD COLUMN construction_duration INTEGER`);
-db.run(`ALTER TABLE projects ADD COLUMN presales_achieved INTEGER`);
-db.run(`ALTER TABLE projects ADD COLUMN ai_analyzed BOOLEAN DEFAULT 0`);
-db.run(`ALTER TABLE projects ADD COLUMN zoning TEXT`);
-db.run(`ALTER TABLE projects ADD COLUMN builder_name TEXT`);
-db.run(`ALTER TABLE projects ADD COLUMN architect_name TEXT`);
+// Insert default settings
+db.run(`INSERT OR IGNORE INTO system_settings (setting_key, setting_value) VALUES 
+  ('project_listing_fee', '49900'),
+  ('monthly_subscription_fee', '29900'),
+  ('max_file_upload_size', '10485760'),
+  ('ai_chat_enabled', 'true')`);
+
+// Safe column addition function
+const addColumnIfNotExists = (tableName, columnName, columnType) => {
+  db.all(`PRAGMA table_info(${tableName})`, (err, columns) => {
+    if (err) {
+      console.error(`Error checking columns for ${tableName}:`, err);
+      return;
+    }
+    
+    const columnExists = columns.some(col => col.name === columnName);
+    if (!columnExists) {
+      db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnType}`, (err) => {
+        if (err) {
+          console.error(`Error adding column ${columnName} to ${tableName}:`, err);
+        } else {
+          console.log(`Added column ${columnName} to ${tableName}`);
+        }
+      });
+    }
+  });
+};
+
+// Add new columns if they don't exist
+addColumnIfNotExists('projects', 'development_type', 'TEXT');
+addColumnIfNotExists('projects', 'state', 'TEXT');
+addColumnIfNotExists('projects', 'postcode', 'TEXT');
+addColumnIfNotExists('projects', 'land_area_sqm', 'REAL');
+addColumnIfNotExists('projects', 'construction_cost', 'REAL');
+addColumnIfNotExists('projects', 'total_units', 'INTEGER');
+addColumnIfNotExists('projects', 'total_lots', 'INTEGER');
+addColumnIfNotExists('projects', 'total_gfa', 'REAL');
+addColumnIfNotExists('projects', 'total_development_cost', 'REAL');
+addColumnIfNotExists('projects', 'total_revenue', 'REAL');
+addColumnIfNotExists('projects', 'development_profit', 'REAL');
+addColumnIfNotExists('projects', 'profit_margin', 'REAL');
+addColumnIfNotExists('projects', 'return_on_cost', 'REAL');
+addColumnIfNotExists('projects', 'construction_duration', 'INTEGER');
+addColumnIfNotExists('projects', 'presales_achieved', 'INTEGER');
+addColumnIfNotExists('projects', 'ai_analyzed', 'BOOLEAN DEFAULT 0');
+addColumnIfNotExists('projects', 'builder_name', 'TEXT');
+addColumnIfNotExists('projects', 'architect_name', 'TEXT');
 
 // Create unit_mix table
 db.run(`CREATE TABLE IF NOT EXISTS project_unit_mix (
