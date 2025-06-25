@@ -2547,1022 +2547,1002 @@ const CreateProject = () => {
   const api = useApi();
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [saving, setSaving] = useState(false);
+  
+  // State management
+  const [currentStep, setCurrentStep] = useState(0); // 0 = AI upload step
+  const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [uploadedDocs, setUploadedDocs] = useState([]);
+  const [projectType, setProjectType] = useState('');
+  const [aiAnalysisComplete, setAiAnalysisComplete] = useState(false);
+  const [documents, setDocuments] = useState({});
+  
+  // Dynamic form data based on project type
   const [formData, setFormData] = useState({
-    // Basic Info
+    // Basic Information
     title: '',
     description: '',
     location: '',
     suburb: '',
-    property_type: 'Residential',
-    development_stage: 'Planning',
+    state: '',
+    postcode: '',
+    property_type: '',
+    development_type: '',
+    development_stage: '',
+    
+    // Land & Site Details
+    land_area_sqm: '',
+    land_value: '',
+    acquisition_date: '',
+    settlement_date: '',
+    zoning: '',
+    fsr: '',
+    
+    // Development Specific Fields
+    // Subdivision
+    total_lots: '',
+    average_lot_size: '',
+    civil_works_cost: '',
+    authority_contributions: '',
+    
+    // Apartments/Townhouses
+    total_units: '',
+    unit_mix: [],
+    number_of_levels: '',
+    total_gfa: '',
+    site_coverage: '',
+    basement_levels: '',
+    
+    // Construction
+    construction_cost: '',
+    construction_start: '',
+    construction_duration: '',
+    builder_name: '',
+    architect_name: '',
+    fixed_price_contract: false,
+    construction_type: '',
     
     // Financial Details
     loan_amount: '',
-    interest_rate: '',
     loan_term: '',
-    total_project_cost: '',
+    interest_rate: '',
+    total_development_cost: '',
+    
+    // Revenue
+    total_revenue: '',
+    average_sale_price: '',
+    presales_achieved: '',
+    presales_value: '',
+    
+    // Calculated Metrics
     equity_contribution: '',
-    land_value: '',
-    construction_cost: '',
-    expected_gdc: '',
-    expected_profit: '',
-    
-    // Project Details
-    project_size_sqm: '',
-    number_of_units: '',
-    number_of_levels: '',
-    car_spaces: '',
-    zoning: '',
-    planning_permit_status: 'Not Started',
-    
-    // Timeline
-    expected_start_date: '',
-    expected_completion_date: '',
-    
-    // Risk Assessment
-    market_risk_rating: 'medium',
-    construction_risk_rating: 'medium',
-    location_risk_rating: 'medium'
+    development_profit: '',
+    profit_margin: '',
+    return_on_cost: '',
+    return_on_equity: '',
+    lvr: '',
+    debt_yield: '',
+    interest_cover: '',
   });
-  
-  const [documents, setDocuments] = useState([]);
-  const [requiredDocs, setRequiredDocs] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [uploadingDocs, setUploadingDocs] = useState(false);
-  const [error, setError] = useState('');
-  const [projectId, setProjectId] = useState(null);
-  const [validationErrors, setValidationErrors] = useState({});
 
-  useEffect(() => {
-    fetchRequiredDocuments();
-    // Load draft if exists
-    const draft = localStorage.getItem('project_draft');
-    if (draft) {
-      const parsedDraft = JSON.parse(draft);
-      setFormData(parsedDraft);
-      addNotification({
-        type: 'info',
-        title: 'Draft Loaded',
-        message: 'Your previous draft has been loaded'
-      });
+  // Project type configurations
+  const PROJECT_TYPES = {
+    subdivision: {
+      name: 'Land Subdivision',
+      icon: 'LS',
+      description: 'Subdividing land into multiple lots',
+      requiredDocs: ['DA Approval', 'Survey Plan', 'Civil Works Quote'],
+      specificFields: ['total_lots', 'average_lot_size', 'civil_works_cost', 'authority_contributions'],
+      hideFields: ['total_units', 'unit_mix', 'number_of_levels', 'total_gfa', 'basement_levels']
+    },
+    apartments: {
+      name: 'Apartment Development',
+      icon: 'AD',
+      description: 'Multi-unit apartment complex',
+      requiredDocs: ['DA Approval', 'Architectural Plans', 'QS Report', 'Valuation'],
+      specificFields: ['total_units', 'unit_mix', 'number_of_levels', 'total_gfa', 'basement_levels'],
+      hideFields: ['total_lots', 'average_lot_size', 'civil_works_cost']
+    },
+    townhouses: {
+      name: 'Townhouse Development',
+      icon: 'TD',
+      description: 'Townhouse or villa development',
+      requiredDocs: ['DA Approval', 'Plans', 'QS Report', 'Valuation'],
+      specificFields: ['total_units', 'unit_mix', 'site_coverage'],
+      hideFields: ['total_lots', 'number_of_levels', 'basement_levels']
+    },
+    commercial: {
+      name: 'Commercial Development',
+      icon: 'CD',
+      description: 'Office, retail or industrial',
+      requiredDocs: ['DA Approval', 'Lease Agreements', 'Valuation', 'QS Report'],
+      specificFields: ['total_gfa', 'lettable_area', 'target_yield', 'anchor_tenants'],
+      hideFields: ['total_units', 'total_lots', 'unit_mix']
     }
-  }, []);
+  };
 
-  // Auto-save draft
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (formData.title || formData.description) {
-        localStorage.setItem('project_draft', JSON.stringify(formData));
-      }
-    }, 1000);
+  // Handle document upload and AI analysis
+  const handleDocumentUpload = async (files) => {
+    setAnalyzing(true);
     
-    return () => clearTimeout(timer);
-  }, [formData]);
-
-  const fetchRequiredDocuments = async () => {
     try {
-      const data = await api.getRequiredDocuments();
-      setRequiredDocs(data);
-    } catch (err) {
-      console.error('Failed to fetch required documents:', err);
+      const formData = new FormData();
+      formData.append('projectType', projectType);
+      
+      // Add all files
+      Array.from(files).forEach((file, index) => {
+        formData.append('documents', file);
+        formData.append(`docType_${file.name}`, identifyDocumentType(file.name));
+      });
+      
+      // Call AI analysis endpoint
+      const response = await fetch('/api/document-analyzer/analyze', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Populate form with extracted data
+        populateFormFromAI(result.extractedData, result.calculations);
+        setAiAnalysisComplete(true);
+        
+        addNotification({
+          type: 'success',
+          title: 'Documents Analyzed Successfully',
+          message: 'We\'ve extracted all the key information from your documents'
+        });
+        
+        // Move to next step
+        setCurrentStep(1);
+      }
+    } catch (error) {
+      console.error('Analysis error:', error);
+      addNotification({
+        type: 'error',
+        title: 'Analysis Failed',
+        message: 'Failed to analyze documents. Please proceed manually.'
+      });
+    } finally {
+      setAnalyzing(false);
     }
   };
 
-  const handleNext = () => {
-    const errors = validateStep(currentStep);
-    if (Object.keys(errors).length === 0) {
-      setCurrentStep(currentStep + 1);
-      setValidationErrors({});
-    } else {
-      setValidationErrors(errors);
-      setError('Please fix the errors before proceeding');
+  // Identify document type from filename
+  const identifyDocumentType = (filename) => {
+    const lower = filename.toLowerCase();
+    if (lower.includes('valuation')) return 'valuation';
+    if (lower.includes('qs') || lower.includes('quantity')) return 'qs_report';
+    if (lower.includes('da') || lower.includes('approval')) return 'da_approval';
+    if (lower.includes('contract')) return 'construction_contract';
+    if (lower.includes('plan') || lower.includes('drawing')) return 'plans';
+    return 'other';
+  };
+
+  // Populate form from AI analysis
+  const populateFormFromAI = (extractedData, calculations) => {
+    setFormData(prev => ({
+      ...prev,
+      // Basic info
+      title: extractedData.basic_info?.title || prev.title,
+      description: extractedData.basic_info?.description || prev.description,
+      location: extractedData.basic_info?.location || prev.location,
+      suburb: extractedData.basic_info?.suburb || prev.suburb,
+      state: extractedData.basic_info?.state || prev.state,
+      postcode: extractedData.basic_info?.postcode || prev.postcode,
+      property_type: extractedData.basic_info?.property_type || prev.property_type,
+      
+      // Land details
+      land_area_sqm: extractedData.land_details?.land_area_sqm || prev.land_area_sqm,
+      land_value: extractedData.land_details?.land_value || prev.land_value,
+      zoning: extractedData.land_details?.zoning || prev.zoning,
+      
+      // Development metrics
+      total_units: extractedData.development_metrics?.total_units || prev.total_units,
+      total_lots: extractedData.development_metrics?.total_lots || prev.total_lots,
+      total_gfa: extractedData.development_metrics?.total_gfa || prev.total_gfa,
+      unit_mix: extractedData.development_metrics?.unit_mix || prev.unit_mix,
+      
+      // Financial
+      total_development_cost: extractedData.financial_details?.total_development_cost || prev.total_development_cost,
+      construction_cost: extractedData.financial_details?.construction_cost || prev.construction_cost,
+      
+      // Revenue
+      total_revenue: extractedData.revenue_projections?.total_revenue || prev.total_revenue,
+      presales_achieved: extractedData.revenue_projections?.presales_achieved || prev.presales_achieved,
+      
+      // Construction
+      builder_name: extractedData.construction_details?.builder || prev.builder_name,
+      architect_name: extractedData.construction_details?.architect || prev.architect_name,
+      construction_duration: extractedData.construction_details?.construction_duration || prev.construction_duration,
+      
+      // Calculated metrics
+      profit_margin: calculations?.profit_margin || prev.profit_margin,
+      return_on_cost: calculations?.return_on_cost || prev.return_on_cost,
+      development_profit: calculations?.profit || prev.development_profit
+    }));
+  };
+
+  // Render step content
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 0: // AI Document Upload Step
+        return (
+          <div className="ai-upload-step">
+            <div className="step-header">
+              <h2>Let's Start with Your Documents</h2>
+              <p>Upload your project documents and our AI will extract all the key information</p>
+            </div>
+            
+            {!projectType ? (
+              <div className="project-type-selection">
+                <h3>What type of development is this?</h3>
+                <div className="project-type-grid">
+                  {Object.entries(PROJECT_TYPES).map(([key, type]) => (
+                    <div
+                      key={key}
+                      className="project-type-card"
+                      onClick={() => setProjectType(key)}
+                    >
+                      <div className="type-icon">{type.icon}</div>
+                      <h4>{type.name}</h4>
+                      <p>{type.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="document-upload-section">
+                <div className="selected-type">
+                  <span>{PROJECT_TYPES[projectType].icon}</span>
+                  <h3>{PROJECT_TYPES[projectType].name}</h3>
+                  <button onClick={() => setProjectType('')} className="btn btn-sm btn-outline">
+                    Change
+                  </button>
+                </div>
+                
+                <div className="upload-area">
+                  <div className="upload-dropzone">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx"
+                      onChange={(e) => handleDocumentUpload(e.target.files)}
+                      id="doc-upload"
+                      className="hidden"
+                    />
+                    <label htmlFor="doc-upload" className="dropzone-label">
+                      <svg className="upload-icon" viewBox="0 0 24 24">
+                        <path d="M7 18a4.6 4.4 0 0 1 0-9 5 5 0 0 1 10 0h1a3 3 0 0 1 0 6h-1" />
+                        <polyline points="9 15 12 12 15 15" />
+                        <line x1="12" y1="12" x2="12" y2="21" />
+                      </svg>
+                      <h4>Drop your documents here</h4>
+                      <p>Valuation, QS Report, DA Approval, Plans, Contracts</p>
+                      <span className="upload-button">Choose Files</span>
+                    </label>
+                  </div>
+                  
+                  {uploadedDocs.length > 0 && (
+                    <div className="uploaded-docs-list">
+                      {uploadedDocs.map((doc, index) => (
+                        <div key={index} className="uploaded-doc-item">
+                          <span>{doc.name}</span>
+                          <span className="doc-type">{identifyDocumentType(doc.name)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="skip-ai">
+                  <button onClick={() => setCurrentStep(1)} className="btn btn-outline">
+                    Skip AI Analysis - Enter Manually
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+        
+      case 1: // Basic Information
+        return (
+          <div className="step-content">
+            <h3>Basic Project Information</h3>
+            {aiAnalysisComplete && (
+              <div className="ai-prefilled-notice">
+                <span>AI</span> We've pre-filled this form based on your documents. Please review and adjust as needed.
+              </div>
+            )}
+            
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Project Title *</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  placeholder="e.g., Sunrise Apartments Development"
+                  className="form-input"
+                  required
+                />
+              </div>
+              
+              <div className="form-group full-width">
+                <label>Project Description *</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  placeholder="Provide a comprehensive overview of your development..."
+                  className="form-textarea"
+                  rows="4"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Full Address *</label>
+                <input
+                  type="text"
+                  value={formData.location}
+                  onChange={(e) => setFormData({...formData, location: e.target.value})}
+                  placeholder="123 Main Street"
+                  className="form-input"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Suburb *</label>
+                <input
+                  type="text"
+                  value={formData.suburb}
+                  onChange={(e) => setFormData({...formData, suburb: e.target.value})}
+                  placeholder="Paddington"
+                  className="form-input"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>State *</label>
+                <select
+                  value={formData.state}
+                  onChange={(e) => setFormData({...formData, state: e.target.value})}
+                  className="form-select"
+                  required
+                >
+                  <option value="">Select State</option>
+                  <option value="NSW">New South Wales</option>
+                  <option value="VIC">Victoria</option>
+                  <option value="QLD">Queensland</option>
+                  <option value="WA">Western Australia</option>
+                  <option value="SA">South Australia</option>
+                  <option value="TAS">Tasmania</option>
+                  <option value="ACT">Australian Capital Territory</option>
+                  <option value="NT">Northern Territory</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>Postcode *</label>
+                <input
+                  type="text"
+                  value={formData.postcode}
+                  onChange={(e) => setFormData({...formData, postcode: e.target.value})}
+                  placeholder="2000"
+                  className="form-input"
+                  maxLength="4"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+        );
+        
+      case 2: // Development Details (Dynamic based on type)
+        return (
+          <div className="step-content">
+            <h3>Development Details</h3>
+            
+            {projectType === 'subdivision' && (
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Total Number of Lots *</label>
+                  <input
+                    type="number"
+                    value={formData.total_lots}
+                    onChange={(e) => setFormData({...formData, total_lots: e.target.value})}
+                    className="form-input"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Average Lot Size (sqm) *</label>
+                  <input
+                    type="number"
+                    value={formData.average_lot_size}
+                    onChange={(e) => setFormData({...formData, average_lot_size: e.target.value})}
+                    className="form-input"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Civil Works Cost *</label>
+                  <div className="input-with-prefix">
+                    <span className="prefix">$</span>
+                    <input
+                      type="number"
+                      value={formData.civil_works_cost}
+                      onChange={(e) => setFormData({...formData, civil_works_cost: e.target.value})}
+                      className="form-input"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-group">
+                  <label>Council Contributions</label>
+                  <div className="input-with-prefix">
+                    <span className="prefix">$</span>
+                    <input
+                      type="number"
+                      value={formData.authority_contributions}
+                      onChange={(e) => setFormData({...formData, authority_contributions: e.target.value})}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {(projectType === 'apartments' || projectType === 'townhouses') && (
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Total Number of Units *</label>
+                  <input
+                    type="number"
+                    value={formData.total_units}
+                    onChange={(e) => setFormData({...formData, total_units: e.target.value})}
+                    className="form-input"
+                    required
+                  />
+                </div>
+                
+                {projectType === 'apartments' && (
+                  <>
+                    <div className="form-group">
+                      <label>Number of Levels *</label>
+                      <input
+                        type="number"
+                        value={formData.number_of_levels}
+                        onChange={(e) => setFormData({...formData, number_of_levels: e.target.value})}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Basement Levels</label>
+                      <input
+                        type="number"
+                        value={formData.basement_levels}
+                        onChange={(e) => setFormData({...formData, basement_levels: e.target.value})}
+                        className="form-input"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                <div className="form-group">
+                  <label>Total GFA (sqm)</label>
+                  <input
+                    type="number"
+                    value={formData.total_gfa}
+                    onChange={(e) => setFormData({...formData, total_gfa: e.target.value})}
+                    className="form-input"
+                  />
+                </div>
+                
+                <div className="form-group full-width">
+                  <label>Unit Mix</label>
+                  <UnitMixBuilder 
+                    unitMix={formData.unit_mix}
+                    onChange={(mix) => setFormData({...formData, unit_mix: mix})}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+        
+      case 3: // Financial Details with Calculations
+        return (
+          <div className="step-content">
+            <h3>Financial Analysis</h3>
+            
+            <div className="financial-calculator">
+              <div className="form-grid">
+                <div className="form-section">
+                  <h4>Development Costs</h4>
+                  
+                  <div className="form-group">
+                    <label>Land Value *</label>
+                    <div className="input-with-prefix">
+                      <span className="prefix">$</span>
+                      <input
+                        type="number"
+                        value={formData.land_value}
+                        onChange={(e) => handleFinancialChange('land_value', e.target.value)}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Construction Cost *</label>
+                    <div className="input-with-prefix">
+                      <span className="prefix">$</span>
+                      <input
+                        type="number"
+                        value={formData.construction_cost}
+                        onChange={(e) => handleFinancialChange('construction_cost', e.target.value)}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="calculated-field">
+                    <label>Total Development Cost (TDC)</label>
+                    <div className="calculated-value">
+                      {formatCurrency(calculateTDC())}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="form-section">
+                  <h4>Revenue Projections</h4>
+                  
+                  <div className="form-group">
+                    <label>Total Sales Revenue *</label>
+                    <div className="input-with-prefix">
+                      <span className="prefix">$</span>
+                      <input
+                        type="number"
+                        value={formData.total_revenue}
+                        onChange={(e) => handleFinancialChange('total_revenue', e.target.value)}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Presales Achieved</label>
+                    <div className="input-with-suffix">
+                      <input
+                        type="number"
+                        value={formData.presales_achieved}
+                        onChange={(e) => setFormData({...formData, presales_achieved: e.target.value})}
+                        className="form-input"
+                      />
+                      <span className="suffix">units</span>
+                    </div>
+                  </div>
+                  
+                  <div className="calculated-field">
+                    <label>Development Profit</label>
+                    <div className="calculated-value success">
+                      {formatCurrency(calculateProfit())}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="metrics-dashboard">
+                <h4>Key Metrics</h4>
+                <div className="metrics-grid">
+                  <div className="metric-card">
+                    <label>Profit Margin</label>
+                    <div className="metric-value">{calculateProfitMargin()}%</div>
+                  </div>
+                  <div className="metric-card">
+                    <label>Return on Cost</label>
+                    <div className="metric-value">{calculateROC()}%</div>
+                  </div>
+                  <div className="metric-card">
+                    <label>LVR</label>
+                    <div className="metric-value">{calculateLVR()}%</div>
+                  </div>
+                  <div className="metric-card">
+                    <label>Break-even Sales</label>
+                    <div className="metric-value">{calculateBreakeven()}%</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+        
+      case 4: // Document Upload (for any missing docs)
+        return (
+          <div className="step-content">
+            <h3>Final Documents</h3>
+            <p>Upload any additional documents or replace existing ones</p>
+            
+            <div className="document-checklist">
+              {PROJECT_TYPES[projectType].requiredDocs.map((docType) => (
+                <div key={docType} className="document-item">
+                  <div className="doc-info">
+                    <span className="doc-name">{docType}</span>
+                    {documents[docType] ? (
+                      <span className="doc-status complete">✓ Uploaded</span>
+                    ) : (
+                      <span className="doc-status pending">Required</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => handleDocumentUpload(e.target.files[0], docType)}
+                    className="doc-upload"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+        
+      case 5: // Review & Generate Package
+        return (
+          <div className="step-content">
+            <h3>Review & Generate Analysis Package</h3>
+            
+            <div className="review-summary">
+              <div className="summary-section">
+                <h4>Project Summary</h4>
+                <div className="summary-grid">
+                  <div className="summary-item">
+                    <label>Project</label>
+                    <span>{formData.title}</span>
+                  </div>
+                  <div className="summary-item">
+                    <label>Location</label>
+                    <span>{formData.suburb}, {formData.state}</span>
+                  </div>
+                  <div className="summary-item">
+                    <label>Type</label>
+                    <span>{PROJECT_TYPES[projectType].name}</span>
+                  </div>
+                  <div className="summary-item">
+                    <label>Size</label>
+                    <span>{formData.total_units || formData.total_lots} {formData.total_units ? 'units' : 'lots'}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="summary-section">
+                <h4>Financial Summary</h4>
+                <div className="financial-summary">
+                  <div className="summary-metric">
+                    <label>Total Development Cost</label>
+                    <span className="value">{formatCurrency(calculateTDC())}</span>
+                  </div>
+                  <div className="summary-metric">
+                    <label>Expected Revenue</label>
+                    <span className="value">{formatCurrency(formData.total_revenue)}</span>
+                  </div>
+                  <div className="summary-metric">
+                    <label>Development Profit</label>
+                    <span className="value success">{formatCurrency(calculateProfit())}</span>
+                  </div>
+                  <div className="summary-metric">
+                    <label>Profit Margin</label>
+                    <span className="value">{calculateProfitMargin()}%</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="summary-section">
+                <h4>Loan Requirements</h4>
+                <div className="loan-inputs">
+                  <div className="form-group">
+                    <label>Loan Amount Required *</label>
+                    <div className="input-with-prefix">
+                      <span className="prefix">$</span>
+                      <input
+                        type="number"
+                        value={formData.loan_amount}
+                        onChange={(e) => setFormData({...formData, loan_amount: e.target.value})}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Loan Term *</label>
+                    <div className="input-with-suffix">
+                      <input
+                        type="number"
+                        value={formData.loan_term}
+                        onChange={(e) => setFormData({...formData, loan_term: e.target.value})}
+                        className="form-input"
+                        required
+                      />
+                      <span className="suffix">months</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="package-preview">
+              <h4>Your Analysis Package Will Include:</h4>
+              <div className="package-features">
+                <div className="feature">✓ Executive Summary</div>
+                <div className="feature">✓ Detailed Financial Analysis</div>
+                <div className="feature">✓ Monthly Cashflow Projections</div>
+                <div className="feature">✓ Sensitivity Analysis (10+ scenarios)</div>
+                <div className="feature">✓ Market Report & Comparables</div>
+                <div className="feature">✓ Risk Assessment Matrix</div>
+                <div className="feature">✓ Return Metrics (IRR, NPV)</div>
+                <div className="feature">✓ Beautiful Tranch-Branded Excel</div>
+              </div>
+            </div>
+          </div>
+        );
     }
   };
 
-  const handlePrevious = () => {
-    setCurrentStep(currentStep - 1);
-    setError('');
-    setValidationErrors({});
-  };
-
-  const validateStep = (step) => {
-    const errors = {};
+  // Financial calculation helpers
+  const calculateTDC = () => {
+    const land = parseFloat(formData.land_value) || 0;
+    const construction = parseFloat(formData.construction_cost) || 0;
+    const civil = parseFloat(formData.civil_works_cost) || 0;
+    const professional = construction * 0.08; // 8% of construction
+    const council = parseFloat(formData.authority_contributions) || 0;
+    const finance = (land + construction) * 0.06; // Estimate
+    const selling = parseFloat(formData.total_revenue) * 0.06 || 0;
+    const contingency = construction * 0.05; // 5% contingency
     
-    switch (step) {
-      case 1:
-        if (!formData.title) errors.title = 'Project title is required';
-        if (!formData.location) errors.location = 'Location is required';
-        if (!formData.suburb) errors.suburb = 'Suburb is required';
-        if (!formData.loan_amount) errors.loan_amount = 'Loan amount is required';
-        if (formData.loan_amount && formData.loan_amount < 100000) {
-          errors.loan_amount = 'Minimum loan amount is $100,000';
-        }
-        if (formData.interest_rate && (formData.interest_rate < 0 || formData.interest_rate > 50)) {
-          errors.interest_rate = 'Interest rate must be between 0% and 50%';
-        }
-        if (formData.loan_term && (formData.loan_term < 1 || formData.loan_term > 120)) {
-          errors.loan_term = 'Loan term must be between 1 and 120 months';
-        }
-        break;
-        
-      case 2:
-        if (!formData.total_project_cost) errors.total_project_cost = 'Total project cost is required';
-        if (!formData.equity_contribution) errors.equity_contribution = 'Equity contribution is required';
-        
-        const totalCost = parseInt(formData.total_project_cost);
-        const equity = parseInt(formData.equity_contribution);
-        const loan = parseInt(formData.loan_amount);
-        
-        if (totalCost && equity && loan) {
-          if (equity + loan > totalCost * 1.1) { // Allow 10% margin
-            errors.equity_contribution = 'Equity + Loan exceeds total project cost';
-          }
-          if (equity < totalCost * 0.1) {
-            errors.equity_contribution = 'Minimum 10% equity required';
-          }
-        }
-        
-        if (formData.land_value && formData.loan_amount) {
-          const lvr = (formData.loan_amount / formData.land_value) * 100;
-          if (lvr > 80) {
-            errors.land_value = 'LVR exceeds 80% - adjust loan amount or land value';
-          }
-        }
-        break;
-        
-      case 3:
-        if (formData.expected_start_date && formData.expected_completion_date) {
-          const start = new Date(formData.expected_start_date);
-          const end = new Date(formData.expected_completion_date);
-          if (end <= start) {
-            errors.expected_completion_date = 'Completion date must be after start date';
-          }
-        }
-        break;
-    }
-    
-    return errors;
+    return land + construction + civil + professional + council + finance + selling + contingency;
   };
 
+  const calculateProfit = () => {
+    return (parseFloat(formData.total_revenue) || 0) - calculateTDC();
+  };
+
+  const calculateProfitMargin = () => {
+    const tdc = calculateTDC();
+    return tdc > 0 ? ((calculateProfit() / tdc) * 100).toFixed(1) : '0';
+  };
+
+  const calculateROC = () => {
+    const tdc = calculateTDC();
+    return tdc > 0 ? ((calculateProfit() / tdc) * 100).toFixed(1) : '0';
+  };
+
+  const calculateLVR = () => {
+    const tdc = calculateTDC();
+    const loan = parseFloat(formData.loan_amount) || 0;
+    return tdc > 0 ? ((loan / tdc) * 100).toFixed(1) : '0';
+  };
+
+  const calculateBreakeven = () => {
+    const revenue = parseFloat(formData.total_revenue) || 0;
+    const tdc = calculateTDC();
+    return revenue > 0 ? ((tdc / revenue) * 100).toFixed(1) : '0';
+  };
+
+  const handleFinancialChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
+  // Handle form submission
   const handleSubmit = async () => {
     setLoading(true);
-    setError('');
-
+    
     try {
-      // Create project
+      // Create project with all data
       const projectData = {
         ...formData,
-        loan_amount: parseInt(formData.loan_amount),
-        interest_rate: formData.interest_rate ? parseFloat(formData.interest_rate) : null,
-        loan_term: formData.loan_term ? parseInt(formData.loan_term) : null,
-        total_project_cost: formData.total_project_cost ? parseInt(formData.total_project_cost) : null,
-        equity_contribution: formData.equity_contribution ? parseInt(formData.equity_contribution) : null,
-        land_value: formData.land_value ? parseInt(formData.land_value) : null,
-        construction_cost: formData.construction_cost ? parseInt(formData.construction_cost) : null,
-        expected_gdc: formData.expected_gdc ? parseInt(formData.expected_gdc) : null,
-        expected_profit: formData.expected_profit ? parseInt(formData.expected_profit) : null,
-        project_size_sqm: formData.project_size_sqm ? parseInt(formData.project_size_sqm) : null,
-        number_of_units: formData.number_of_units ? parseInt(formData.number_of_units) : null,
-        number_of_levels: formData.number_of_levels ? parseInt(formData.number_of_levels) : null,
-        car_spaces: formData.car_spaces ? parseInt(formData.car_spaces) : null,
+        development_type: projectType,
+        documents_complete: true,
+        ai_analyzed: aiAnalysisComplete
       };
-
+      
       const response = await api.createProject(projectData);
-      setProjectId(response.project_id);
       
-      // Clear draft
-      localStorage.removeItem('project_draft');
-      
-      // Upload documents if any
-      if (documents.length > 0) {
-        await uploadDocuments(response.project_id);
+      // Upload documents
+      for (const [docType, file] of Object.entries(documents)) {
+        await api.uploadProjectDocument(response.id, file, docType);
       }
       
       addNotification({
         type: 'success',
-        title: 'Project Created',
-        message: 'Your project has been created successfully!'
+        title: 'Project Created Successfully',
+        message: 'Your project has been saved and is ready for payment'
       });
       
-      navigate(`/project/${response.project_id}`);
-    } catch (err) {
-      setError(err.message);
+      navigate(`/project/${response.id}`);
+      
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: 'Creation Failed',
+        message: error.message
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const uploadDocuments = async (projectId) => {
-    setUploadingDocs(true);
-    try {
-      const formData = new FormData();
-      const documentTypes = [];
-      
-      documents.forEach((doc) => {
-        formData.append('documents', doc.file);
-        documentTypes.push(doc.type);
-      });
-      
-      formData.append('document_types', JSON.stringify(documentTypes));
-      
-      await api.uploadDocuments(projectId, formData);
-    } catch (err) {
-      console.error('Document upload error:', err);
-      addNotification({
-        type: 'warning',
-        title: 'Document Upload Issue',
-        message: 'Some documents failed to upload. You can add them later.'
-      });
-    } finally {
-      setUploadingDocs(false);
-    }
-  };
-
-  const handleDocumentChange = (e, docType) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 50 * 1024 * 1024) {
-        addNotification({
-          type: 'error',
-          title: 'File Too Large',
-          message: 'Maximum file size is 50MB'
-        });
-        return;
-      }
-      
-      setDocuments(prev => [
-        ...prev.filter(d => d.type !== docType),
-        { type: docType, file: file, name: file.name }
-      ]);
-    }
-  };
-
-  const removeDocument = (docType) => {
-    setDocuments(prev => prev.filter(d => d.type !== docType));
-  };
-
-  const calculateLVR = () => {
-    if (formData.loan_amount && formData.land_value) {
-      return ((parseInt(formData.loan_amount) / parseInt(formData.land_value)) * 100).toFixed(1);
-    }
-    return null;
-  };
-
-  const calculateICR = () => {
-    if (formData.expected_profit && formData.loan_amount && formData.interest_rate && formData.loan_term) {
-      const annualInterest = (parseInt(formData.loan_amount) * parseFloat(formData.interest_rate)) / 100;
-      const annualProfit = parseInt(formData.expected_profit) / (parseInt(formData.loan_term) / 12);
-      return (annualProfit / annualInterest).toFixed(2);
-    }
-    return null;
-  };
-
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 1:
-        return (
-          <div className="form-section">
-            <h3>Basic Project Information</h3>
-            
-            <div className="form-group">
-              <label htmlFor="title">
-                Project Title *
-                <Tooltip content="A clear, descriptive name for your development project">
-                  <span className="help-icon">?</span>
-                </Tooltip>
-              </label>
-              <input
-                type="text"
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-                className={`form-input ${validationErrors.title ? 'error' : ''}`}
-                placeholder="e.g., Luxury Apartment Development - Sydney CBD"
-              />
-              {validationErrors.title && (
-                <span className="field-error">{validationErrors.title}</span>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="description">
-                Project Description
-                <Tooltip content="Provide details about the development, target market, and unique features">
-                  <span className="help-icon">?</span>
-                </Tooltip>
-              </label>
-              <textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="form-textarea"
-                placeholder="Provide a detailed description of your development project..."
-                rows="6"
-              />
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="location">
-                  Full Address *
-                  <Tooltip content="Street address of the development site">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="text"
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  required
-                  className={`form-input ${validationErrors.location ? 'error' : ''}`}
-                  placeholder="123 Collins St, Melbourne VIC 3000"
-                />
-                {validationErrors.location && (
-                  <span className="field-error">{validationErrors.location}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="suburb">
-                  Suburb *
-                  <Tooltip content="Suburb where the project is located">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="text"
-                  id="suburb"
-                  value={formData.suburb}
-                  onChange={(e) => setFormData({ ...formData, suburb: e.target.value })}
-                  required
-                  className={`form-input ${validationErrors.suburb ? 'error' : ''}`}
-                  placeholder="Melbourne"
-                />
-                {validationErrors.suburb && (
-                  <span className="field-error">{validationErrors.suburb}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="property_type">
-                  Property Type
-                  <Tooltip content="The type of development you're building">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <select
-                  id="property_type"
-                  value={formData.property_type}
-                  onChange={(e) => setFormData({ ...formData, property_type: e.target.value })}
-                  className="form-select"
-                >
-                  <option value="Residential">Residential</option>
-                  <option value="Commercial">Commercial</option>
-                  <option value="Mixed Use">Mixed Use</option>
-                  <option value="Industrial">Industrial</option>
-                  <option value="Retail">Retail</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="development_stage">
-                  Development Stage
-                  <Tooltip content="Current stage of your development project">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <select
-                  id="development_stage"
-                  value={formData.development_stage}
-                  onChange={(e) => setFormData({ ...formData, development_stage: e.target.value })}
-                  className="form-select"
-                >
-                  <option value="Planning">Planning</option>
-                  <option value="Pre-Construction">Pre-Construction</option>
-                  <option value="Construction">Construction</option>
-                  <option value="Near Completion">Near Completion</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="loan_amount">
-                Loan Amount Required (AUD) *
-                <Tooltip content="Total funding amount you're seeking from lenders">
-                  <span className="help-icon">?</span>
-                </Tooltip>
-              </label>
-              <NumberInput
-                id="loan_amount"
-                value={formData.loan_amount}
-                onChange={(value) => setFormData({ ...formData, loan_amount: value })}
-                placeholder="5,000,000"
-                prefix="$"
-                min={100000}
-                className={validationErrors.loan_amount ? 'error' : ''}
-              />
-              {validationErrors.loan_amount && (
-                <span className="field-error">{validationErrors.loan_amount}</span>
-              )}
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="interest_rate">
-                  Target Interest Rate (%)
-                  <Tooltip content="Expected annual interest rate (typically 8-15% for development finance)">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="interest_rate"
-                  value={formData.interest_rate}
-                  onChange={(value) => setFormData({ ...formData, interest_rate: value })}
-                  placeholder="10.5"
-                  suffix="%"
-                  min={0}
-                  max={50}
-                  step={0.1}
-                  className={validationErrors.interest_rate ? 'error' : ''}
-                />
-                {validationErrors.interest_rate && (
-                  <span className="field-error">{validationErrors.interest_rate}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="loan_term">
-                  Loan Term (months)
-                  <Tooltip content="Duration of the loan in months (typically 12-36 months)">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="loan_term"
-                  value={formData.loan_term}
-                  onChange={(value) => setFormData({ ...formData, loan_term: value })}
-                  placeholder="24"
-                  suffix="months"
-                  min={1}
-                  max={120}
-                  className={validationErrors.loan_term ? 'error' : ''}
-                />
-                {validationErrors.loan_term && (
-                  <span className="field-error">{validationErrors.loan_term}</span>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 2:
-        return (
-          <div className="form-section">
-            <h3>Financial Details</h3>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="total_project_cost">
-                  Total Project Cost (AUD) *
-                  <Tooltip content="Total cost including land, construction, and all other expenses">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="total_project_cost"
-                  value={formData.total_project_cost}
-                  onChange={(value) => setFormData({ ...formData, total_project_cost: value })}
-                  placeholder="10,000,000"
-                  prefix="$"
-                  min={1}
-                  className={validationErrors.total_project_cost ? 'error' : ''}
-                />
-                {validationErrors.total_project_cost && (
-                  <span className="field-error">{validationErrors.total_project_cost}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="equity_contribution">
-                  Equity Contribution (AUD) *
-                  <Tooltip content="Your cash contribution to the project (minimum 10-30% typically required)">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="equity_contribution"
-                  value={formData.equity_contribution}
-                  onChange={(value) => setFormData({ ...formData, equity_contribution: value })}
-                  placeholder="3,000,000"
-                  prefix="$"
-                  min={0}
-                  className={validationErrors.equity_contribution ? 'error' : ''}
-                />
-                {validationErrors.equity_contribution && (
-                  <span className="field-error">{validationErrors.equity_contribution}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="land_value">
-                  Land Value (AUD)
-                  <Tooltip content="Current market value of the land/site">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="land_value"
-                  value={formData.land_value}
-                  onChange={(value) => setFormData({ ...formData, land_value: value })}
-                  placeholder="3,000,000"
-                  prefix="$"
-                  min={0}
-                  className={validationErrors.land_value ? 'error' : ''}
-                />
-                {validationErrors.land_value && (
-                  <span className="field-error">{validationErrors.land_value}</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="construction_cost">
-                  Construction Cost (AUD)
-                  <Tooltip content="Estimated cost for construction and development">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="construction_cost"
-                  value={formData.construction_cost}
-                  onChange={(value) => setFormData({ ...formData, construction_cost: value })}
-                  placeholder="7,000,000"
-                  prefix="$"
-                  min={0}
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="expected_gdc">
-                  Expected GDC (AUD)
-                  <Tooltip content="Gross Development Cost - total project cost including all fees">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="expected_gdc"
-                  value={formData.expected_gdc}
-                  onChange={(value) => setFormData({ ...formData, expected_gdc: value })}
-                  placeholder="11,000,000"
-                  prefix="$"
-                  min={0}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="expected_profit">
-                  Expected Profit (AUD)
-                  <Tooltip content="Projected profit after all costs (aim for 20%+ margin)">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="expected_profit"
-                  value={formData.expected_profit}
-                  onChange={(value) => setFormData({ ...formData, expected_profit: value })}
-                  placeholder="2,500,000"
-                  prefix="$"
-                  min={0}
-                />
-              </div>
-            </div>
-
-            {/* Financial Metrics */}
-            <div className="financial-metrics">
-              <h4>Key Financial Metrics</h4>
-              <div className="metrics-grid">
-                <div className="metric-item">
-                  <label>LVR (Loan to Value Ratio)</label>
-                  <div className="metric-value">{calculateLVR() || 'N/A'}%</div>
-                  <Tooltip content="Loan amount as percentage of land value. Most lenders require LVR under 80%">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </div>
-                <div className="metric-item">
-                  <label>ICR (Interest Coverage Ratio)</label>
-                  <div className="metric-value">{calculateICR() || 'N/A'}</div>
-                  <Tooltip content="Ability to service interest from project profits. Should be above 1.5x">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </div>
-                <div className="metric-item">
-                  <label>Debt/Equity Ratio</label>
-                  <div className="metric-value">
-                    {formData.loan_amount && formData.equity_contribution 
-                      ? (parseInt(formData.loan_amount) / parseInt(formData.equity_contribution)).toFixed(2)
-                      : 'N/A'}
-                  </div>
-                  <Tooltip content="Loan amount divided by equity. Lower ratios indicate less risk">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </div>
-                <div className="metric-item">
-                  <label>Profit Margin</label>
-                  <div className="metric-value">
-                    {formData.expected_profit && formData.total_project_cost
-                      ? ((parseInt(formData.expected_profit) / parseInt(formData.total_project_cost)) * 100).toFixed(1)
-                      : 'N/A'}%
-                  </div>
-                  <Tooltip content="Profit as percentage of total cost. Aim for 20%+ for viable projects">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="form-section">
-            <h3>Project Details</h3>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="project_size_sqm">
-                  Project Size (sqm)
-                  <Tooltip content="Total site area in square meters">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="project_size_sqm"
-                  value={formData.project_size_sqm}
-                  onChange={(value) => setFormData({ ...formData, project_size_sqm: value })}
-                  placeholder="5,000"
-                  suffix="sqm"
-                  min={0}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="number_of_units">
-                  Number of Units
-                  <Tooltip content="Total number of apartments/units in the development">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="number_of_units"
-                  value={formData.number_of_units}
-                  onChange={(value) => setFormData({ ...formData, number_of_units: value })}
-                  placeholder="50"
-                  min={0}
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="number_of_levels">
-                  Number of Levels
-                  <Tooltip content="Total floors/levels in the development">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="number_of_levels"
-                  value={formData.number_of_levels}
-                  onChange={(value) => setFormData({ ...formData, number_of_levels: value })}
-                  placeholder="10"
-                  min={0}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="car_spaces">
-                  Car Spaces
-                  <Tooltip content="Total parking spaces in the development">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="car_spaces"
-                  value={formData.car_spaces}
-                  onChange={(value) => setFormData({ ...formData, car_spaces: value })}
-                  placeholder="75"
-                  min={0}
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="zoning">
-                  Zoning
-                  <Tooltip content="Current zoning designation for the site">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="text"
-                  id="zoning"
-                  value={formData.zoning}
-                  onChange={(e) => setFormData({ ...formData, zoning: e.target.value })}
-                  className="form-input"
-                  placeholder="e.g., R3 Medium Density"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="planning_permit_status">
-                  Planning Permit Status
-                  <Tooltip content="Current status of planning/development approvals">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <select
-                  id="planning_permit_status"
-                  value={formData.planning_permit_status}
-                  onChange={(e) => setFormData({ ...formData, planning_permit_status: e.target.value })}
-                  className="form-select"
-                >
-                  <option value="Not Started">Not Started</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Submitted">Submitted</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Approved with Conditions">Approved with Conditions</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="expected_start_date">
-                  Expected Start Date
-                  <Tooltip content="When you expect to commence construction">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="date"
-                  id="expected_start_date"
-                  value={formData.expected_start_date}
-                  onChange={(e) => setFormData({ ...formData, expected_start_date: e.target.value })}
-                  className={`form-input ${validationErrors.expected_start_date ? 'error' : ''}`}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="expected_completion_date">
-                  Expected Completion Date
-                  <Tooltip content="Anticipated project completion date">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="date"
-                  id="expected_completion_date"
-                  value={formData.expected_completion_date}
-                  onChange={(e) => setFormData({ ...formData, expected_completion_date: e.target.value })}
-                  className={`form-input ${validationErrors.expected_completion_date ? 'error' : ''}`}
-                />
-                {validationErrors.expected_completion_date && (
-                  <span className="field-error">{validationErrors.expected_completion_date}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="form-section">
-              <h4>Risk Assessment</h4>
-              <div className="risk-assessment-grid">
-                <div className="form-group">
-                  <label htmlFor="market_risk_rating">
-                    Market Risk
-                    <Tooltip content="Risk from market conditions, demand, and competition">
-                      <span className="help-icon">?</span>
-                    </Tooltip>
-                  </label>
-                  <select
-                    id="market_risk_rating"
-                    value={formData.market_risk_rating}
-                    onChange={(e) => setFormData({ ...formData, market_risk_rating: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="construction_risk_rating">
-                    Construction Risk
-                    <Tooltip content="Risk from construction complexity, builder experience, and site conditions">
-                      <span className="help-icon">?</span>
-                    </Tooltip>
-                  </label>
-                  <select
-                    id="construction_risk_rating"
-                    value={formData.construction_risk_rating}
-                    onChange={(e) => setFormData({ ...formData, construction_risk_rating: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="location_risk_rating">
-                    Location Risk
-                    <Tooltip content="Risk from location factors like infrastructure, amenities, and growth potential">
-                      <span className="help-icon">?</span>
-                    </Tooltip>
-                  </label>
-                  <select
-                    id="location_risk_rating"
-                    value={formData.location_risk_rating}
-                    onChange={(e) => setFormData({ ...formData, location_risk_rating: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 4:
-        return (
-          <div className="form-section">
-            <h3>Document Upload</h3>
-            <p className="section-description">
-              Upload relevant documents to support your project. Required documents are marked with an asterisk (*).
-            </p>
-            
-            <div className="documents-grid">
-              {requiredDocs.required_documents?.map((docType) => (
-                <div key={docType} className="document-upload-item">
-                  <div className="document-header">
-                    <label htmlFor={`doc-${docType}`}>
-                      {requiredDocs.descriptions?.[docType] || docType.replace(/_/g, ' ')} *
-                      <Tooltip content={`This document is required for project approval`}>
-                        <span className="help-icon">?</span>
-                      </Tooltip>
-                    </label>
-                    {documents.find(d => d.type === docType) && (
-                      <span className="uploaded-badge">✓ Uploaded</span>
-                    )}
-                  </div>
-                  
-                  <div className="document-actions">
-                    <input
-                      type="file"
-                      id={`doc-${docType}`}
-                      onChange={(e) => handleDocumentChange(e, docType)}
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                      style={{ display: 'none' }}
-                    />
-                    
-                    {documents.find(d => d.type === docType) ? (
-                      <div className="uploaded-file">
-                        <span className="file-name">{documents.find(d => d.type === docType).name}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeDocument(docType)}
-                          className="btn btn-sm btn-danger"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ) : (
-                      <label htmlFor={`doc-${docType}`} className="btn btn-outline upload-btn">
-                        Choose File
-                      </label>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="optional-documents">
-              <h4>Additional Documents (Optional)</h4>
-              <div className="document-upload-item">
-                <input
-                  type="file"
-                  multiple
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files);
-                    files.forEach((file, index) => {
-                      handleDocumentChange({ target: { files: [file] } }, `other_${Date.now()}_${index}`);
-                    });
-                  }}
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                  className="form-input"
-                />
-                <div className="field-help">
-                  You can upload additional supporting documents here (max 50MB per file)
-                </div>
-              </div>
-            </div>
-
-            <InfoMessage message="You can upload documents later if needed. Your project will be saved as a draft until all required documents are uploaded and payment is made." />
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
   return (
-    <div className="create-project">
-      <div className="create-project-header">
-        <h1>Create New Project</h1>
-        <p>List your property development project for private credit funding</p>
-      </div>
-
-      {/* Progress Steps */}
-      <div className="progress-steps">
-        <div className={`step ${currentStep >= 1 ? 'active' : ''} ${currentStep > 1 ? 'completed' : ''}`}>
-          <div className="step-number">1</div>
-          <div className="step-label">Basic Info</div>
-        </div>
-        <div className={`step ${currentStep >= 2 ? 'active' : ''} ${currentStep > 2 ? 'completed' : ''}`}>
-          <div className="step-number">2</div>
-          <div className="step-label">Financials</div>
-        </div>
-        <div className={`step ${currentStep >= 3 ? 'active' : ''} ${currentStep > 3 ? 'completed' : ''}`}>
-          <div className="step-number">3</div>
-          <div className="step-label">Details</div>
-        </div>
-        <div className={`step ${currentStep >= 4 ? 'active' : ''} ${currentStep > 4 ? 'completed' : ''}`}>
-          <div className="step-number">4</div>
-          <div className="step-label">Documents</div>
-        </div>
-      </div>
-
-      {error && <ErrorMessage message={error} onClose={() => setError('')} />}
-
-      <form className="project-form multi-step">
-        {renderStepContent()}
-
-        <div className="form-actions">
-          <div className="actions-left">
-            <button 
-              type="button" 
-              onClick={() => {
-                localStorage.setItem('project_draft', JSON.stringify(formData));
-                addNotification({
-                  type: 'success',
-                  title: 'Draft Saved',
-                  message: 'Your project has been saved as a draft'
-                });
-              }}
-              className="btn btn-outline"
-            >
-              Save Draft
-            </button>
+    <div className="create-project-wizard">
+      <div className="wizard-header">
+        <h1>Create Your Development Project</h1>
+        <div className="wizard-progress">
+          <div className="progress-track">
+            <div 
+              className="progress-fill" 
+              style={{width: `${(currentStep / 5) * 100}%`}}
+            />
           </div>
-
-          <div className="actions-right">
-            {currentStep > 1 && (
-              <button type="button" onClick={handlePrevious} className="btn btn-outline">
-                Previous
-              </button>
-            )}
-            
-            {currentStep < 4 ? (
-              <button type="button" onClick={handleNext} className="btn btn-primary">
-                Next
-              </button>
-            ) : (
-              <button 
-                type="button" 
-                onClick={handleSubmit} 
-                disabled={loading || uploadingDocs}
-                className="btn btn-primary"
+          <div className="progress-steps">
+            {['AI Analysis', 'Basic Info', 'Development', 'Financials', 'Documents', 'Review'].map((step, index) => (
+              <div 
+                key={index}
+                className={`progress-step ${currentStep >= index ? 'active' : ''} ${currentStep > index ? 'complete' : ''}`}
               >
-                {loading ? 'Creating Project...' : 'Create Project'}
-              </button>
-            )}
+                <div className="step-number">{currentStep > index ? '✓' : index + 1}</div>
+                <span className="step-label">{step}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </form>
+      </div>
+
+      <div className="wizard-content">
+        {analyzing ? (
+          <div className="analyzing-screen">
+            <div className="analyzing-animation">
+              <div className="pulse-ring"></div>
+              <div className="ai-icon">AI</div>
+            </div>
+            <h2>Analyzing Your Documents</h2>
+            <p>Our AI is extracting key information from your files...</p>
+            <div className="analysis-progress">
+              <div className="progress-bar">
+                <div className="progress-fill animated"></div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          renderStepContent()
+        )}
+      </div>
+
+      <div className="wizard-footer">
+        {currentStep > 0 && (
+          <button 
+            onClick={() => setCurrentStep(currentStep - 1)}
+            className="btn btn-outline"
+            disabled={loading}
+          >
+            Previous
+          </button>
+        )}
+        
+        {currentStep < 5 ? (
+          <button 
+            onClick={() => setCurrentStep(currentStep + 1)}
+            className="btn btn-primary"
+            disabled={loading}
+          >
+            Next
+          </button>
+        ) : (
+          <button 
+            onClick={handleSubmit}
+            className="btn btn-primary btn-large"
+            disabled={loading}
+          >
+            {loading ? 'Creating Project...' : 'Create Project & Generate Package'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Unit Mix Builder Component
+const UnitMixBuilder = ({ unitMix, onChange }) => {
+  const [mix, setMix] = useState(unitMix || []);
+  
+  const addUnitType = () => {
+    setMix([...mix, { type: '', count: '', size: '', price: '' }]);
+  };
+  
+  const updateUnit = (index, field, value) => {
+    const updated = [...mix];
+    updated[index][field] = value;
+    setMix(updated);
+    onChange(updated);
+  };
+  
+  const removeUnit = (index) => {
+    const updated = mix.filter((_, i) => i !== index);
+    setMix(updated);
+    onChange(updated);
+  };
+  
+  return (
+    <div className="unit-mix-builder">
+      <div className="unit-mix-header">
+        <span>Unit Type</span>
+        <span>Count</span>
+        <span>Size (sqm)</span>
+        <span>Price</span>
+        <span></span>
+      </div>
+      {mix.map((unit, index) => (
+        <div key={index} className="unit-mix-row">
+          <input
+            type="text"
+            value={unit.type}
+            onChange={(e) => updateUnit(index, 'type', e.target.value)}
+            placeholder="e.g., 2 Bed"
+            className="form-input"
+          />
+          <input
+            type="number"
+            value={unit.count}
+            onChange={(e) => updateUnit(index, 'count', e.target.value)}
+            placeholder="10"
+            className="form-input"
+          />
+          <input
+            type="number"
+            value={unit.size}
+            onChange={(e) => updateUnit(index, 'size', e.target.value)}
+            placeholder="85"
+            className="form-input"
+          />
+          <input
+            type="number"
+            value={unit.price}
+            onChange={(e) => updateUnit(index, 'price', e.target.value)}
+            placeholder="750000"
+            className="form-input"
+          />
+          <button             onClick={() => removeUnit(index)} className="btn btn-sm btn-danger">
+            Remove
+          </button>
+        </div>
+      ))}
+      <button onClick={addUnitType} className="btn btn-outline btn-sm">
+        + Add Unit Type
+      </button>
     </div>
   );
 };
