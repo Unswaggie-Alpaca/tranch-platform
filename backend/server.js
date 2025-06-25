@@ -8,7 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const documentAnalyzer = require('./routes/document-analyzer');
+
 
 // Clerk imports
 const { clerkClient } = require('@clerk/clerk-sdk-node');
@@ -54,7 +54,6 @@ app.use(cors({
     : 'http://localhost:3000',
   credentials: true
 }));
-app.use('/api/document-analyzer', authenticateToken, documentAnalyzer);
 app.options('*', cors());
 
 // Rate limiting
@@ -794,6 +793,9 @@ app.use(express.json({ limit: '50mb' }));
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
 app.use('/api/ai-chat', authenticateToken, aiChatRoutes);
+
+const documentAnalyzer = require('./routes/document-analyzer');
+app.use('/api/document-analyzer', authenticateToken, documentAnalyzer);
 
 // ================================
 // AUTH ROUTES
