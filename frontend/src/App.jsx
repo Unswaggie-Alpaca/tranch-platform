@@ -6666,6 +6666,15 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
     { id: 4, title: 'Review' }
   ];
   
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+  
   const handleNext = () => {
     if (validateStep(currentStep)) {
       setCurrentStep(prev => prev + 1);
@@ -6723,36 +6732,48 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
             <h3>Loan Terms</h3>
             <div className="form-group">
               <label>Loan Amount *</label>
-              <input
-                type="number"
-                value={formData.loan_amount}
-                onChange={(e) => setFormData(prev => ({ ...prev, loan_amount: e.target.value }))}
-                placeholder="Enter loan amount"
-                required
-              />
+              <div className="number-input-wrapper">
+                <span className="input-prefix">$</span>
+                <input
+                  type="number"
+                  className="number-input"
+                  value={formData.loan_amount}
+                  onChange={(e) => setFormData(prev => ({ ...prev, loan_amount: e.target.value }))}
+                  placeholder="0"
+                  required
+                />
+              </div>
             </div>
             
             <div className="form-group">
               <label>Interest Rate (% p.a.) *</label>
-              <input
-                type="number"
-                step="0.1"
-                value={formData.interest_rate}
-                onChange={(e) => setFormData(prev => ({ ...prev, interest_rate: e.target.value }))}
-                placeholder="e.g., 12.5"
-                required
-              />
+              <div className="number-input-wrapper">
+                <input
+                  type="number"
+                  className="number-input"
+                  step="0.1"
+                  value={formData.interest_rate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, interest_rate: e.target.value }))}
+                  placeholder="0.0"
+                  required
+                />
+                <span className="input-suffix">%</span>
+              </div>
             </div>
             
             <div className="form-group">
-              <label>Loan Term (months) *</label>
-              <input
-                type="number"
-                value={formData.loan_term}
-                onChange={(e) => setFormData(prev => ({ ...prev, loan_term: e.target.value }))}
-                placeholder="e.g., 18"
-                required
-              />
+              <label>Loan Term *</label>
+              <div className="number-input-wrapper">
+                <input
+                  type="number"
+                  className="number-input"
+                  value={formData.loan_term}
+                  onChange={(e) => setFormData(prev => ({ ...prev, loan_term: e.target.value }))}
+                  placeholder="0"
+                  required
+                />
+                <span className="input-suffix">months</span>
+              </div>
             </div>
           </div>
         );
@@ -6763,21 +6784,26 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
             <h3>Fees & Charges</h3>
             <div className="form-group">
               <label>Establishment Fee</label>
-              <input
-                type="number"
-                value={formData.establishment_fee}
-                onChange={(e) => setFormData(prev => ({ ...prev, establishment_fee: e.target.value }))}
-                placeholder="Enter establishment fee"
-              />
+              <div className="number-input-wrapper">
+                <span className="input-prefix">$</span>
+                <input
+                  type="number"
+                  className="number-input"
+                  value={formData.establishment_fee}
+                  onChange={(e) => setFormData(prev => ({ ...prev, establishment_fee: e.target.value }))}
+                  placeholder="0"
+                />
+              </div>
             </div>
             
             <div className="form-group">
               <label>Other Fees</label>
               <textarea
+                className="form-textarea"
                 value={formData.other_fees}
                 onChange={(e) => setFormData(prev => ({ ...prev, other_fees: e.target.value }))}
-                placeholder="List any other fees or charges"
-                rows="3"
+                placeholder="Describe any additional fees or charges..."
+                rows="4"
               />
             </div>
           </div>
@@ -6790,10 +6816,11 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
             <div className="form-group">
               <label>Special Conditions</label>
               <textarea
+                className="form-textarea"
                 value={formData.conditions}
                 onChange={(e) => setFormData(prev => ({ ...prev, conditions: e.target.value }))}
-                placeholder="Enter any special conditions or requirements for this loan"
-                rows="5"
+                placeholder="Enter any conditions for this funding offer..."
+                rows="6"
               />
             </div>
           </div>
@@ -6803,48 +6830,48 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
         return (
           <div className="wizard-step-content">
             <h3>Review Your Quote</h3>
-        <div className="quote-summary">
-          <div className="summary-section">
-            <h4>Loan Terms</h4>
-            <div className="summary-item">
-              <span>Loan Amount:</span>
-              <strong>{formatCurrency(formData.loan_amount)}</strong>
-            </div>
-            <div className="summary-item">
-              <span>Interest Rate:</span>
-              <strong>{formData.interest_rate}% p.a.</strong>
-            </div>
-            <div className="summary-item">
-              <span>Loan Term:</span>
-              <strong>{formData.loan_term} months</strong>
-            </div>
-          </div>
-          
-          {(formData.establishment_fee || formData.other_fees) && (
-            <div className="summary-section">
-              <h4>Fees</h4>
-              {formData.establishment_fee && (
+            <div className="quote-summary">
+              <div className="summary-section">
+                <h4>Loan Details</h4>
                 <div className="summary-item">
-                  <span>Establishment Fee:</span>
-                  <strong>{formatCurrency(formData.establishment_fee)}</strong>
+                  <span>Loan Amount:</span>
+                  <strong>{formatCurrency(formData.loan_amount)}</strong>
+                </div>
+                <div className="summary-item">
+                  <span>Interest Rate:</span>
+                  <strong>{formData.interest_rate}% p.a.</strong>
+                </div>
+                <div className="summary-item">
+                  <span>Loan Term:</span>
+                  <strong>{formData.loan_term} months</strong>
+                </div>
+              </div>
+              
+              {(formData.establishment_fee || formData.other_fees) && (
+                <div className="summary-section">
+                  <h4>Fees</h4>
+                  {formData.establishment_fee && (
+                    <div className="summary-item">
+                      <span>Establishment Fee:</span>
+                      <strong>{formatCurrency(formData.establishment_fee)}</strong>
+                    </div>
+                  )}
+                  {formData.other_fees && (
+                    <div className="summary-item">
+                      <span>Other Fees:</span>
+                      <strong>{formData.other_fees}</strong>
+                    </div>
+                  )}
                 </div>
               )}
-              {formData.other_fees && (
-                <div className="summary-item">
-                  <span>Other Fees:</span>
-                  <strong>{formData.other_fees}</strong>
+              
+              {formData.conditions && (
+                <div className="summary-section">
+                  <h4>Conditions</h4>
+                  <p>{formData.conditions}</p>
                 </div>
               )}
             </div>
-          )}
-          
-          {formData.conditions && (
-            <div className="summary-section">
-              <h4>Conditions</h4>
-              <p>{formData.conditions}</p>
-            </div>
-          )}
-        </div>
           </div>
         );
     }
