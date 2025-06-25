@@ -54,7 +54,7 @@ app.use(cors({
     : 'http://localhost:3000',
   credentials: true
 }));
-app.use('/api/document-analyzer', documentAnalyzer);
+app.use('/api/document-analyzer', authenticateToken, documentAnalyzer);
 app.options('*', cors());
 
 // Rate limiting
