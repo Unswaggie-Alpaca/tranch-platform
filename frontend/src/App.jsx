@@ -2661,56 +2661,52 @@ const CreateProject = () => {
     }
   };
 
-  // Handle document upload and AI analysis
-  const handleDocumentUpload = async (files) => {
-    setAnalyzing(true);
+// Replace this section in your handleDocumentUpload function
+const handleDocumentUpload = async (files) => {
+  setAnalyzing(true);
+  
+  try {
+    const formData = new FormData();
+    formData.append('projectType', projectType);
     
-    try {
-      const formData = new FormData();
-      formData.append('projectType', projectType);
+    // Add all files
+    Array.from(files).forEach((file, index) => {
+      formData.append('documents', file);
+      formData.append(`docType_${file.name}`, identifyDocumentType(file.name));
+    });
+    
+    // Call AI analysis endpoint
+    const result = await api.request('/document-analyzer/analyze', {
+      method: 'POST',
+      body: formData
+    });
+    
+    // ✅ No need to call .json() - result is already parsed
+    if (result.success) {
+      // Populate form with extracted data
+      populateFormFromAI(result.extractedData, result.calculations);
+      setAiAnalysisComplete(true);
       
-      // Add all files
-      Array.from(files).forEach((file, index) => {
-        formData.append('documents', file);
-        formData.append(`docType_${file.name}`, identifyDocumentType(file.name));
-      });
-      
-      // Call AI analysis endpoint
-      const response = await fetch('/api/document-analyzer/analyze', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: formData
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        // Populate form with extracted data
-        populateFormFromAI(result.extractedData, result.calculations);
-        setAiAnalysisComplete(true);
-        
-        addNotification({
-          type: 'success',
-          title: 'Documents Analyzed Successfully',
-          message: 'We\'ve extracted all the key information from your documents'
-        });
-        
-        // Move to next step
-        setCurrentStep(1);
-      }
-    } catch (error) {
-      console.error('Analysis error:', error);
       addNotification({
-        type: 'error',
-        title: 'Analysis Failed',
-        message: 'Failed to analyze documents. Please proceed manually.'
+        type: 'success',
+        title: 'Documents Analyzed Successfully',
+        message: 'We\'ve extracted all the key information from your documents'
       });
-    } finally {
-      setAnalyzing(false);
+      
+      // Move to next step
+      setCurrentStep(1);
     }
-  };
+  } catch (error) {
+    console.error('Analysis error:', error);
+    addNotification({
+      type: 'error',
+      title: 'Analysis Failed',
+      message: 'Failed to analyze documents. Please proceed manually.'
+    });
+  } finally {
+    setAnalyzing(false);
+  }
+};
 
   // Identify document type from filename
   const identifyDocumentType = (filename) => {
