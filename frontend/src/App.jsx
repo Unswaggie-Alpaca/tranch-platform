@@ -1832,122 +1832,297 @@ const Dashboard = () => {
 
   if (loading) return <LoadingSpinner />;
 
-  return (
+return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <div className="header-content">
-          <div className="header-text">
-            <h1>Dashboard</h1>
-            <p className="dashboard-subtitle">
-              {user.role === 'borrower' && 'Manage your property development projects'}
-              {user.role === 'funder' && 'Discover investment opportunities'}
-              {user.role === 'admin' && 'Platform administration'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {error && <ErrorMessage message={error} onClose={() => setError('')} />}
-
-      {user.role === 'funder' && !user.approved && (
-        <div className="warning-message">
-          <h3>Account Pending Approval</h3>
-          <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
-        </div>
-      )}
-
-      {user.role === 'funder' && user.approved && user.subscription_status !== 'active' && (
-        <div className="subscription-banner">
-          <div className="banner-content">
-            <h3>Activate Your Subscription</h3>
-            <p>Subscribe to unlock full access to all projects and features</p>
-          </div>
-          <button 
-            onClick={() => setShowSubscriptionModal(true)}
-            className="btn btn-primary"
-          >
-            Subscribe Now - $299/month
-          </button>
-        </div>
-      )}
-
-      {user.role === 'admin' && stats && (
-        <div className="admin-stats">
-          <div className="stat-card">
-            <div className="stat-icon">👥</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatNumber(stats.total_users)}</div>
-              <div className="stat-label">Total Users</div>
+      {user.role === 'borrower' ? (
+        // Borrower Dashboard - Stylish Redesign
+        <>
+          <div className="dashboard-hero">
+            <div className="hero-background">
+              <div className="hero-pattern"></div>
+            </div>
+            <div className="hero-content">
+              <div className="greeting-section">
+                <h1 className="greeting-title">
+                  {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'}, {user.name?.split(' ')[0]}
+                </h1>
+                <p className="greeting-subtitle">Let's get your developments funded.</p>
+              </div>
+              <Link to="/create-project" className="create-project-btn">
+                <span className="btn-text">New Project</span>
+                <svg className="btn-arrow" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </Link>
             </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-icon">📁</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatNumber(stats.total_projects)}</div>
-              <div className="stat-label">Total Projects</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">✓</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatNumber(stats.active_projects)}</div>
-              <div className="stat-label">Active Projects</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">💰</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
-              <div className="stat-label">Total Revenue</div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      <div className="projects-section">
-        <div className="section-header">
-          <h2>
-            {user.role === 'borrower' && 'Your Projects'}
-            {user.role === 'funder' && `Available Projects (${projects.length})`}
-            {user.role === 'admin' && 'All Projects'}
-          </h2>
-          {user.role === 'borrower' && (
-            <Link to="/create-project" className="btn btn-primary">
-              <span>+</span> Create New Project
-            </Link>
-          )}
-        </div>
+          {error && <ErrorMessage message={error} onClose={() => setError('')} />}
 
-        {projects.length === 0 ? (
-          <EmptyState 
-            icon="📂"
-            title="No projects found"
-            message={
-              user.role === 'borrower' 
-                ? 'Create your first project to get started.'
-                : 'No projects available at the moment.'
-            }
-            action={
-              user.role === 'borrower' && (
-                <Link to="/create-project" className="btn btn-primary">
-                  Create Project
+          {/* Metrics Cards */}
+          <div className="metrics-container">
+            <div className="metric-card active-metric">
+              <div className="metric-header">
+                <span className="metric-label">Active Projects</span>
+                <div className="metric-indicator active"></div>
+              </div>
+              <div className="metric-value">{projects.filter(p => p.payment_status === 'paid').length}</div>
+              <div className="metric-trend">
+                <span className="trend-text">Live on platform</span>
+              </div>
+            </div>
+
+            <div className="metric-card funding-metric">
+              <div className="metric-header">
+                <span className="metric-label">Total Funding Sought</span>
+                <div className="metric-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                </div>
+              </div>
+              <div className="metric-value">
+                {formatCurrency(projects.reduce((sum, p) => sum + (p.loan_amount || 0), 0))}
+              </div>
+              <div className="metric-detail">
+                Across {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+              </div>
+            </div>
+
+            <div className="metric-card draft-metric">
+              <div className="metric-header">
+                <span className="metric-label">Drafts</span>
+                <div className="metric-badge">{projects.filter(p => p.payment_status === 'unpaid').length}</div>
+              </div>
+              <div className="metric-progress">
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ 
+                      width: `${projects.length > 0 ? (projects.filter(p => p.payment_status === 'unpaid').length / projects.length * 100) : 0}%` 
+                    }}
+                  ></div>
+                </div>
+              </div>
+              <div className="metric-action">
+                <Link to="/my-projects?filter=draft">Complete drafts</Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Projects Grid with New Design */}
+          <div className="projects-showcase">
+            <div className="showcase-header">
+              <div className="header-main">
+                <h2 className="showcase-title">Your Portfolio</h2>
+                <div className="filter-pills">
+                  <button className="filter-pill active">All</button>
+                  <button className="filter-pill">Live</button>
+                  <button className="filter-pill">Drafts</button>
+                </div>
+              </div>
+            </div>
+
+            {projects.length === 0 ? (
+              <div className="empty-showcase">
+                <div className="empty-graphic">
+                  <div className="empty-shape shape-1"></div>
+                  <div className="empty-shape shape-2"></div>
+                  <div className="empty-shape shape-3"></div>
+                </div>
+                <h3 className="empty-title">Your first project awaits</h3>
+                <p className="empty-text">List your development to connect with our network of verified funders.</p>
+                <Link to="/create-project" className="empty-cta">
+                  Start Your First Project
+                  <svg viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
                 </Link>
-              )
-            }
-          />
-        ) : (
-          <div className="projects-grid">
-            {projects.map((project) => (
-              <ProjectCard 
-                key={project.id} 
-                project={project} 
-                userRole={user.role}
-                onProjectUpdate={handleProjectUpdate}
-              />
-            ))}
+              </div>
+            ) : (
+              <div className="showcase-grid">
+                {projects.map((project) => (
+                  <div key={project.id} className="showcase-card">
+                    <div className="card-status-bar">
+                      <span className={`status-indicator ${project.payment_status === 'paid' ? 'live' : 'draft'}`}>
+                        {project.payment_status === 'paid' ? 'Live' : 'Draft'}
+                      </span>
+                      {project.deal_count > 0 && (
+                        <span className="deal-indicator">{project.deal_count} active {project.deal_count === 1 ? 'deal' : 'deals'}</span>
+                      )}
+                    </div>
+                    
+                    <div className="card-body">
+                      <h3 className="card-title">{project.title}</h3>
+                      <div className="card-location">
+                        <svg viewBox="0 0 16 16" fill="currentColor">
+                          <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                        </svg>
+                        {project.suburb}
+                      </div>
+                      
+                      <div className="card-metrics">
+                        <div className="card-metric">
+                          <span className="metric-label">Seeking</span>
+                          <span className="metric-value">{formatCurrency(project.loan_amount)}</span>
+                        </div>
+                        <div className="card-metric">
+                          <span className="metric-label">Type</span>
+                          <span className="metric-value">{project.property_type || 'Not specified'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="card-footer">
+                      <Link to={`/project/${project.id}`} className="card-action view">
+                        View Details
+                      </Link>
+                      {project.payment_status === 'paid' && project.deal_count > 0 && (
+                        <Link to={`/project/${project.id}/deal/${project.deal_id || ''}`} className="card-action deal">
+                          Deal Room
+                        </Link>
+                      )}
+                      {project.payment_status === 'unpaid' && (
+                        <button 
+                          onClick={() => setShowPaymentModal(true)}
+                          className="card-action publish"
+                        >
+                          Publish
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        // Original layout for funders and admins
+        <>
+          <div className="dashboard-header">
+            <div className="header-content">
+              <div className="header-text">
+                <h1>Dashboard</h1>
+                <p className="dashboard-subtitle">
+                  {user.role === 'funder' && 'Discover investment opportunities'}
+                  {user.role === 'admin' && 'Platform administration'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+
+          {user.role === 'funder' && !user.approved && (
+            <div className="warning-message">
+              <h3>Account Pending Approval</h3>
+              <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
+            </div>
+          )}
+
+          {user.role === 'funder' && user.approved && user.subscription_status !== 'active' && (
+            <div className="subscription-banner">
+              <div className="banner-content">
+                <h3>Activate Your Subscription</h3>
+                <p>Subscribe to unlock full access to all projects and features</p>
+              </div>
+              <button 
+                onClick={() => setShowSubscriptionModal(true)}
+                className="btn btn-primary"
+              >
+                Subscribe Now - $299/month
+              </button>
+            </div>
+          )}
+
+          {user.role === 'admin' && stats && (
+            <div className="admin-stats">
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{formatNumber(stats.total_users)}</div>
+                  <div className="stat-label">Total Users</div>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{formatNumber(stats.total_projects)}</div>
+                  <div className="stat-label">Total Projects</div>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 11 12 14 22 4"></polyline>
+                    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{formatNumber(stats.active_projects)}</div>
+                  <div className="stat-label">Active Projects</div>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  </svg>
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
+                  <div className="stat-label">Total Revenue</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="projects-section">
+            <div className="section-header">
+              <h2>
+                {user.role === 'funder' && `Available Projects (${projects.length})`}
+                {user.role === 'admin' && 'All Projects'}
+              </h2>
+            </div>
+
+            {projects.length === 0 ? (
+              <EmptyState 
+                icon={
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                }
+                title="No projects found"
+                message="No projects available at the moment."
+              />
+            ) : (
+              <div className="projects-grid">
+                {projects.map((project) => (
+                  <ProjectCard 
+                    key={project.id} 
+                    project={project} 
+                    userRole={user.role}
+                    onProjectUpdate={handleProjectUpdate}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <SubscriptionModal 
         isOpen={showSubscriptionModal}
@@ -1965,8 +2140,7 @@ const Dashboard = () => {
       />
     </div>
   );
-};
-
+}
 // ===========================
 // PROJECT CARD COMPONENT
 // ===========================
