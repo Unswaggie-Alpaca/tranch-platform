@@ -13,10 +13,22 @@
     "@clerk/clerk-react": "^5.31.8",
     "@stripe/react-stripe-js": "^3.7.0",
     "@stripe/stripe-js": "^7.3.1",
+    "axios": "^1.10.0",
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.9.1",
+    "multer": "^2.0.1",
+    "nodemailer": "^7.0.3",
+    "openai": "^5.7.0",
+    "pdf-parse": "^1.1.1",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^6.8.1"
+    "react-router-dom": "^6.8.1",
+    "react-use-websocket": "^4.13.0",
+    "speakeasy": "^2.0.0",
+    "ws": "^8.18.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",
