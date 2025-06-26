@@ -723,6 +723,23 @@ app.get('/uploads/:filename', authenticateToken, async (req, res) => {
 // ===========================
 const initializeDatabase = async () => {
   try {
+    // Helper function to check if column exists before adding
+    const checkAndAddColumn = async (tableName, columnName, columnDefinition) => {
+      try {
+        // Check if column exists
+        const tableInfo = await dbAll(`PRAGMA table_info(${tableName})`);
+        const columnExists = tableInfo.some(col => col.name === columnName);
+        
+        if (!columnExists) {
+          await dbRun(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+          console.log(`Added column ${columnName} to ${tableName}`);
+        }
+      } catch (err) {
+        // Column might already exist or table doesn't exist
+        console.log(`Column ${columnName} already exists in ${tableName} or error:`, err.message);
+      }
+    };
+
     // Users table
     await dbRun(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -748,17 +765,15 @@ const initializeDatabase = async () => {
       abn TEXT,
       verification_status TEXT DEFAULT 'pending',
       
+      -- 2FA fields
+      two_factor_secret TEXT,
+      two_factor_enabled BOOLEAN DEFAULT 0,
+      backup_codes TEXT,
+      
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-// Add thread support to messages table
-await dbRun(`ALTER TABLE messages ADD COLUMN thread_id TEXT`);
-await dbRun(`ALTER TABLE messages ADD COLUMN is_thread_starter BOOLEAN DEFAULT 0`);
-await dbRun(`CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)`);
-// Add 2FA support to users table
-await dbRun(`ALTER TABLE users ADD COLUMN two_factor_secret TEXT`);
-await dbRun(`ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN DEFAULT 0`);
-await dbRun(`ALTER TABLE users ADD COLUMN backup_codes TEXT`);
+
     // Projects table
     await dbRun(`CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -869,6 +884,8 @@ await dbRun(`ALTER TABLE users ADD COLUMN backup_codes TEXT`);
       message_type TEXT DEFAULT 'text',
       read_at DATETIME,
       sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      thread_id TEXT,
+      is_thread_starter BOOLEAN DEFAULT 0,
       FOREIGN KEY (access_request_id) REFERENCES access_requests (id) ON DELETE CASCADE,
       FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE
     )`);
@@ -958,14 +975,14 @@ await dbRun(`ALTER TABLE users ADD COLUMN backup_codes TEXT`);
       conditions TEXT,
       valid_until DATE,
       status TEXT DEFAULT 'pending',
+      is_counter BOOLEAN DEFAULT 0,
+      original_proposal_id INTEGER,
+      counter_notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (deal_id) REFERENCES deals (id) ON DELETE CASCADE,
       FOREIGN KEY (funder_id) REFERENCES users (id) ON DELETE CASCADE
     )`);
-// Add these columns to the indicative_quotes table creation
-await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN is_counter BOOLEAN DEFAULT 0`);
-await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN original_proposal_id INTEGER`);
-await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN counter_notes TEXT`);
+
     // Notifications table
     await dbRun(`CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1031,8 +1048,19 @@ await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN counter_notes TEXT`);
     await dbRun('CREATE INDEX IF NOT EXISTS idx_access_requests_project ON access_requests(project_id)');
     await dbRun('CREATE INDEX IF NOT EXISTS idx_access_requests_funder ON access_requests(funder_id)');
     await dbRun('CREATE INDEX IF NOT EXISTS idx_messages_request ON messages(access_request_id)');
+    await dbRun('CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)');
     await dbRun('CREATE INDEX IF NOT EXISTS idx_deals_project ON deals(project_id)');
     await dbRun('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read)');
+
+    // Add new columns to existing tables (only if they don't exist)
+    await checkAndAddColumn('messages', 'thread_id', 'TEXT');
+    await checkAndAddColumn('messages', 'is_thread_starter', 'BOOLEAN DEFAULT 0');
+    await checkAndAddColumn('users', 'two_factor_secret', 'TEXT');
+    await checkAndAddColumn('users', 'two_factor_enabled', 'BOOLEAN DEFAULT 0');
+    await checkAndAddColumn('users', 'backup_codes', 'TEXT');
+    await checkAndAddColumn('indicative_quotes', 'is_counter', 'BOOLEAN DEFAULT 0');
+    await checkAndAddColumn('indicative_quotes', 'original_proposal_id', 'INTEGER');
+    await checkAndAddColumn('indicative_quotes', 'counter_notes', 'TEXT');
 
     console.log('✅ Database initialized successfully');
   } catch (error) {
@@ -3560,6 +3588,13 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
+// Find this section in your server.js file (around line 3540-3600) and replace it with:
+
+// ===========================
+// WEBSOCKET SERVER
+// ===========================
+let server; // Declare server variable
+
 // ===========================
 // SERVER STARTUP
 // ===========================
@@ -3571,8 +3606,8 @@ const startServer = async () => {
     // Initialize database
     await initializeDatabase();
     
-    // Start server
-    app.listen(PORT, () => {
+    // Start server with WebSocket support
+    server = app.listen(PORT, () => {
       console.log('===================================');
       console.log('🚀 Tranch Backend Server v3.0.0');
       console.log('===================================');
@@ -3584,85 +3619,71 @@ const startServer = async () => {
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log('===================================');
     });
+
+    // WebSocket server
+    const wss = new WebSocket.Server({ server });
+
+    // Store active connections
+    const activeConnections = new Map(); // userId -> ws connection
+
+    wss.on('connection', (ws, req) => {
+      let userId = null;
+      
+      ws.on('message', async (message) => {
+        try {
+          const data = JSON.parse(message);
+          
+          if (data.type === 'auth') {
+            // Verify the token
+            const token = data.token;
+            try {
+              const ticket = await clerkClient.verifyToken(token);
+              const clerkUserId = ticket.sub;
+              
+              // Get user from database
+              const user = await dbGet('SELECT id FROM users WHERE clerk_user_id = ?', [clerkUserId]);
+              
+              if (user) {
+                userId = user.id;
+                activeConnections.set(userId, ws);
+                ws.send(JSON.stringify({ type: 'auth_success' }));
+              }
+            } catch (err) {
+              ws.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token' }));
+              ws.close();
+            }
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      });
+      
+      ws.on('close', () => {
+        if (userId) {
+          activeConnections.delete(userId);
+        }
+      });
+    });
+
+    // Function to send real-time notifications
+    const sendRealtimeNotification = (userId, notification) => {
+      const ws = activeConnections.get(userId);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'notification',
+          data: notification
+        }));
+      }
+    };
+
+    // Export for use in routes
+    app.locals.sendRealtimeNotification = sendRealtimeNotification;
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
-// ===========================
-// WEBSOCKET SERVER
-// ===========================
-const server = app.listen(PORT, () => {
-  console.log('===================================');
-  console.log('🚀 Tranch Backend Server v3.0.0');
-  console.log('===================================');
-  console.log(`📡 Server: http://localhost:${PORT}`);
-  console.log(`🔐 Auth: Clerk`);
-  console.log(`💾 Database: SQLite (${dbPath})`);
-  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? '✅ Connected' : '❌ Not configured'}`);
-  console.log(`🤖 AI Chat: ${process.env.OPENAI_API_KEY ? '✅ Connected' : '⚠️  Using mock responses'}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log('===================================');
-});
 
-// WebSocket server
-const wss = new WebSocket.Server({ server });
-
-// Store active connections
-const activeConnections = new Map(); // userId -> ws connection
-
-wss.on('connection', (ws, req) => {
-  let userId = null;
-  
-  ws.on('message', async (message) => {
-    try {
-      const data = JSON.parse(message);
-      
-      if (data.type === 'auth') {
-        // Verify the token
-        const token = data.token;
-        try {
-          const ticket = await clerkClient.verifyToken(token);
-          const clerkUserId = ticket.sub;
-          
-          // Get user from database
-          const user = await dbGet('SELECT id FROM users WHERE clerk_user_id = ?', [clerkUserId]);
-          
-          if (user) {
-            userId = user.id;
-            activeConnections.set(userId, ws);
-            ws.send(JSON.stringify({ type: 'auth_success' }));
-          }
-        } catch (err) {
-          ws.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token' }));
-          ws.close();
-        }
-      }
-    } catch (err) {
-      console.error('WebSocket message error:', err);
-    }
-  });
-  
-  ws.on('close', () => {
-    if (userId) {
-      activeConnections.delete(userId);
-    }
-  });
-});
-
-// Function to send real-time notifications
-const sendRealtimeNotification = (userId, notification) => {
-  const ws = activeConnections.get(userId);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'notification',
-      data: notification
-    }));
-  }
-};
-
-// Export for use in routes
-app.locals.sendRealtimeNotification = sendRealtimeNotification;
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully...');
