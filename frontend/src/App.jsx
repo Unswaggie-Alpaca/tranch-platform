@@ -24,6 +24,7 @@ import {
   SignIn,
   SignUp 
 } from '@clerk/clerk-react';
+import useWebSocket from 'react-use-websocket';
 
 // ===========================
 // CONFIGURATION
