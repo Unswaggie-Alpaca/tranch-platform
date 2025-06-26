@@ -17,6 +17,10 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const crypto = require('crypto');
 const { promisify } = require('util');
+const nodemailer = require('nodemailer');
+const WebSocket = require('ws');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 
 // Clerk imports
 const { clerkClient } = require('@clerk/clerk-sdk-node');
@@ -74,6 +78,101 @@ const ensureDirectories = async () => {
       console.error(`Failed to create directory ${dir}:`, err);
     }
   }
+};
+
+// ===========================
+// EMAIL SERVICE
+// ===========================
+const emailTransporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: process.env.EMAIL_PORT || 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// Email sending function
+const sendEmail = async (to, subject, html, text) => {
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('Email credentials not configured - skipping email send');
+      return;
+    }
+    
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || 'noreply@tranch.com.au',
+      to,
+      subject,
+      html,
+      text: text || html.replace(/<[^>]*>/g, '')
+    };
+    
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`Email sent to ${to}: ${subject}`);
+  } catch (error) {
+    console.error('Email send error:', error);
+    // Don't throw - we don't want email failures to break the app
+  }
+};
+
+// Email templates
+const emailTemplates = {
+  accessRequest: (funderName, projectTitle) => ({
+    subject: 'New Access Request on Tranch',
+    html: `
+      <h2>New Access Request</h2>
+      <p><strong>${funderName}</strong> has requested access to your project <strong>${projectTitle}</strong>.</p>
+      <p>Log in to Tranch to review and respond to this request.</p>
+      <a href="${process.env.FRONTEND_URL || 'https://tranch.com.au'}/messages" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">View Request</a>
+    `
+  }),
+  
+  accessApproved: (projectTitle) => ({
+    subject: 'Access Request Approved',
+    html: `
+      <h2>Access Granted!</h2>
+      <p>Your access request for <strong>${projectTitle}</strong> has been approved.</p>
+      <p>You can now view all project documents and communicate directly with the developer.</p>
+      <a href="${process.env.FRONTEND_URL || 'https://tranch.com.au'}/dashboard" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">View Project</a>
+    `
+  }),
+  
+  newMessage: (senderName, projectTitle) => ({
+    subject: `New message from ${senderName}`,
+    html: `
+      <h2>New Message</h2>
+      <p>You have received a new message from <strong>${senderName}</strong> regarding <strong>${projectTitle}</strong>.</p>
+      <a href="${process.env.FRONTEND_URL || 'https://tranch.com.au'}/messages" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">Read Message</a>
+    `
+  }),
+  
+  paymentSuccess: (projectTitle, amount) => ({
+    subject: 'Payment Successful - Project Published',
+    html: `
+      <h2>Payment Confirmed</h2>
+      <p>Your payment of <strong>$${amount}</strong> for <strong>${projectTitle}</strong> has been processed successfully.</p>
+      <p>Your project is now live and visible to all verified funders on the platform.</p>
+      <a href="${process.env.FRONTEND_URL || 'https://tranch.com.au'}/my-projects" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">View Project</a>
+    `
+  }),
+  
+  subscriptionActive: () => ({
+    subject: 'Subscription Activated',
+    html: `
+      <h2>Welcome to Tranch Professional!</h2>
+      <p>Your subscription is now active. You have full access to:</p>
+      <ul>
+        <li>All project listings</li>
+        <li>Direct messaging with developers</li>
+        <li>Document downloads</li>
+        <li>Advanced search filters</li>
+        <li>Portfolio analytics</li>
+      </ul>
+      <a href="${process.env.FRONTEND_URL || 'https://tranch.com.au'}/projects" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">Browse Projects</a>
+    `
+  })
 };
 
 // ===========================
@@ -420,6 +519,7 @@ async function createUserFromClerk(clerkUser) {
 }
 
 // Stripe webhook handlers
+// Stripe webhook handlers with email notifications
 async function handlePaymentIntentSucceeded(paymentIntent) {
   if (paymentIntent.metadata.payment_type === 'project_listing') {
     await dbRun(
@@ -431,6 +531,20 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
       'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
       ['completed', paymentIntent.id]
     );
+    
+    // Get project and user details for email
+    const project = await dbGet(
+      `SELECT p.title, p.loan_amount, u.email, u.name 
+       FROM projects p 
+       JOIN users u ON p.borrower_id = u.id 
+       WHERE p.id = ?`,
+      [paymentIntent.metadata.project_id]
+    );
+    
+    if (project) {
+      const emailContent = emailTemplates.paymentSuccess(project.title, 499);
+      await sendEmail(project.email, emailContent.subject, emailContent.html);
+    }
   }
 }
 
@@ -439,6 +553,10 @@ async function handleInvoicePaymentSucceeded(invoice) {
     const user = await dbGet('SELECT * FROM users WHERE stripe_customer_id = ?', [invoice.customer]);
     if (user) {
       await dbRun('UPDATE users SET subscription_status = ? WHERE id = ?', ['active', user.id]);
+      
+      // Send subscription confirmation email
+      const emailContent = emailTemplates.subscriptionActive();
+      await sendEmail(user.email, emailContent.subject, emailContent.html);
     }
   }
 }
@@ -451,33 +569,91 @@ async function handleSubscriptionDeleted(subscription) {
 }
 
 // Document completeness checker
+// Enhanced document completeness checker
 async function checkDocumentCompleteness(projectId) {
-  const REQUIRED_DOCUMENT_TYPES = [
-    'development_application',
-    'feasibility_study',
-    'site_survey',
-    'planning_permit',
-    'financial_statements',
-    'construction_contract',
-    'insurance_documents',
-    'environmental_report'
-  ];
+  const REQUIRED_DOCUMENT_TYPES = {
+    apartments: [
+      'development_application',
+      'architectural_plans',
+      'quantity_surveyor_report',
+      'valuation_report',
+      'feasibility_study',
+      'presales_evidence',
+      'builder_contract',
+      'consultant_agreements'
+    ],
+    townhouses: [
+      'development_application',
+      'architectural_plans',
+      'qs_report',
+      'valuation',
+      'feasibility',
+      'engineering_reports',
+      'sales_evidence'
+    ],
+    subdivision: [
+      'subdivision_approval',
+      'survey_plans',
+      'civil_engineering_plans',
+      'services_report',
+      'valuation',
+      'feasibility'
+    ],
+    commercial: [
+      'development_application',
+      'architectural_plans',
+      'lease_precommitments',
+      'valuation_report',
+      'qs_report',
+      'feasibility',
+      'market_report'
+    ],
+    industrial: [
+      'development_application',
+      'plans_specifications',
+      'environmental_reports',
+      'valuation',
+      'feasibility',
+      'tenant_eois'
+    ],
+    default: [
+      'development_application',
+      'feasibility_study',
+      'site_survey',
+      'planning_permit',
+      'financial_statements',
+      'construction_contract',
+      'insurance_documents',
+      'environmental_report'
+    ]
+  };
+  
+  // Get project type
+  const project = await dbGet('SELECT development_type FROM projects WHERE id = ?', [projectId]);
+  const projectType = project?.development_type || 'default';
+  
+  const requiredDocs = REQUIRED_DOCUMENT_TYPES[projectType] || REQUIRED_DOCUMENT_TYPES.default;
   
   const docs = await dbAll('SELECT DISTINCT document_type FROM documents WHERE project_id = ?', [projectId]);
   const uploadedTypes = docs.map(doc => doc.document_type);
-  const hasAllRequired = REQUIRED_DOCUMENT_TYPES.every(type => uploadedTypes.includes(type));
+  const hasAllRequired = requiredDocs.every(type => uploadedTypes.includes(type));
   
   await dbRun('UPDATE projects SET documents_complete = ? WHERE id = ?', [hasAllRequired ? 1 : 0, projectId]);
   
-  return hasAllRequired;
+  return {
+    isComplete: hasAllRequired,
+    required: requiredDocs,
+    uploaded: uploadedTypes,
+    missing: requiredDocs.filter(type => !uploadedTypes.includes(type))
+  };
 }
 
 // ===========================
-// STATIC FILE SERVING
+// STATIC FILE SERVING - FIXED
 // ===========================
-app.get('/uploads/:userId/:filename', authenticateToken, async (req, res) => {
+app.get('/uploads/:filename', authenticateToken, async (req, res) => {
   try {
-    const { userId, filename } = req.params;
+    const { filename } = req.params;
     
     // Validate filename to prevent path traversal
     const sanitizedFilename = path.basename(filename);
@@ -485,49 +661,57 @@ app.get('/uploads/:userId/:filename', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' });
     }
     
-    const filepath = path.join(uploadsDir, userId, sanitizedFilename);
-    
-    // Check if file exists
-    try {
-      await fs.access(filepath);
-    } catch {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    
-    // Verify access permissions
+    // Find the document in database to get the actual path
     const document = await dbGet(
-      `SELECT d.*, p.borrower_id 
-       FROM documents d 
-       JOIN projects p ON d.project_id = p.id 
-       WHERE d.file_path = ?`,
-      [filepath]
+      'SELECT * FROM documents WHERE file_name = ?',
+      [sanitizedFilename]
     );
     
     if (!document) {
       return res.status(404).json({ error: 'Document not found' });
     }
     
-    // Check permissions based on user role
-    if (req.user.role === 'borrower' && document.borrower_id !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
+    // Check if file exists
+    try {
+      await fs.access(document.file_path);
+    } catch {
+      return res.status(404).json({ error: 'File not found' });
     }
     
-    if (req.user.role === 'funder') {
+    // Verify access permissions
+    const project = await dbGet(
+      'SELECT borrower_id FROM projects WHERE id = ?',
+      [document.project_id]
+    );
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Check permissions based on user role
+    let hasAccess = false;
+    
+    if (req.user.role === 'admin') {
+      hasAccess = true;
+    } else if (req.user.role === 'borrower' && project.borrower_id === req.user.id) {
+      hasAccess = true;
+    } else if (req.user.role === 'funder') {
       const access = await dbGet(
         'SELECT * FROM access_requests WHERE project_id = ? AND funder_id = ? AND status = ?',
         [document.project_id, req.user.id, 'approved']
       );
-      
-      if (!access) {
-        return res.status(403).json({ error: 'Access not granted' });
-      }
+      hasAccess = !!access;
+    }
+    
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Access denied' });
     }
     
     // Set appropriate headers
     res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     
-    res.sendFile(filepath);
+    res.sendFile(path.resolve(document.file_path));
   } catch (error) {
     console.error('File serving error:', error);
     res.status(500).json({ error: 'Failed to serve file' });
@@ -567,7 +751,14 @@ const initializeDatabase = async () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-
+// Add thread support to messages table
+await dbRun(`ALTER TABLE messages ADD COLUMN thread_id TEXT`);
+await dbRun(`ALTER TABLE messages ADD COLUMN is_thread_starter BOOLEAN DEFAULT 0`);
+await dbRun(`CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)`);
+// Add 2FA support to users table
+await dbRun(`ALTER TABLE users ADD COLUMN two_factor_secret TEXT`);
+await dbRun(`ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN DEFAULT 0`);
+await dbRun(`ALTER TABLE users ADD COLUMN backup_codes TEXT`);
     // Projects table
     await dbRun(`CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -771,7 +962,10 @@ const initializeDatabase = async () => {
       FOREIGN KEY (deal_id) REFERENCES deals (id) ON DELETE CASCADE,
       FOREIGN KEY (funder_id) REFERENCES users (id) ON DELETE CASCADE
     )`);
-
+// Add these columns to the indicative_quotes table creation
+await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN is_counter BOOLEAN DEFAULT 0`);
+await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN original_proposal_id INTEGER`);
+await dbRun(`ALTER TABLE indicative_quotes ADD COLUMN counter_notes TEXT`);
     // Notifications table
     await dbRun(`CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1184,6 +1378,122 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
   }
 });
 
+// ===========================
+// API ROUTES - TWO FACTOR AUTH
+// ===========================
+
+// Enable 2FA
+app.post('/api/auth/2fa/enable', authenticateToken, async (req, res) => {
+  try {
+    // Generate secret
+    const secret = speakeasy.generateSecret({
+      name: `Tranch (${req.user.email})`,
+      issuer: 'Tranch Platform'
+    });
+    
+    // Generate QR code
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+    
+    // Generate backup codes
+    const backupCodes = Array.from({ length: 8 }, () => 
+      Math.random().toString(36).substring(2, 8).toUpperCase()
+    );
+    
+    // Store temporarily (user must verify before enabling)
+    await req.db.run(
+      'UPDATE users SET two_factor_secret = ? WHERE id = ?',
+      [secret.base32, req.user.id]
+    );
+    
+    res.json({
+      secret: secret.base32,
+      qrCode: qrCodeUrl,
+      backupCodes
+    });
+  } catch (error) {
+    console.error('2FA enable error:', error);
+    res.status(500).json({ error: 'Failed to enable 2FA' });
+  }
+});
+
+// Verify and activate 2FA
+app.post('/api/auth/2fa/verify', authenticateToken, async (req, res) => {
+  const { token, backupCodes } = req.body;
+  
+  if (!token) {
+    return res.status(400).json({ error: 'Verification code required' });
+  }
+  
+  try {
+    const user = await req.db.get(
+      'SELECT two_factor_secret FROM users WHERE id = ?',
+      [req.user.id]
+    );
+    
+    if (!user.two_factor_secret) {
+      return res.status(400).json({ error: '2FA not initialized' });
+    }
+    
+    // Verify token
+    const verified = speakeasy.totp.verify({
+      secret: user.two_factor_secret,
+      encoding: 'base32',
+      token: token,
+      window: 2
+    });
+    
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+    
+    // Enable 2FA and store backup codes
+    await req.db.run(
+      'UPDATE users SET two_factor_enabled = 1, backup_codes = ? WHERE id = ?',
+      [JSON.stringify(backupCodes), req.user.id]
+    );
+    
+    res.json({ message: '2FA enabled successfully' });
+  } catch (error) {
+    console.error('2FA verify error:', error);
+    res.status(500).json({ error: 'Failed to verify 2FA' });
+  }
+});
+
+// Disable 2FA
+app.post('/api/auth/2fa/disable', authenticateToken, async (req, res) => {
+  const { password, token } = req.body;
+  
+  try {
+    // Verify 2FA token first
+    const user = await req.db.get(
+      'SELECT two_factor_secret FROM users WHERE id = ?',
+      [req.user.id]
+    );
+    
+    const verified = speakeasy.totp.verify({
+      secret: user.two_factor_secret,
+      encoding: 'base32',
+      token: token,
+      window: 2
+    });
+    
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+    
+    // Disable 2FA
+    await req.db.run(
+      'UPDATE users SET two_factor_enabled = 0, two_factor_secret = NULL, backup_codes = NULL WHERE id = ?',
+      [req.user.id]
+    );
+    
+    res.json({ message: '2FA disabled successfully' });
+  } catch (error) {
+    console.error('2FA disable error:', error);
+    res.status(500).json({ error: 'Failed to disable 2FA' });
+  }
+});
+
 // Get single project
 app.get('/api/projects/:id', authenticateToken, async (req, res) => {
   const projectId = parseInt(req.params.id);
@@ -1486,6 +1796,33 @@ app.delete('/api/documents/:id', authenticateToken, requireRole(['borrower']), a
   }
 });
 
+// Check document completeness
+app.get('/api/projects/:id/document-status', authenticateToken, async (req, res) => {
+  const projectId = parseInt(req.params.id);
+  
+  try {
+    // Verify access
+    const project = await req.db.get(
+      'SELECT borrower_id FROM projects WHERE id = ?',
+      [projectId]
+    );
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (req.user.role !== 'admin' && project.borrower_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const status = await checkDocumentCompleteness(projectId);
+    res.json(status);
+  } catch (error) {
+    console.error('Document status check error:', error);
+    res.status(500).json({ error: 'Failed to check document status' });
+  }
+});
+
 // Get required documents
 app.get('/api/required-documents', authenticateToken, (req, res) => {
   res.json({
@@ -1517,6 +1854,7 @@ app.get('/api/required-documents', authenticateToken, (req, res) => {
 // ===========================
 
 // Create access request
+// Create access request
 app.post('/api/access-requests', authenticateToken, requireRole(['funder']), async (req, res) => {
   const { project_id, initial_message } = req.body;
 
@@ -1544,13 +1882,22 @@ app.post('/api/access-requests', authenticateToken, requireRole(['funder']), asy
       [project_id, req.user.id, initial_message]
     );
 
-    // Create notification for borrower
-    const project = await req.db.get('SELECT borrower_id, title FROM projects WHERE id = ?', [project_id]);
+    // Get project and borrower details for notification
+    const project = await req.db.get(
+      'SELECT p.borrower_id, p.title, u.email, u.name FROM projects p JOIN users u ON p.borrower_id = u.id WHERE p.id = ?',
+      [project_id]
+    );
+    
     if (project) {
+      // Create notification
       await req.db.run(
         'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
         [project.borrower_id, 'access_request', `${req.user.name} requested access to ${project.title}`, result.lastID]
       );
+      
+      // Send email notification
+      const emailContent = emailTemplates.accessRequest(req.user.name, project.title);
+      await sendEmail(project.email, emailContent.subject, emailContent.html);
     }
 
     res.status(201).json({ 
@@ -1949,6 +2296,44 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
   }
 });
 
+// Confirm subscription after 3D Secure
+app.post('/api/payments/confirm-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
+  const { payment_intent_id } = req.body;
+  
+  if (!payment_intent_id) {
+    return res.status(400).json({ error: 'Payment intent ID required' });
+  }
+
+  try {
+    // Retrieve the payment intent to verify it succeeded
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+    
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+    
+    // Update user subscription status
+    await req.db.run(
+      'UPDATE users SET subscription_status = ? WHERE stripe_customer_id = ?', 
+      ['active', paymentIntent.customer]
+    );
+    
+    // Send confirmation email
+    const emailContent = emailTemplates.subscriptionActive();
+    await sendEmail(req.user.email, emailContent.subject, emailContent.html);
+    
+    res.json({ 
+      message: 'Subscription confirmed',
+      status: 'active'
+    });
+  } catch (error) {
+    console.error('Subscription confirmation error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to confirm subscription' 
+    });
+  }
+});
+
 // Cancel subscription
 app.post('/api/payments/cancel-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
   if (!req.user.stripe_customer_id) {
@@ -2291,6 +2676,72 @@ app.get('/api/deals/:id/document-requests', authenticateToken, async (req, res) 
     res.status(500).json({ error: 'Failed to fetch document requests' });
   }
 });
+
+// Upload documents to deal
+app.post('/api/deals/:id/documents/upload', 
+  authenticateToken, 
+  uploadLimiter,
+  upload.array('documents', 10), 
+  async (req, res) => {
+    const dealId = parseInt(req.params.id);
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    try {
+      // Verify user has access to this deal
+      const deal = await req.db.get(
+        'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+        [dealId, req.user.id, req.user.id]
+      );
+
+      if (!deal) {
+        // Clean up uploaded files
+        for (const file of req.files) {
+          await fs.unlink(file.path).catch(() => {});
+        }
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      const uploadedDocs = [];
+      const requestId = req.body.request_id || null;
+
+      for (const file of req.files) {
+        const result = await req.db.run(
+          'INSERT INTO deal_documents (deal_id, uploader_id, file_name, file_path, file_size, mime_type, request_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [dealId, req.user.id, file.originalname, file.path, file.size, file.mimetype, requestId]
+        );
+
+        uploadedDocs.push({
+          id: result.lastID,
+          file_name: file.originalname
+        });
+      }
+      
+      // If fulfilling a request, update its status
+      if (requestId) {
+        await req.db.run(
+          'UPDATE document_requests SET status = ?, fulfilled_at = CURRENT_TIMESTAMP WHERE id = ?',
+          ['fulfilled', requestId]
+        );
+      }
+
+      res.status(201).json({
+        message: 'Documents uploaded successfully',
+        documents: uploadedDocs
+      });
+    } catch (error) {
+      // Clean up files on error
+      for (const file of req.files) {
+        await fs.unlink(file.path).catch(() => {});
+      }
+      
+      console.error('Document upload error:', error);
+      res.status(500).json({ error: 'Failed to upload documents' });
+    }
+  }
+);
 
 // Create document request
 app.post('/api/deals/:id/document-requests', authenticateToken, async (req, res) => {
@@ -2775,6 +3226,85 @@ async function generateAIResponse(message, userRole) {
 }
 
 // ===========================
+// API ROUTES - AI DOCUMENT ANALYSIS
+// ===========================
+
+app.post('/api/ai/analyze-documents', 
+  authenticateToken, 
+  requireRole(['borrower']), 
+  upload.array('documents', 10),
+  async (req, res) => {
+    const { projectType } = req.body;
+    
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    try {
+      // For now, return mock data - replace with actual AI service later
+      const extractedData = {
+        success: true,
+        extractedData: {
+          // Basic info
+          title: 'Development Project',
+          description: 'A modern development project with excellent potential returns',
+          address: '123 Main Street',
+          suburb: 'Brisbane',
+          state: 'QLD',
+          postcode: '4000',
+          
+          // Land details
+          land_area: '1200',
+          land_value: '2500000',
+          zoning: 'R3 Medium Density',
+          fsr: '2.5',
+          
+          // Development metrics
+          total_units: '24',
+          gfa: '3000',
+          levels: '6',
+          parking: '36',
+          
+          // Financials
+          tdc: '12000000',
+          construction_cost: '8000000',
+          loan_required: '9000000',
+          
+          // Revenue
+          gross_realisation: '15000000',
+          presales: '12',
+          
+          // Construction
+          builder: 'ABC Constructions',
+          architect: 'XYZ Architects',
+          construction_period: '18',
+          
+          // Metrics
+          profit: '3000000',
+          margin: '25',
+          roc: '25'
+        }
+      };
+      
+      // Clean up uploaded files since this is mock
+      for (const file of req.files) {
+        await fs.unlink(file.path).catch(() => {});
+      }
+      
+      res.json(extractedData);
+    } catch (error) {
+      // Clean up files on error
+      for (const file of req.files) {
+        await fs.unlink(file.path).catch(() => {});
+      }
+      
+      console.error('AI analysis error:', error);
+      res.status(500).json({ error: 'Failed to analyze documents' });
+    }
+  }
+);
+
+// ===========================
 // API ROUTES - ADMIN
 // ===========================
 
@@ -2812,6 +3342,7 @@ app.put('/api/admin/users/:id/approve', authenticateToken, requireRole(['admin']
 });
 
 // Get admin stats
+// Get admin stats
 app.get('/api/admin/stats', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
     const stats = {};
@@ -2822,12 +3353,24 @@ app.get('/api/admin/stats', authenticateToken, requireRole(['admin']), async (re
       { key: 'total_projects', query: 'SELECT COUNT(*) as count FROM projects' },
       { key: 'active_projects', query: 'SELECT COUNT(*) as count FROM projects WHERE payment_status = "paid"' },
       { key: 'pending_requests', query: 'SELECT COUNT(*) as count FROM access_requests WHERE status = "pending"' },
-      { key: 'total_revenue', query: 'SELECT SUM(amount) as total FROM payments WHERE status = "completed"' }
+      { key: 'total_revenue', query: 'SELECT SUM(amount) as total FROM payments WHERE status = "completed"' },
+      { key: 'active_subscriptions', query: 'SELECT COUNT(*) as count FROM users WHERE subscription_status = "active"' },
+      { key: 'documents_uploaded', query: 'SELECT COUNT(*) as count FROM documents' },
+      { key: 'messages_sent', query: 'SELECT COUNT(*) as count FROM messages' },
+      { key: 'deals_created', query: 'SELECT COUNT(*) as count FROM deals' },
+      { key: 'access_requests', query: 'SELECT COUNT(*) as count FROM access_requests' }
     ];
 
     for (const { key, query } of queries) {
       const result = await req.db.get(query);
       stats[key] = result.count || result.total || 0;
+    }
+    
+    // Calculate conversion rate
+    if (stats.total_projects > 0) {
+      stats.conversion_rate = Math.round((stats.active_projects / stats.total_projects) * 100);
+    } else {
+      stats.conversion_rate = 0;
     }
 
     res.json(stats);
@@ -3046,7 +3589,80 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+// ===========================
+// WEBSOCKET SERVER
+// ===========================
+const server = app.listen(PORT, () => {
+  console.log('===================================');
+  console.log('🚀 Tranch Backend Server v3.0.0');
+  console.log('===================================');
+  console.log(`📡 Server: http://localhost:${PORT}`);
+  console.log(`🔐 Auth: Clerk`);
+  console.log(`💾 Database: SQLite (${dbPath})`);
+  console.log(`💳 Stripe: ${process.env.STRIPE_SECRET_KEY ? '✅ Connected' : '❌ Not configured'}`);
+  console.log(`🤖 AI Chat: ${process.env.OPENAI_API_KEY ? '✅ Connected' : '⚠️  Using mock responses'}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log('===================================');
+});
 
+// WebSocket server
+const wss = new WebSocket.Server({ server });
+
+// Store active connections
+const activeConnections = new Map(); // userId -> ws connection
+
+wss.on('connection', (ws, req) => {
+  let userId = null;
+  
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message);
+      
+      if (data.type === 'auth') {
+        // Verify the token
+        const token = data.token;
+        try {
+          const ticket = await clerkClient.verifyToken(token);
+          const clerkUserId = ticket.sub;
+          
+          // Get user from database
+          const user = await dbGet('SELECT id FROM users WHERE clerk_user_id = ?', [clerkUserId]);
+          
+          if (user) {
+            userId = user.id;
+            activeConnections.set(userId, ws);
+            ws.send(JSON.stringify({ type: 'auth_success' }));
+          }
+        } catch (err) {
+          ws.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token' }));
+          ws.close();
+        }
+      }
+    } catch (err) {
+      console.error('WebSocket message error:', err);
+    }
+  });
+  
+  ws.on('close', () => {
+    if (userId) {
+      activeConnections.delete(userId);
+    }
+  });
+});
+
+// Function to send real-time notifications
+const sendRealtimeNotification = (userId, notification) => {
+  const ws = activeConnections.get(userId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'notification',
+      data: notification
+    }));
+  }
+};
+
+// Export for use in routes
+app.locals.sendRealtimeNotification = sendRealtimeNotification;
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully...');
