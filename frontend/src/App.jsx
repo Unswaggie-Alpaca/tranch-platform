@@ -8968,12 +8968,12 @@ const LandingPage = () => {
             </div>
             <div className="hero-stats">
               <div className="stat">
-                <span className="stat-value">$100M+</span>
-                <span className="stat-label">Projects Listed</span>
+                <span className="stat-value">Increase Profit Margin</span>
+                <span className="stat-label">Save on Brokerage Fees</span>
               </div>
               <div className="stat">
-                <span className="stat-value">50+</span>
-                <span className="stat-label">Active Funders</span>
+                <span className="stat-value">Immediate access to deals</span>
+                <span className="stat-label">Skip the restrictive relationships</span>
               </div>
               <div className="stat">
                 <span className="stat-value">24-48hrs</span>
