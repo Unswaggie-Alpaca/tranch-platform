@@ -1597,14 +1597,17 @@ label .required {
     margin: 0 auto;
   }
 
-  .landing-page .hero-title {
-    font-size: 36px;
-    font-weight: 800;
-    line-height: 1.2;
-    color: #0f172a;
-    margin-bottom: 20px;
-    letter-spacing: -0.02em;
-  }
+/* Line 1653 - Update .hero-title */
+.hero-title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--gray-900);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+  max-width: 800px; /* ADD THIS */
+  text-align: left; /* ADD THIS */
+}
 
   .landing-page .gradient-text {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1977,12 +1980,6 @@ label .required {
   pointer-events: none;
 }
 
-.hero-content {
-  max-width: 600px;
-  z-index: 2;
-  position: relative;
-}
-
 .hero-title {
   font-size: 3.5rem;
   font-weight: 800;
@@ -2012,11 +2009,16 @@ label .required {
   margin-bottom: 3rem;
 }
 
+/* Line 1690 - Update .hero-stats */
 .hero-stats {
   display: flex;
   gap: 3rem;
   padding-top: 3rem;
   border-top: 1px solid var(--gray-200);
+  background: white; /* ADD THIS */
+  padding: 1.5rem; /* CHANGE from 3rem to 1.5rem */
+  border-radius: var(--radius-lg); /* ADD THIS */
+  box-shadow: var(--shadow-sm); /* ADD THIS */
 }
 
 .hero-stats .stat {
@@ -2041,11 +2043,12 @@ label .required {
 /* Hero Visual */
 .hero-visual {
   position: absolute;
-  right: 0;
+  right: -100px; /* CHANGE from 0 to -100px */
   top: 50%;
   transform: translateY(-50%);
   width: 50%;
   height: 600px;
+  z-index: 1; /* ADD THIS */
 }
 
 .floating-card {
@@ -2084,7 +2087,7 @@ label .required {
 }
 
 .card-1 {
-  top: 20%;
+  top: 10%; /* CHANGE from 20% */
   right: 10%;
   animation: float 6s ease-in-out infinite;
 }
@@ -10299,14 +10302,6 @@ td {
   background: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 20px 20px;
   transform: rotate(45deg);
-}
-
-.hero-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .greeting-title {
