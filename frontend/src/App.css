@@ -2356,11 +2356,12 @@ td {
    Mobile Navigation
    =========================== */
 @media (max-width: 768px) {
-  /* Hide desktop nav on mobile */
+/* Hide desktop nav on mobile */
+@media (max-width: 768px) {
   .nav-menu {
     display: none !important;
   }
-  
+}
   /* Show mobile menu button */
   .mobile-menu-btn {
     display: flex;
@@ -2694,8 +2695,11 @@ td {
 .transition-none { transition: none; }
 
 /* Desktop only helper class */
-.desktop-only {
-  display: flex;
+/* Desktop only helper class */
+@media (min-width: 769px) {
+  .desktop-only {
+    display: flex;
+  }
 }
 
 @media (max-width: 768px) {
@@ -7863,7 +7867,8 @@ a:hover {
     grid-template-columns: 1fr;
   }
   
-  /* Cards Swipe Mobile */
+/* Cards Swipe Mobile */
+@media (max-width: 768px) {
   .problem-cards-wrapper,
   .solution-cards-wrapper {
     margin: 0 -20px;
@@ -7871,7 +7876,7 @@ a:hover {
     width: calc(100% + 40px);
     position: relative;
   }
-  
+
   .problem-cards,
   .solution-cards {
     display: flex;
@@ -7882,6 +7887,7 @@ a:hover {
     scrollbar-width: none;
     padding: 0 20px 20px 20px;
   }
+}
   
   .problem-cards::-webkit-scrollbar,
   .solution-cards::-webkit-scrollbar {
@@ -8200,4 +8206,104 @@ a:hover {
   text-decoration: none;
   font-weight: 600;
   transition: all 0.3s ease;
+}
+
+/* Missing Mobile Header Styles */
+.mobile-logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.02em;
+}
+
+.mobile-menu-trigger {
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 24px;
+  height: 20px;
+}
+
+.mobile-menu-trigger svg {
+  width: 24px;
+  height: 24px;
+  color: var(--gray-700);
+}
+
+.landing-mobile-menu {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.landing-mobile-menu a {
+  padding: 0.75rem 1rem;
+  color: var(--gray-700);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.landing-mobile-menu a:hover {
+  background: var(--gray-50);
+  color: var(--primary);
+}
+
+.landing-mobile-menu .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Missing Button Text Style */
+.btn-text {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Missing Mobile FAB */
+.mobile-fab {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  background: var(--primary);
+  color: white;
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 4px 12px rgba(91, 87, 209, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 900;
+  transition: all 0.3s ease;
+}
+
+.mobile-fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(91, 87, 209, 0.4);
+}
+
+/* Ensure mobile elements only show on mobile */
+@media (min-width: 769px) {
+  .mobile-header,
+  .mobile-bottom-nav,
+  .mobile-fab,
+  .landing-mobile-menu {
+    display: none !important;
+  }
 }
