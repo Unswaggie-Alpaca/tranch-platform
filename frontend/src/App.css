@@ -9195,6 +9195,35 @@ td {
   color: #6366F1;
 }
 
+/* Dashboard-specific border radius overrides */
+.dashboard-clean .stat-card-clean,
+.dashboard-clean .project-card-clean {
+  border-radius: 12px !important;
+}
+
+.dashboard-header-clean {
+  border-radius: 16px !important;
+}
+
+/* Fix button roundness */
+.dashboard-clean .new-project-button {
+  border-radius: 8px !important;
+}
+
+.dashboard-clean .btn-primary-clean,
+.dashboard-clean .btn-outline-clean {
+  border-radius: 6px !important;
+}
+
+/* Fix filter pills */
+.dashboard-clean .filter-pills {
+  border-radius: 8px !important;
+}
+
+.dashboard-clean .filter-pill {
+  border-radius: 6px !important;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .dashboard-clean {
@@ -9220,4 +9249,35 @@ td {
     flex-direction: column;
     gap: 16px;
   }
+}
+
+/* Global card border radius override */
+.stat-card,
+.project-card,
+.stat-card-clean,
+.project-card-clean,
+.investment-card,
+.content-card {
+  border-radius: 12px !important;
+}
+
+/* Smaller elements */
+.btn,
+.form-input,
+.status-badge {
+  border-radius: 6px !important;
+}
+
+/* Nuclear option - very specific */
+.dashboard-clean .dashboard-header-clean .header-content-clean .greeting {
+  color: white !important;
+}
+
+.dashboard-clean .dashboard-header-clean .header-content-clean .username {
+  color: white !important;
+}
+
+.dashboard-clean .dashboard-header-clean .header-content-clean .tagline {
+  color: white !important;
+  opacity: 0.8;  /* Slightly transparent for subtitle */
 }
