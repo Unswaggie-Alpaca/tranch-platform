@@ -1801,11 +1801,13 @@ const Dashboard = () => {
   const api = useApi();
   const { user, refreshUser } = useApp();
   const { addNotification } = useNotifications();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'live', 'drafts'
 
   useEffect(() => {
     fetchData();
@@ -1831,124 +1833,271 @@ const Dashboard = () => {
     await fetchData();
   };
 
+  // Get greeting based on time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  // Calculate stats for borrower
+  const calculateBorrowerStats = () => {
+    const liveProjects = projects.filter(p => p.payment_status === 'paid');
+    const draftProjects = projects.filter(p => p.payment_status === 'unpaid');
+    const totalFunding = liveProjects.reduce((sum, p) => sum + (p.loan_amount || 0), 0);
+    
+    return {
+      activeProjects: liveProjects.length,
+      totalFunding: totalFunding,
+      drafts: draftProjects.length
+    };
+  };
+
+  // Filter projects based on active filter
+  const getFilteredProjects = () => {
+    if (activeFilter === 'live') {
+      return projects.filter(p => p.payment_status === 'paid');
+    } else if (activeFilter === 'drafts') {
+      return projects.filter(p => p.payment_status === 'unpaid');
+    }
+    return projects;
+  };
+
   if (loading) return <LoadingSpinner />;
 
+  const borrowerStats = user.role === 'borrower' ? calculateBorrowerStats() : null;
+  const filteredProjects = getFilteredProjects();
+
   return (
-    <div className="dashboard">
-      <div className="dashboard-header">
-        <div className="header-content">
-          <div className="header-text">
-            <h1>Dashboard</h1>
-            <p className="dashboard-subtitle">
-              {user.role === 'borrower' && 'Manage your property development projects'}
-              {user.role === 'funder' && 'Discover investment opportunities'}
-              {user.role === 'admin' && 'Platform administration'}
-            </p>
-          </div>
+    <div className="dashboard-v2">
+      {/* Header Section */}
+      <div className="dashboard-header-v2">
+        <div className="header-content-v2">
+          <h1 className="greeting-text">
+            {getGreeting()},<br />
+            {user.name || user.email}
+          </h1>
+          <p className="subheading-text">
+            {user.role === 'borrower' && "Let's get your developments funded."}
+            {user.role === 'funder' && "Discover investment opportunities."}
+            {user.role === 'admin' && "Platform administration dashboard."}
+          </p>
         </div>
+        {user.role === 'borrower' && (
+          <Link to="/create-project" className="new-project-btn">
+            <span>New Project</span>
+            <svg viewBox="0 0 20 20" fill="currentColor" className="arrow-icon">
+              <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </Link>
+        )}
       </div>
 
       {error && <ErrorMessage message={error} onClose={() => setError('')} />}
 
-      {user.role === 'funder' && !user.approved && (
-        <div className="warning-message">
-          <h3>Account Pending Approval</h3>
-          <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
-        </div>
-      )}
+      {/* Borrower Dashboard */}
+      {user.role === 'borrower' && borrowerStats && (
+        <>
+          {/* Stats Cards */}
+          <div className="stats-row">
+            <div className="stat-card-v2">
+              <div className="stat-header">
+                <span className="stat-label">ACTIVE PROJECTS</span>
+                <div className="stat-indicator active"></div>
+              </div>
+              <div className="stat-value-large">{borrowerStats.activeProjects}</div>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActiveFilter('live'); }} className="stat-link">
+                Live on platform
+              </a>
+            </div>
 
-      {user.role === 'funder' && user.approved && user.subscription_status !== 'active' && (
-        <div className="subscription-banner">
-          <div className="banner-content">
-            <h3>Activate Your Subscription</h3>
-            <p>Subscribe to unlock full access to all projects and features</p>
-          </div>
-          <button 
-            onClick={() => setShowSubscriptionModal(true)}
-            className="btn btn-primary"
-          >
-            Subscribe Now - $299/month
-          </button>
-        </div>
-      )}
+            <div className="stat-card-v2 featured">
+              <div className="stat-header">
+                <span className="stat-label">TOTAL FUNDING SOUGHT</span>
+                <span className="dollar-sign">$</span>
+              </div>
+              <div className="stat-value-large">{formatCurrency(borrowerStats.totalFunding).replace('$', '')}</div>
+              <div className="stat-subtitle">Across {borrowerStats.activeProjects} projects</div>
+            </div>
 
-      {user.role === 'admin' && stats && (
-        <div className="admin-stats">
-          <div className="stat-card">
-            <div className="stat-icon">👥</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatNumber(stats.total_users)}</div>
-              <div className="stat-label">Total Users</div>
+            <div className="stat-card-v2">
+              <div className="stat-header">
+                <span className="stat-label">DRAFTS</span>
+                <div className="stat-indicator draft">{borrowerStats.drafts}</div>
+              </div>
+              <div className="stat-value-large">{borrowerStats.drafts}</div>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActiveFilter('drafts'); }} className="stat-link">
+                Complete drafts
+              </a>
             </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-icon">📁</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatNumber(stats.total_projects)}</div>
-              <div className="stat-label">Total Projects</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">✓</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatNumber(stats.active_projects)}</div>
-              <div className="stat-label">Active Projects</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon">💰</div>
-            <div className="stat-content">
-              <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
-              <div className="stat-label">Total Revenue</div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      <div className="projects-section">
-        <div className="section-header">
-          <h2>
-            {user.role === 'borrower' && 'Your Projects'}
-            {user.role === 'funder' && `Available Projects (${projects.length})`}
-            {user.role === 'admin' && 'All Projects'}
-          </h2>
-          {user.role === 'borrower' && (
-            <Link to="/create-project" className="btn btn-primary">
-              <span>+</span> Create New Project
-            </Link>
-          )}
-        </div>
+          {/* Portfolio Section */}
+          <div className="portfolio-section">
+            <div className="portfolio-header">
+              <h2 className="section-title">Your Portfolio</h2>
+              <div className="filter-tabs">
+                <button 
+                  className={`filter-tab ${activeFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setActiveFilter('all')}
+                >
+                  All
+                </button>
+                <button 
+                  className={`filter-tab ${activeFilter === 'live' ? 'active' : ''}`}
+                  onClick={() => setActiveFilter('live')}
+                >
+                  Live
+                </button>
+                <button 
+                  className={`filter-tab ${activeFilter === 'drafts' ? 'active' : ''}`}
+                  onClick={() => setActiveFilter('drafts')}
+                >
+                  Drafts
+                </button>
+              </div>
+            </div>
 
-        {projects.length === 0 ? (
-          <EmptyState 
-            icon="📂"
-            title="No projects found"
-            message={
-              user.role === 'borrower' 
-                ? 'Create your first project to get started.'
-                : 'No projects available at the moment.'
-            }
-            action={
-              user.role === 'borrower' && (
-                <Link to="/create-project" className="btn btn-primary">
-                  Create Project
-                </Link>
-              )
-            }
-          />
-        ) : (
-          <div className="projects-grid">
-            {projects.map((project) => (
-              <ProjectCard 
-                key={project.id} 
-                project={project} 
-                userRole={user.role}
-                onProjectUpdate={handleProjectUpdate}
+            {filteredProjects.length === 0 ? (
+              <EmptyState 
+                icon="📂"
+                title={activeFilter === 'drafts' ? 'No draft projects' : 'No projects yet'}
+                message={
+                  activeFilter === 'drafts' 
+                    ? 'All your projects are published.'
+                    : 'Create your first project to get started.'
+                }
+                action={
+                  activeFilter !== 'drafts' && (
+                    <Link to="/create-project" className="btn btn-primary">
+                      Create Project
+                    </Link>
+                  )
+                }
               />
-            ))}
+            ) : (
+              <div className="projects-grid-v2">
+                {filteredProjects.map((project) => (
+                  <BorrowerProjectCard 
+                    key={project.id} 
+                    project={project}
+                    onProjectUpdate={handleProjectUpdate}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* Funder Dashboard */}
+      {user.role === 'funder' && (
+        <>
+          {!user.approved && (
+            <div className="warning-banner">
+              <div className="banner-icon">⏳</div>
+              <div className="banner-content">
+                <h3>Account Pending Approval</h3>
+                <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
+              </div>
+            </div>
+          )}
+
+          {user.approved && user.subscription_status !== 'active' && (
+            <div className="subscription-banner-v2">
+              <div className="banner-content">
+                <h3>Activate Your Subscription</h3>
+                <p>Subscribe to unlock full access to all projects and features</p>
+              </div>
+              <button 
+                onClick={() => setShowSubscriptionModal(true)}
+                className="btn btn-primary"
+              >
+                Subscribe Now - $299/month
+              </button>
+            </div>
+          )}
+
+          {user.approved && user.subscription_status === 'active' && (
+            <div className="funder-dashboard">
+              <div className="quick-stats">
+                <div className="quick-stat">
+                  <span className="quick-stat-value">{projects.length}</span>
+                  <span className="quick-stat-label">Available Projects</span>
+                </div>
+                <div className="quick-stat">
+                  <span className="quick-stat-value">
+                    {formatCurrency(projects.reduce((sum, p) => sum + p.loan_amount, 0))}
+                  </span>
+                  <span className="quick-stat-label">Total Opportunities</span>
+                </div>
+              </div>
+
+              <div className="projects-section">
+                <div className="section-header">
+                  <h2>Investment Opportunities</h2>
+                  <Link to="/projects" className="view-all-link">
+                    View All Projects →
+                  </Link>
+                </div>
+                
+                <div className="projects-grid-v2">
+                  {projects.slice(0, 3).map((project) => (
+                    <FunderProjectCard 
+                      key={project.id} 
+                      project={project}
+                      onProjectUpdate={handleProjectUpdate}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Admin Dashboard */}
+      {user.role === 'admin' && stats && (
+        <div className="admin-dashboard">
+          <div className="admin-stats-grid">
+            <div className="admin-stat-card">
+              <div className="stat-icon">👥</div>
+              <div className="stat-content">
+                <div className="stat-value">{formatNumber(stats.total_users)}</div>
+                <div className="stat-label">Total Users</div>
+              </div>
+            </div>
+            <div className="admin-stat-card">
+              <div className="stat-icon">📁</div>
+              <div className="stat-content">
+                <div className="stat-value">{formatNumber(stats.total_projects)}</div>
+                <div className="stat-label">Total Projects</div>
+              </div>
+            </div>
+            <div className="admin-stat-card">
+              <div className="stat-icon">✓</div>
+              <div className="stat-content">
+                <div className="stat-value">{formatNumber(stats.active_projects)}</div>
+                <div className="stat-label">Active Projects</div>
+              </div>
+            </div>
+            <div className="admin-stat-card">
+              <div className="stat-icon">💰</div>
+              <div className="stat-content">
+                <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
+                <div className="stat-label">Total Revenue</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="admin-actions">
+            <Link to="/admin" className="btn btn-primary">
+              Go to Admin Panel
+            </Link>
+          </div>
+        </div>
+      )}
 
       <SubscriptionModal 
         isOpen={showSubscriptionModal}
@@ -1968,6 +2117,303 @@ const Dashboard = () => {
   );
 };
 
+// Borrower Project Card Component
+const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
+  const api = useApi();
+  const navigate = useNavigate();
+  const { addNotification } = useNotifications();
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [deals, setDeals] = useState([]);
+  const [showDeals, setShowDeals] = useState(false);
+  const [loadingDeals, setLoadingDeals] = useState(false);
+
+  useEffect(() => {
+    if (project.deal_count > 0 && project.payment_status === 'paid') {
+      fetchDeals();
+    }
+  }, [project.id, project.deal_count]);
+
+  const fetchDeals = async () => {
+    setLoadingDeals(true);
+    try {
+      const dealsList = await api.getProjectDeals(project.id);
+      setDeals(dealsList);
+    } catch (err) {
+      console.error('Failed to fetch deals:', err);
+    } finally {
+      setLoadingDeals(false);
+    }
+  };
+
+  const getStatusBadge = () => {
+    if (project.payment_status === 'paid') {
+      return <span className="status-badge-v2 live">LIVE</span>;
+    }
+    return <span className="status-badge-v2 draft">DRAFT</span>;
+  };
+
+  const getPropertyTypeIcon = () => {
+    switch (project.property_type) {
+      case 'Commercial':
+        return '🏢';
+      case 'Residential':
+        return '🏠';
+      case 'Mixed Use':
+        return '🏙️';
+      case 'Industrial':
+        return '🏭';
+      default:
+        return '🏗️';
+    }
+  };
+
+  return (
+    <>
+      <div className="project-card-v2">
+        <div className="card-header">
+          {getStatusBadge()}
+          {project.deal_count > 0 && (
+            <span className="deal-indicator">{project.deal_count} active deal{project.deal_count > 1 ? 's' : ''}</span>
+          )}
+        </div>
+
+        <div className="card-body">
+          <h3 className="project-name">{project.title}</h3>
+          
+          <div className="location-row">
+            <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+            </svg>
+            <span>{project.suburb || 'Location not specified'}</span>
+          </div>
+
+          <div className="project-details">
+            <div className="detail-row">
+              <span className="detail-label">SEEKING</span>
+              <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">TYPE</span>
+              <span className="detail-value">
+                <span className="type-icon">{getPropertyTypeIcon()}</span>
+                {project.property_type}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card-footer">
+          {project.payment_status === 'paid' ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
+              >
+                View Details
+              </button>
+              {project.deal_count > 0 && (
+                <button 
+                  onClick={() => {
+                    if (project.deal_count === 1 && deals.length > 0) {
+                      navigate(`/project/${project.id}/deal/${deals[0].id}`);
+                    } else {
+                      navigate(`/project/${project.id}`);
+                    }
+                  }}
+                  className="btn-primary-small"
+                >
+                  Deal Room{project.deal_count > 1 ? 's' : ''}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
+              >
+                View Details
+              </button>
+              <button 
+                onClick={() => setShowPaymentModal(true)}
+                className="btn-primary-small"
+                disabled={!project.documents_complete}
+                title={!project.documents_complete ? 'Upload all required documents first' : ''}
+              >
+                Publish
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {showPaymentModal && (
+        <PaymentModal 
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          project={project}
+          onSuccess={() => {
+            setShowPaymentModal(false);
+            if (onProjectUpdate) onProjectUpdate();
+          }}
+        />
+      )}
+    </>
+  );
+};
+
+// Funder Project Card Component
+const FunderProjectCard = ({ project, onProjectUpdate }) => {
+  const api = useApi();
+  const navigate = useNavigate();
+  const { addNotification } = useNotifications();
+  const [requesting, setRequesting] = useState(false);
+  const [showMessageInput, setShowMessageInput] = useState(false);
+  const [accessMessage, setAccessMessage] = useState('');
+
+  const handleRequestAccess = async () => {
+    setRequesting(true);
+    try {
+      await api.requestAccess(project.id, accessMessage.trim() || null);
+      addNotification({
+        type: 'success',
+        title: 'Access Request Sent',
+        message: 'Your request has been sent to the developer.'
+      });
+      setShowMessageInput(false);
+      setAccessMessage('');
+      if (onProjectUpdate) onProjectUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Request Failed',
+        message: err.message || 'Failed to send access request'
+      });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <div className="project-card-v2 funder">
+      <div className="card-header">
+        <span className="status-badge-v2 opportunity">OPPORTUNITY</span>
+      </div>
+
+      <div className="card-body">
+        <h3 className="project-name">{project.title}</h3>
+        
+        <div className="location-row">
+          <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+          </svg>
+          <span>{project.suburb}</span>
+        </div>
+
+        <div className="project-details">
+          <div className="detail-row">
+            <span className="detail-label">LOAN AMOUNT</span>
+            <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
+          </div>
+          <div className="detail-row">
+            <span className="detail-label">TYPE</span>
+            <span className="detail-value">{project.property_type}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card-footer">
+        {project.access_status === 'approved' && !project.deal_id ? (
+          <>
+            <button 
+              onClick={() => navigate(`/project/${project.id}`)}
+              className="btn-text"
+            >
+              View Details
+            </button>
+            <button 
+              onClick={async () => {
+                try {
+                  const response = await api.createDeal(project.id, project.access_request_id);
+                  addNotification({
+                    type: 'success',
+                    title: 'Deal Room Created',
+                    message: 'Successfully created deal room'
+                  });
+                  navigate(`/project/${project.id}/deal/${response.deal_id}`);
+                } catch (err) {
+                  addNotification({
+                    type: 'error',
+                    title: 'Failed to create deal room',
+                    message: err.message || 'Could not create deal room'
+                  });
+                }
+              }}
+              className="btn-primary-small"
+            >
+              Engage
+            </button>
+          </>
+        ) : project.access_status === 'approved' && project.deal_id ? (
+          <>
+            <button 
+              onClick={() => navigate(`/project/${project.id}`)}
+              className="btn-text"
+            >
+              View Details
+            </button>
+            <button 
+              onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
+              className="btn-primary-small"
+            >
+              Deal Room
+            </button>
+          </>
+        ) : (
+          <>
+            {!showMessageInput ? (
+              <button 
+                onClick={() => setShowMessageInput(true)}
+                disabled={project.access_status === 'pending'}
+                className="btn-primary-small full-width"
+              >
+                {project.access_status === 'pending' ? '⏳ Request Pending' : '🔓 Request Access'}
+              </button>
+            ) : (
+              <div className="access-request-form">
+                <textarea
+                  value={accessMessage}
+                  onChange={(e) => setAccessMessage(e.target.value)}
+                  placeholder="Introduce yourself and explain your interest..."
+                  className="message-input"
+                  rows="3"
+                />
+                <div className="form-actions">
+                  <button 
+                    onClick={() => {
+                      setShowMessageInput(false);
+                      setAccessMessage('');
+                    }}
+                    className="btn-text"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleRequestAccess}
+                    disabled={requesting}
+                    className="btn-primary-small"
+                  >
+                    {requesting ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 // ===========================
 // PROJECT CARD COMPONENT
 // ===========================
