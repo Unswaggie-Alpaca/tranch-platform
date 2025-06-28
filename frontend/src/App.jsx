@@ -1807,7 +1807,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'live', 'drafts'
+  const [activeFilter, setActiveFilter] = useState('all');
 
   useEffect(() => {
     fetchData();
@@ -1833,7 +1833,6 @@ const Dashboard = () => {
     await fetchData();
   };
 
-  // Get greeting based on time
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
@@ -1841,7 +1840,6 @@ const Dashboard = () => {
     return 'Good evening';
   };
 
-  // Calculate stats for borrower
   const calculateBorrowerStats = () => {
     const liveProjects = projects.filter(p => p.payment_status === 'paid');
     const draftProjects = projects.filter(p => p.payment_status === 'unpaid');
@@ -1854,7 +1852,6 @@ const Dashboard = () => {
     };
   };
 
-  // Filter projects based on active filter
   const getFilteredProjects = () => {
     if (activeFilter === 'live') {
       return projects.filter(p => p.payment_status === 'paid');
@@ -1870,23 +1867,21 @@ const Dashboard = () => {
   const filteredProjects = getFilteredProjects();
 
   return (
-    <div className="dashboard-v2">
-      {/* Header Section */}
-      <div className="dashboard-header-v2">
-        <div className="header-content-v2">
-          <h1 className="greeting-text">
-            {getGreeting()},<br />
-            {user.name || user.email}
-          </h1>
-          <p className="subheading-text">
+    <div className="dashboard-clean">
+      {/* Header */}
+      <div className="dashboard-header-clean">
+        <div className="header-content-clean">
+          <h1 className="greeting">{getGreeting()},</h1>
+          <h1 className="username">{user.name || user.email}</h1>
+          <p className="tagline">
             {user.role === 'borrower' && "Let's get your developments funded."}
             {user.role === 'funder' && "Discover investment opportunities."}
-            {user.role === 'admin' && "Platform administration dashboard."}
+            {user.role === 'admin' && "Platform administration."}
           </p>
         </div>
         {user.role === 'borrower' && (
-          <Link to="/create-project" className="new-project-btn">
-            <span>New Project</span>
+          <Link to="/create-project" className="new-project-button">
+            New Project
             <svg viewBox="0 0 20 20" fill="currentColor" className="arrow-icon">
               <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
@@ -1900,58 +1895,74 @@ const Dashboard = () => {
       {user.role === 'borrower' && borrowerStats && (
         <>
           {/* Stats Cards */}
-          <div className="stats-row">
-            <div className="stat-card-v2">
-              <div className="stat-header">
+          <div className="stats-grid-clean">
+            <div className="stat-card-clean">
+              <div className="stat-header-clean">
                 <span className="stat-label">ACTIVE PROJECTS</span>
-                <div className="stat-indicator active"></div>
+                <div className="stat-indicator green"></div>
               </div>
-              <div className="stat-value-large">{borrowerStats.activeProjects}</div>
-              <a href="#" onClick={(e) => { e.preventDefault(); setActiveFilter('live'); }} className="stat-link">
+              <div className="stat-value">{borrowerStats.activeProjects}</div>
+              <a 
+                href="#" 
+                onClick={(e) => { 
+                  e.preventDefault(); 
+                  setActiveFilter('live'); 
+                }} 
+                className="stat-link"
+              >
                 Live on platform
               </a>
             </div>
 
-            <div className="stat-card-v2 featured">
-              <div className="stat-header">
+            <div className="stat-card-clean featured">
+              <div className="stat-header-clean">
                 <span className="stat-label">TOTAL FUNDING SOUGHT</span>
                 <span className="dollar-sign">$</span>
               </div>
-              <div className="stat-value-large">{formatCurrency(borrowerStats.totalFunding).replace('$', '')}</div>
+              <div className="stat-value">
+                {formatNumber(borrowerStats.totalFunding)}
+              </div>
               <div className="stat-subtitle">Across {borrowerStats.activeProjects} projects</div>
             </div>
 
-            <div className="stat-card-v2">
-              <div className="stat-header">
+            <div className="stat-card-clean">
+              <div className="stat-header-clean">
                 <span className="stat-label">DRAFTS</span>
-                <div className="stat-indicator draft">{borrowerStats.drafts}</div>
+                <div className="stat-badge">{borrowerStats.drafts}</div>
               </div>
-              <div className="stat-value-large">{borrowerStats.drafts}</div>
-              <a href="#" onClick={(e) => { e.preventDefault(); setActiveFilter('drafts'); }} className="stat-link">
+              <div className="stat-value">{borrowerStats.drafts}</div>
+              <a 
+                href="#" 
+                onClick={(e) => { 
+                  e.preventDefault(); 
+                  setActiveFilter('drafts'); 
+                }} 
+                className="stat-link"
+              >
                 Complete drafts
               </a>
             </div>
           </div>
 
           {/* Portfolio Section */}
-          <div className="portfolio-section">
-            <div className="portfolio-header">
-              <h2 className="section-title">Your Portfolio</h2>
-              <div className="filter-tabs">
+          <div className="portfolio-section-clean">
+            <div className="portfolio-header-clean">
+              <h2>Your Portfolio</h2>
+              <div className="filter-pills">
                 <button 
-                  className={`filter-tab ${activeFilter === 'all' ? 'active' : ''}`}
+                  className={`filter-pill ${activeFilter === 'all' ? 'active' : ''}`}
                   onClick={() => setActiveFilter('all')}
                 >
                   All
                 </button>
                 <button 
-                  className={`filter-tab ${activeFilter === 'live' ? 'active' : ''}`}
+                  className={`filter-pill ${activeFilter === 'live' ? 'active' : ''}`}
                   onClick={() => setActiveFilter('live')}
                 >
                   Live
                 </button>
                 <button 
-                  className={`filter-tab ${activeFilter === 'drafts' ? 'active' : ''}`}
+                  className={`filter-pill ${activeFilter === 'drafts' ? 'active' : ''}`}
                   onClick={() => setActiveFilter('drafts')}
                 >
                   Drafts
@@ -1961,7 +1972,7 @@ const Dashboard = () => {
 
             {filteredProjects.length === 0 ? (
               <EmptyState 
-                icon="📂"
+                icon=""
                 title={activeFilter === 'drafts' ? 'No draft projects' : 'No projects yet'}
                 message={
                   activeFilter === 'drafts' 
@@ -1977,9 +1988,9 @@ const Dashboard = () => {
                 }
               />
             ) : (
-              <div className="projects-grid-v2">
+              <div className="projects-grid-clean">
                 {filteredProjects.map((project) => (
-                  <BorrowerProjectCard 
+                  <ProjectCardClean 
                     key={project.id} 
                     project={project}
                     onProjectUpdate={handleProjectUpdate}
@@ -1995,17 +2006,14 @@ const Dashboard = () => {
       {user.role === 'funder' && (
         <>
           {!user.approved && (
-            <div className="warning-banner">
-              <div className="banner-icon">⏳</div>
-              <div className="banner-content">
-                <h3>Account Pending Approval</h3>
-                <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
-              </div>
+            <div className="warning-message">
+              <h3>Account Pending Approval</h3>
+              <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
             </div>
           )}
 
           {user.approved && user.subscription_status !== 'active' && (
-            <div className="subscription-banner-v2">
+            <div className="subscription-banner">
               <div className="banner-content">
                 <h3>Activate Your Subscription</h3>
                 <p>Subscribe to unlock full access to all projects and features</p>
@@ -2020,38 +2028,31 @@ const Dashboard = () => {
           )}
 
           {user.approved && user.subscription_status === 'active' && (
-            <div className="funder-dashboard">
-              <div className="quick-stats">
-                <div className="quick-stat">
-                  <span className="quick-stat-value">{projects.length}</span>
-                  <span className="quick-stat-label">Available Projects</span>
-                </div>
-                <div className="quick-stat">
-                  <span className="quick-stat-value">
-                    {formatCurrency(projects.reduce((sum, p) => sum + p.loan_amount, 0))}
-                  </span>
-                  <span className="quick-stat-label">Total Opportunities</span>
-                </div>
+            <div className="projects-section">
+              <div className="section-header">
+                <h2>
+                  Available Projects ({projects.length})
+                </h2>
               </div>
 
-              <div className="projects-section">
-                <div className="section-header">
-                  <h2>Investment Opportunities</h2>
-                  <Link to="/projects" className="view-all-link">
-                    View All Projects →
-                  </Link>
-                </div>
-                
-                <div className="projects-grid-v2">
-                  {projects.slice(0, 3).map((project) => (
-                    <FunderProjectCard 
+              {projects.length === 0 ? (
+                <EmptyState 
+                  icon=""
+                  title="No projects available"
+                  message="Check back soon for new investment opportunities."
+                />
+              ) : (
+                <div className="projects-grid-clean">
+                  {projects.map((project) => (
+                    <ProjectCard 
                       key={project.id} 
-                      project={project}
+                      project={project} 
+                      userRole={user.role}
                       onProjectUpdate={handleProjectUpdate}
                     />
                   ))}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </>
@@ -2059,42 +2060,34 @@ const Dashboard = () => {
 
       {/* Admin Dashboard */}
       {user.role === 'admin' && stats && (
-        <div className="admin-dashboard">
-          <div className="admin-stats-grid">
-            <div className="admin-stat-card">
-              <div className="stat-icon">👥</div>
-              <div className="stat-content">
-                <div className="stat-value">{formatNumber(stats.total_users)}</div>
-                <div className="stat-label">Total Users</div>
-              </div>
-            </div>
-            <div className="admin-stat-card">
-              <div className="stat-icon">📁</div>
-              <div className="stat-content">
-                <div className="stat-value">{formatNumber(stats.total_projects)}</div>
-                <div className="stat-label">Total Projects</div>
-              </div>
-            </div>
-            <div className="admin-stat-card">
-              <div className="stat-icon">✓</div>
-              <div className="stat-content">
-                <div className="stat-value">{formatNumber(stats.active_projects)}</div>
-                <div className="stat-label">Active Projects</div>
-              </div>
-            </div>
-            <div className="admin-stat-card">
-              <div className="stat-icon">💰</div>
-              <div className="stat-content">
-                <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
-                <div className="stat-label">Total Revenue</div>
-              </div>
+        <div className="admin-stats">
+          <div className="stat-card">
+            <div className="stat-icon">👥</div>
+            <div className="stat-content">
+              <div className="stat-value">{formatNumber(stats.total_users)}</div>
+              <div className="stat-label">Total Users</div>
             </div>
           </div>
-
-          <div className="admin-actions">
-            <Link to="/admin" className="btn btn-primary">
-              Go to Admin Panel
-            </Link>
+          <div className="stat-card">
+            <div className="stat-icon">📁</div>
+            <div className="stat-content">
+              <div className="stat-value">{formatNumber(stats.total_projects)}</div>
+              <div className="stat-label">Total Projects</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">✓</div>
+            <div className="stat-content">
+              <div className="stat-value">{formatNumber(stats.active_projects)}</div>
+              <div className="stat-label">Active Projects</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon">💰</div>
+            <div className="stat-content">
+              <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
+              <div className="stat-label">Total Revenue</div>
+            </div>
           </div>
         </div>
       )}
@@ -2114,6 +2107,125 @@ const Dashboard = () => {
         }}
       />
     </div>
+  );
+};
+
+// Clean Project Card Component
+const ProjectCardClean = ({ project, onProjectUpdate }) => {
+  const api = useApi();
+  const navigate = useNavigate();
+  const { addNotification } = useNotifications();
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [deals, setDeals] = useState([]);
+
+  useEffect(() => {
+    if (project.deal_count > 0 && project.payment_status === 'paid') {
+      fetchDeals();
+    }
+  }, [project.id, project.deal_count]);
+
+  const fetchDeals = async () => {
+    try {
+      const dealsList = await api.getProjectDeals(project.id);
+      setDeals(dealsList);
+    } catch (err) {
+      console.error('Failed to fetch deals:', err);
+    }
+  };
+
+  return (
+    <>
+      <div className="project-card-clean">
+        {/* Status Badge */}
+        <div className="card-header-clean">
+          <span className={`status-badge-clean ${project.payment_status === 'paid' ? 'live' : 'draft'}`}>
+            {project.payment_status === 'paid' ? 'LIVE' : 'DRAFT'}
+          </span>
+          {project.deal_count > 0 && (
+            <span className="deal-count">{project.deal_count} active deal{project.deal_count > 1 ? 's' : ''}</span>
+          )}
+        </div>
+
+        {/* Project Info */}
+        <h3 className="project-title-clean">{project.title}</h3>
+        
+        <div className="location-row-clean">
+          <svg viewBox="0 0 16 16" fill="none" className="location-icon-clean">
+            <path d="M8 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="currentColor"/>
+            <path fillRule="evenodd" clipRule="evenodd" d="M8 14s4-4.15 4-7a4 4 0 10-8 0c0 2.85 4 7 4 7z" fill="currentColor"/>
+          </svg>
+          <span>{project.suburb || 'Location TBD'}</span>
+        </div>
+
+        <div className="project-info-grid">
+          <div className="info-block">
+            <span className="info-label">SEEKING</span>
+            <span className="info-value">{formatCurrency(project.loan_amount)}</span>
+          </div>
+          <div className="info-block">
+            <span className="info-label">TYPE</span>
+            <span className="info-value">{project.property_type}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="card-actions-clean">
+          {project.payment_status === 'paid' ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text-clean"
+              >
+                View Details
+              </button>
+              {project.deal_count > 0 && (
+                <button 
+                  onClick={() => {
+                    if (project.deal_count === 1 && deals.length > 0) {
+                      navigate(`/project/${project.id}/deal/${deals[0].id}`);
+                    } else {
+                      navigate(`/project/${project.id}`);
+                    }
+                  }}
+                  className="btn-primary-clean"
+                >
+                  Deal Room
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text-clean"
+              >
+                View Details
+              </button>
+              <button 
+                onClick={() => setShowPaymentModal(true)}
+                className="btn-outline-clean"
+                disabled={!project.documents_complete}
+                title={!project.documents_complete ? 'Upload all required documents first' : ''}
+              >
+                Publish ($499)
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {showPaymentModal && (
+        <PaymentModal 
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          project={project}
+          onSuccess={() => {
+            setShowPaymentModal(false);
+            if (onProjectUpdate) onProjectUpdate();
+          }}
+        />
+      )}
+    </>
   );
 };
 
