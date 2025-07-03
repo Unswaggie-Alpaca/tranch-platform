@@ -9353,3 +9353,43 @@ td {
   margin-bottom: 20px;
   color: #991b1b;
 }
+
+/* Notification Bell */
+.bell-icon svg {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.3s ease;
+}
+
+.notification-bell:hover .bell-icon svg {
+  transform: rotate(-15deg);
+}
+
+.notification-bell.has-notifications .bell-icon svg {
+  animation: ring 1s ease-in-out infinite;
+}
+
+@keyframes ring {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(-10deg); }
+  20%, 40% { transform: rotate(10deg); }
+}
+
+/* AI Icon */
+.ai-icon svg {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.broker-ai-floating-button:hover .ai-icon svg {
+  transform: scale(1.1);
+}
+
+/* Welcome icon for AI chat */
+.welcome-icon svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 1rem;
+  color: #667eea;
+}

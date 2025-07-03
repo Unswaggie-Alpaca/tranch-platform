@@ -1046,8 +1046,12 @@ const Navigation = () => {
               onClick={() => setShowNotifications(!showNotifications)}
             >
               <span className="bell-icon">
-
-              </span>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    <circle cx="12" cy="3" r="1" fill="currentColor" />
+  </svg>
+</span>
               {unreadCount > 0 && (
                 <span className="notification-count">{unreadCount}</span>
               )}
@@ -1265,8 +1269,12 @@ const BrokerAIFloating = () => {
         }}
       >
         <span className="ai-icon">
-
-        </span>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+    <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3" />
+  </svg>
+</span>
       </button>
     );
   }
@@ -6115,7 +6123,14 @@ const BrokerAI = () => {
           <div className="ai-messages-area">
             {!activeSession ? (
               <div className="welcome-message">
-                <div className="welcome-icon"></div>
+                <div className="welcome-icon">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 9h6M9 12h6M9 15h3" />
+    <circle cx="12" cy="12" r="8" fill="currentColor" opacity="0.1" />
+    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+  </svg>
+</div>
                 <h3>Welcome to BrokerAI</h3>
                 <p>I'm here to help you with property development finance questions.</p>
                 <button onClick={createNewSession} className="btn btn-primary">
@@ -8247,6 +8262,238 @@ const SettingsPage = () => {
 // ADMIN PANEL
 // ===========================
 
+// First, define these components OUTSIDE of AdminPanel
+
+// UnpaidProjectsManager Component
+const UnpaidProjectsManager = ({ api, addNotification }) => {
+  const [unpaidProjects, setUnpaidProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUnpaidProjects();
+  }, []);
+
+  const fetchUnpaidProjects = async () => {
+    try {
+      const response = await api.getUnpaidProjects();
+      setUnpaidProjects(response);
+    } catch (err) {
+      console.error('Failed to fetch unpaid projects:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkStripePayment = async (projectId) => {
+    try {
+      const result = await api.checkStripePayment(projectId);
+      
+      if (result.hasPayment && result.paymentStatus === 'succeeded') {
+        addNotification({
+          type: 'success',
+          title: 'Payment Confirmed',
+          message: `Stripe payment of ${formatCurrency(result.amount / 100)} confirmed`
+        });
+        
+        if (confirm('Payment confirmed in Stripe. Sync and publish project?')) {
+          await syncStripePayment(projectId);
+        }
+      } else {
+        addNotification({
+          type: 'warning',
+          title: 'No Successful Payment',
+          message: result.message || 'No successful payment found in Stripe'
+        });
+      }
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Check Failed',
+        message: 'Failed to check Stripe payment status'
+      });
+    }
+  };
+
+  const syncStripePayment = async (projectId) => {
+    try {
+      const result = await api.syncStripePayment(projectId);
+      
+      if (result.projectUpdated) {
+        addNotification({
+          type: 'success',
+          title: 'Project Published',
+          message: 'Payment synced and project published successfully'
+        });
+        await fetchUnpaidProjects();
+      } else {
+        addNotification({
+          type: 'warning',
+          title: 'Sync Failed',
+          message: result.message
+        });
+      }
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Sync Failed',
+        message: 'Failed to sync payment'
+      });
+    }
+  };
+
+  const forcePublish = async (project) => {
+    const reason = prompt('Reason for force publishing:');
+    if (!reason) return;
+
+    try {
+      await api.forcePublishProject(project.id, reason);
+      addNotification({
+        type: 'success',
+        title: 'Project Force Published',
+        message: `${project.title} is now live`
+      });
+      await fetchUnpaidProjects();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Force Publish Failed',
+        message: err.message
+      });
+    }
+  };
+
+  if (loading) return <div>Loading unpaid projects...</div>;
+
+  return (
+    <div className="unpaid-projects-list">
+      {unpaidProjects.length === 0 ? (
+        <p>No unpaid projects found</p>
+      ) : (
+        <div className="projects-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Borrower</th>
+                <th>Amount</th>
+                <th>Created</th>
+                <th>Payment Info</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unpaidProjects.map(project => (
+                <tr key={project.id}>
+                  <td>
+                    <strong>{project.title}</strong>
+                    <br />
+                    <small>{project.suburb}</small>
+                  </td>
+                  <td>
+                    {project.borrower_name}
+                    <br />
+                    <small>{project.borrower_email}</small>
+                  </td>
+                  <td>{formatCurrency(project.loan_amount)}</td>
+                  <td>{formatDate(project.created_at)}</td>
+                  <td>
+                    {project.stripe_payment_intent_id ? (
+                      <>
+                        <StatusBadge status={project.payment_status || 'pending'} />
+                        <br />
+                        <small>{project.payment_date ? formatDateTime(project.payment_date) : 'No date'}</small>
+                      </>
+                    ) : (
+                      <span className="text-muted">No payment</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="action-buttons">
+                      <button
+                        onClick={() => checkStripePayment(project.id)}
+                        className="btn btn-sm btn-warning"
+                        title="Check if payment exists in Stripe"
+                      >
+                        Check Stripe
+                      </button>
+                      <button
+                        onClick={() => forcePublish(project)}
+                        className="btn btn-sm btn-danger"
+                        title="Force publish without payment verification"
+                      >
+                        Force Publish
+                      </button>
+                      <Link
+                        to={`/project/${project.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-sm btn-outline"
+                      >
+                        View
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// OverrideHistory Component
+const OverrideHistory = ({ api }) => {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const response = await api.getOverrideHistory();
+      setHistory(response);
+    } catch (err) {
+      console.error('Failed to fetch override history:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div>Loading history...</div>;
+
+  return (
+    <div className="override-history">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Admin</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {history.slice(0, 10).map(override => (
+            <tr key={override.id}>
+              <td>{formatDateTime(override.created_at)}</td>
+              <td>{override.admin_name}</td>
+              <td>{override.action_type.replace('_', ' ')}</td>
+              <td>{override.target_type} #{override.target_id}</td>
+              <td>{override.reason}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// Now the corrected AdminPanel component
 const AdminPanel = () => {
   const api = useApi();
   const { addNotification } = useNotifications();
@@ -8396,6 +8643,8 @@ const AdminPanel = () => {
     { id: 'settings', label: 'Settings' }
   ];
 
+  if (loading) return <LoadingSpinner />;
+
   return (
     <div className="admin-panel">
       <div className="admin-header">
@@ -8408,8 +8657,184 @@ const AdminPanel = () => {
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
       <div className="admin-content">
-        {/* Existing tabs content... */}
+        {/* Overview Tab */}
+        {activeTab === 'overview' && stats && (
+          <div className="admin-overview">
+            <div className="stats-grid">
+              <div className="stat-card">
+                <h3>Total Users</h3>
+                <div className="stat-value">{stats.total_users}</div>
+              </div>
+              <div className="stat-card">
+                <h3>Total Projects</h3>
+                <div className="stat-value">{stats.total_projects}</div>
+              </div>
+              <div className="stat-card">
+                <h3>Active Projects</h3>
+                <div className="stat-value">{stats.active_projects}</div>
+              </div>
+              <div className="stat-card">
+                <h3>Total Revenue</h3>
+                <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Users Tab */}
+        {activeTab === 'users' && (
+          <div className="admin-users">
+            <div className="users-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(user => (
+                    <tr key={user.id}>
+                      <td>{user.name}</td>
+                      <td>{user.email}</td>
+                      <td><StatusBadge status={user.role} /></td>
+                      <td><StatusBadge status={user.approved ? 'Approved' : 'Pending'} /></td>
+                      <td>{formatDate(user.created_at)}</td>
+                      <td>
+                        <button 
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowUserModal(true);
+                          }}
+                          className="btn btn-sm btn-outline"
+                        >
+                          View
+                        </button>
+                        {!user.approved && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                await api.approveUser(user.id);
+                                addNotification({
+                                  type: 'success',
+                                  title: 'User Approved',
+                                  message: `${user.name} has been approved`
+                                });
+                                fetchData();
+                              } catch (err) {
+                                addNotification({
+                                  type: 'error',
+                                  title: 'Approval Failed',
+                                  message: err.message
+                                });
+                              }
+                            }}
+                            className="btn btn-sm btn-primary"
+                          >
+                            Approve
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Funders Tab */}
+        {activeTab === 'funders' && (
+          <div className="admin-funders">
+            <h3>Funder Management</h3>
+            <div className="funders-list">
+              {users.filter(u => u.role === 'funder').map(funder => (
+                <div key={funder.id} className="funder-card">
+                  <div className="funder-header">
+                    <h4>{funder.name}</h4>
+                    <StatusBadge status={funder.verification_status} />
+                  </div>
+                  <div className="funder-details">
+                    <p><strong>Company:</strong> {funder.company_name || 'Not provided'}</p>
+                    <p><strong>Type:</strong> {funder.company_type || 'Not specified'}</p>
+                    <p><strong>Email:</strong> {funder.email}</p>
+                    <p><strong>Subscription:</strong> <StatusBadge status={funder.subscription_status} /></p>
+                  </div>
+                  {!funder.approved && (
+                    <button 
+                      onClick={() => handleOverride('approve-funder', funder)}
+                      className="btn btn-primary"
+                    >
+                      Approve Funder
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Analytics Tab */}
+        {activeTab === 'analytics' && (
+          <div className="admin-analytics">
+            <h3>Platform Analytics</h3>
+            <p>Analytics dashboard coming soon...</p>
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && (
+          <div className="admin-settings">
+            <h3>System Settings</h3>
+            <div className="settings-list">
+              {settings.map(setting => (
+                <div key={setting.id} className="setting-item">
+                  <label>{setting.setting_key.replace(/_/g, ' ').toUpperCase()}</label>
+                  <div className="setting-control">
+                    <input
+                      type="text"
+                      value={setting.setting_value}
+                      onChange={(e) => {
+                        const updated = settings.map(s => 
+                          s.id === setting.id ? { ...s, setting_value: e.target.value } : s
+                        );
+                        setSettings(updated);
+                      }}
+                      className="form-input"
+                    />
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.updateSystemSetting(setting.setting_key, setting.setting_value);
+                          addNotification({
+                            type: 'success',
+                            title: 'Setting Updated',
+                            message: 'System setting updated successfully'
+                          });
+                        } catch (err) {
+                          addNotification({
+                            type: 'error',
+                            title: 'Update Failed',
+                            message: err.message
+                          });
+                        }
+                      }}
+                      className="btn btn-sm btn-primary"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         
+        {/* God Mode Tab */}
         {activeTab === 'godmode' && (
           <div className="godmode-section">
             <div className="warning-banner">
@@ -8417,7 +8842,13 @@ const AdminPanel = () => {
               <p>These actions bypass all system checks. Use with extreme caution.</p>
             </div>
 
-            {/* Stuck Payments Section */}
+            {/* Unpaid Projects Section - TOP PRIORITY */}
+            <div className="godmode-card">
+              <h3>🔴 Unpaid Projects (Force Publish)</h3>
+              <UnpaidProjectsManager api={api} addNotification={addNotification} />
+            </div>
+
+            {/* Recent Payments Section */}
             <div className="godmode-card">
               <h3>Recent Payments & Potential Issues</h3>
               <div className="payments-table">
@@ -8443,12 +8874,12 @@ const AdminPanel = () => {
                         <td><StatusBadge status={payment.status} /></td>
                         <td>{payment.project_title || '-'}</td>
                         <td>
-                          {payment.payment_type === 'project_listing' && payment.status === 'completed' && (
+                          {payment.payment_type === 'project_listing' && payment.status !== 'completed' && (
                             <button 
-                              onClick={() => handleOverride('publish-project', { id: payment.project_id })}
-                              className="btn btn-sm btn-danger"
+                              onClick={() => handleOverride('sync-payment', { id: payment.project_id })}
+                              className="btn btn-sm btn-warning"
                             >
-                              Force Publish
+                              Sync Stripe
                             </button>
                           )}
                         </td>
@@ -8484,13 +8915,10 @@ const AdminPanel = () => {
               </div>
             </div>
 
-            {/* Unpublished Projects with Documents */}
+            {/* Override History */}
             <div className="godmode-card">
-              <h3>Unpublished Projects Ready to Go Live</h3>
-              <div className="projects-list">
-                {/* You'd need to fetch projects with document status for this */}
-                <p>Projects with complete documents but unpublished will appear here</p>
-              </div>
+              <h3>Recent Override History</h3>
+              <OverrideHistory api={api} />
             </div>
 
             {/* Quick Actions */}
@@ -8580,123 +9008,6 @@ const AdminPanel = () => {
         </div>
       </Modal>
     </div>
-  );
-};
-
-// ===========================
-// PAYMENT MODAL
-// ===========================
-
-const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
-  const [processing, setProcessing] = useState(false);
-  
-  if (!isOpen) return null;
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Publish Project" size="medium">
-      <div className="payment-summary">
-        <h3>{project.title}</h3>
-        <p className="payment-description">
-          Publishing your project will make it visible to all verified funders on the platform.
-        </p>
-        <div className="payment-amount">
-          <span>Publishing Fee:</span>
-          <strong>{formatCurrency(499)}</strong>
-        </div>
-      </div>
-
-      <Elements stripe={stripePromise}>
-        <PaymentForm 
-          amount={499}
-          project={project}
-          onSuccess={onSuccess}
-          processing={processing}
-          setProcessing={setProcessing}
-        />
-      </Elements>
-
-      <div className="payment-security">
-        <span>🔒</span>
-        <p>Secured by Stripe. Your payment information is encrypted and secure.</p>
-      </div>
-    </Modal>
-  );
-};
-
-// Payment Form Component
-const PaymentForm = ({ amount, project, onSuccess, processing, setProcessing }) => {
-  const api = useApi();
-  const stripe = useStripe();
-  const elements = useElements();
-  const { addNotification } = useNotifications();
-
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!stripe || !elements) return;
-  
-  setProcessing(true);
-
-  try {
-    // Create payment intent
-    const { client_secret, payment_intent_id } = await api.createProjectPayment(project.id);
-    
-    // Confirm payment with Stripe
-    const result = await stripe.confirmCardPayment(client_secret, {
-      payment_method: {
-        card: elements.getElement(CardElement),
-      }
-    });
-
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
-
-    // Payment successful
-    onSuccess();
-  } catch (err) {
-    addNotification({
-      type: 'error',
-      title: 'Payment Failed',
-      message: err.message
-    });
-  } finally {
-    setProcessing(false);
-  }
-};
-
-  return (
-    <form onSubmit={handleSubmit} className="payment-form">
-      <div className="card-element-container">
-        <CardElement 
-          options={{
-            style: {
-              base: {
-                fontSize: '16px',
-                color: '#424770',
-                '::placeholder': {
-                  color: '#aab7c4',
-                },
-              },
-            },
-          }}
-        />
-      </div>
-      <button 
-        type="submit" 
-        disabled={!stripe || processing}
-        className="btn btn-primary btn-block"
-      >
-        {processing ? (
-          <>
-            <span className="spinner-small"></span>
-            Processing...
-          </>
-        ) : (
-          `Pay ${formatCurrency(amount)}`
-        )}
-      </button>
-    </form>
   );
 };
 
