@@ -950,6 +950,133 @@ const FileUpload = ({ onUpload, accept, maxSize, multiple = false, disabled = fa
 };
 
 // ===========================
+// PAYMENT MODAL - Place this AFTER your utility functions but BEFORE Dashboard component
+// ===========================
+
+const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
+  const [processing, setProcessing] = useState(false);
+  
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Publish Project" size="medium">
+      <div className="payment-summary">
+        <h3>{project.title}</h3>
+        <p className="payment-description">
+          Publishing your project will make it visible to all verified funders on the platform.
+        </p>
+        <div className="payment-amount">
+          <span>Publishing Fee:</span>
+          <strong>{formatCurrency(499)}</strong>
+        </div>
+      </div>
+
+      <Elements stripe={stripePromise}>
+        <PaymentForm 
+          amount={499}
+          projectId={project.id}
+          onSuccess={onSuccess}
+          processing={processing}
+          setProcessing={setProcessing}
+        />
+      </Elements>
+
+      <div className="payment-security">
+        <span>🔒</span>
+        <p>Secured by Stripe. Your payment information is encrypted and secure.</p>
+      </div>
+    </Modal>
+  );
+};
+
+// Payment Form Component
+const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }) => {
+  const api = useApi();
+  const stripe = useStripe();
+  const elements = useElements();
+  const { addNotification } = useNotifications();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!stripe || !elements) return;
+    
+    setProcessing(true);
+
+    try {
+      // Create payment intent
+      const { client_secret, payment_intent_id } = await api.createProjectPayment(projectId);
+      
+      // Confirm payment with Stripe
+      const result = await stripe.confirmCardPayment(client_secret, {
+        payment_method: {
+          card: elements.getElement(CardElement),
+        }
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      // Payment successful - webhook will update the project
+      addNotification({
+        type: 'success',
+        title: 'Payment Successful',
+        message: 'Please wait while we process your payment...'
+      });
+      
+      // Wait for webhook to process, then call success callback
+      setTimeout(() => {
+        onSuccess();
+      }, 3000);
+      
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Payment Failed',
+        message: err.message
+      });
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="payment-form">
+      <div className="card-element-container">
+        <CardElement 
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                  color: '#aab7c4',
+                },
+              },
+            },
+          }}
+        />
+      </div>
+      <button 
+        type="submit" 
+        disabled={!stripe || processing}
+        className="btn btn-primary btn-block"
+      >
+        {processing ? (
+          <>
+            <span className="spinner-small"></span>
+            Processing...
+          </>
+        ) : (
+          `Pay ${formatCurrency(amount)}`
+        )}
+      </button>
+    </form>
+  );
+};
+
+
+// ===========================
 // NAVIGATION COMPONENT
 // ===========================
 
