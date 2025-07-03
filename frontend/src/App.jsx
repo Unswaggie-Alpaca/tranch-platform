@@ -10,6 +10,7 @@ import {
   useLocation,
   useParams 
 } from 'react-router-dom';
+import { useNavigationType } from 'react-router-dom';
 import './App.css';
 import ReactMarkdown from 'react-markdown';
 import { loadStripe } from '@stripe/stripe-js';
@@ -990,6 +991,7 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
 };
 
 // Payment Form Component
+// Payment Form Component
 const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }) => {
   const api = useApi();
   const stripe = useStripe();
@@ -1005,7 +1007,20 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
 
     try {
       // Create payment intent
-      const { client_secret, payment_intent_id } = await api.createProjectPayment(projectId);
+      const { client_secret, payment_intent_id, status } = await api.createProjectPayment(projectId);
+      
+      // If already pending, just wait for webhook
+      if (status === 'pending') {
+        addNotification({
+          type: 'info',
+          title: 'Payment Pending',
+          message: 'Your payment is being processed. Please wait...'
+        });
+        
+        // Start polling for payment status
+        pollPaymentStatus(projectId);
+        return;
+      }
       
       // Confirm payment with Stripe
       const result = await stripe.confirmCardPayment(client_secret, {
@@ -1018,16 +1033,21 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
         throw new Error(result.error.message);
       }
 
-      // Payment successful - webhook will update the project
+      // Payment successful
       addNotification({
         type: 'success',
         title: 'Payment Successful',
-        message: 'Please wait while we process your payment...'
+        message: 'Processing your payment...'
       });
       
-      // Wait for webhook to process, then call success callback
+      // Just show success and let user refresh
       setTimeout(() => {
-        onSuccess();
+        addNotification({
+          type: 'info',
+          title: 'Payment Processing',
+          message: 'Your payment is being processed. Please refresh the page in a few moments to see your published project.'
+        });
+        setProcessing(false);
       }, 3000);
       
     } catch (err) {
@@ -1038,6 +1058,43 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       });
       setProcessing(false);
     }
+  };
+
+  const pollPaymentStatus = async (projectId) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds
+    
+    const checkStatus = async () => {
+      try {
+        const project = await api.getProject(projectId);
+        
+        if (project.payment_status === 'paid') {
+          addNotification({
+            type: 'success',
+            title: 'Project Published!',
+            message: 'Your project is now live on the platform.'
+          });
+          onSuccess();
+          return;
+        }
+        
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(checkStatus, 1000); // Check every second
+        } else {
+          addNotification({
+            type: 'warning',
+            title: 'Processing Delayed',
+            message: 'Payment processing is taking longer than expected. You will be notified once complete.'
+          });
+          setProcessing(false);
+        }
+      } catch (err) {
+        console.error('Status check failed:', err);
+      }
+    };
+    
+    setTimeout(checkStatus, 2000); // Start checking after 2 seconds
   };
 
   return (
@@ -2195,7 +2252,23 @@ const Dashboard = () => {
             </div>
           )}
 
-          {user.approved && user.subscription_status !== 'active' && (
+          {user.approved && user.subscription_status === 'pending' && (
+            <div className="subscription-banner pending">
+              <div className="banner-content">
+                <h3>Subscription Payment Processing</h3>
+                <p>Your subscription payment is being processed. This usually takes just a few moments.</p>
+              </div>
+              <button 
+                disabled
+                className="btn btn-primary disabled"
+              >
+                <span className="spinner-small"></span>
+                Processing Payment...
+              </button>
+            </div>
+          )}
+
+          {user.approved && user.subscription_status !== 'active' && user.subscription_status !== 'pending' && (
             <div className="subscription-banner">
               <div className="banner-content">
                 <h3>Activate Your Subscription</h3>
@@ -2323,8 +2396,8 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
       <div className="project-card-clean">
         {/* Status Badge */}
         <div className="card-header-clean">
-          <span className={`status-badge-clean ${project.payment_status === 'paid' ? 'live' : 'draft'}`}>
-            {project.payment_status === 'paid' ? 'LIVE' : 'DRAFT'}
+          <span className={`status-badge-clean ${project.payment_status === 'paid' ? 'live' : project.payment_status === 'pending' ? 'pending' : 'draft'}`}>
+            {project.payment_status === 'paid' ? 'LIVE' : project.payment_status === 'pending' ? 'PAYMENT PENDING' : 'DRAFT'}
           </span>
           {project.deal_count > 0 && (
             <span className="deal-count">{project.deal_count} active deal{project.deal_count > 1 ? 's' : ''}</span>
@@ -2353,6 +2426,7 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
           </div>
         </div>
 
+      
         {/* Actions */}
         <div className="card-actions-clean">
           {project.payment_status === 'paid' ? (
@@ -2377,6 +2451,21 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
                   Deal Room
                 </button>
               )}
+            </>
+          ) : project.payment_status === 'pending' ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text-clean"
+              >
+                View Details
+              </button>
+              <button 
+                disabled
+                className="btn-outline-clean disabled"
+              >
+                Payment Processing...
+              </button>
             </>
           ) : (
             <>
@@ -4590,9 +4679,16 @@ const ProjectDetail = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
 
+  // Auto-refresh if project is pending payment
   useEffect(() => {
-    fetchProjectDetails();
-  }, [id]);
+    if (project?.payment_status === 'pending') {
+      const timer = setTimeout(() => {
+        fetchProjectDetails();
+      }, 5000); // Refresh every 5 seconds if pending
+      
+      return () => clearTimeout(timer);
+    }
+  }, [project?.payment_status]);
 
   const fetchProjectDetails = async () => {
     try {
@@ -9021,7 +9117,7 @@ const AdminPanel = () => {
             <div className="godmode-card">
               <h3>Pending Funders - Force Approval</h3>
               <div className="funders-list">
-                {users.filter(u => u.role === 'funder' && (!u.approved || u.subscription_status !== 'active')).map(funder => (
+                {users.filter(u => u.role === 'funder' && (!u.approved || u.subscription_status === 'pending' || u.subscription_status === 'inactive')).map(funder => (
                   <div key={funder.id} className="funder-override-card">
                     <div className="funder-info">
                       <h4>{funder.name}</h4>
@@ -9029,6 +9125,9 @@ const AdminPanel = () => {
                       <div className="status-row">
                         <StatusBadge status={funder.approved ? 'Approved' : 'Not Approved'} />
                         <StatusBadge status={`Sub: ${funder.subscription_status}`} />
+                        {funder.subscription_status === 'pending' && (
+                          <span className="pending-payment-badge">Payment Processing</span>
+                        )}
                       </div>
                     </div>
                     <button 
@@ -9194,43 +9293,108 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
   const stripe = useStripe();
   const elements = useElements();
   const { addNotification } = useNotifications();
+  const { refreshUser } = useApp();
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!stripe || !elements) return;
-  
-  setProcessing(true);
-
-  try {
-    // Create payment method
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: 'card',
-      card: elements.getElement(CardElement),
-    });
-
-    if (error) throw new Error(error.message);
-
-    // Create subscription
-    const { subscription_id, client_secret, status } = await api.createSubscription(paymentMethod.id);
+    e.preventDefault();
     
-    if (client_secret) {
-      // 3D Secure authentication required
-      const result = await stripe.confirmCardPayment(client_secret);
-      if (result.error) throw new Error(result.error.message);
+    if (!stripe || !elements) return;
+    
+    setProcessing(true);
+
+    try {
+      // Create payment method
+      const { error, paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+      });
+
+      if (error) throw new Error(error.message);
+
+      // Create subscription
+      const { subscription_id, client_secret, status } = await api.createSubscription(paymentMethod.id);
+      
+      if (status === 'pending') {
+        addNotification({
+          type: 'info',
+          title: 'Subscription Processing',
+          message: 'Your subscription payment is being processed. Please wait...'
+        });
+        
+        // Start polling for subscription status
+        pollSubscriptionStatus();
+        return;
+      }
+      
+      if (client_secret) {
+        // 3D Secure authentication required
+        const result = await stripe.confirmCardPayment(client_secret);
+        if (result.error) throw new Error(result.error.message);
+      }
+      
+      addNotification({
+        type: 'success',
+        title: 'Payment Successful',
+        message: 'Processing your subscription activation...'
+      });
+      
+      // Just show success and let user refresh
+      setTimeout(() => {
+        addNotification({
+          type: 'info',
+          title: 'Subscription Processing',
+          message: 'Your subscription is being activated. Please refresh the page in a few moments.'
+        });
+        setProcessing(false);
+      }, 3000);
+      
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Subscription Failed',
+        message: err.message || 'Failed to activate subscription'
+      });
+      setProcessing(false);
     }
+  };
+
+  const pollSubscriptionStatus = async () => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds
     
-    onSuccess();
-  } catch (err) {
-    addNotification({
-      type: 'error',
-      title: 'Subscription Failed',
-      message: err.message || 'Failed to activate subscription'
-    });
-  } finally {
-    setProcessing(false);
-  }
-};
+    const checkStatus = async () => {
+      try {
+        await refreshUser();
+        const updatedUser = await api.getCurrentUser();
+        
+        if (updatedUser.user.subscription_status === 'active' && updatedUser.user.approved) {
+          addNotification({
+            type: 'success',
+            title: 'Subscription Active!',
+            message: 'Your subscription is now active and you have full access.'
+          });
+          onSuccess();
+          return;
+        }
+        
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(checkStatus, 1000); // Check every second
+        } else {
+          addNotification({
+            type: 'warning',
+            title: 'Processing Delayed',
+            message: 'Subscription processing is taking longer than expected. Our team will verify and activate your account shortly.'
+          });
+          setProcessing(false);
+        }
+      } catch (err) {
+        console.error('Status check failed:', err);
+      }
+    };
+    
+    setTimeout(checkStatus, 2000); // Start checking after 2 seconds
+  };
 
   return (
     <form onSubmit={handleSubmit}>
@@ -10372,7 +10536,15 @@ function App() {
 const AppLayout = () => {
   const { user } = useApp();
   const location = useLocation();
+  const navigationType = useNavigationType();
   
+  // Fix back button issue
+  useEffect(() => {
+    if (navigationType === "POP") {
+      window.location.reload();
+    }
+  }, [navigationType]);
+
   // Pages where BrokerAI floating assistant should not appear
   const noBrokerAIPages = ['/', '/login', '/register', '/onboarding'];
   const showBrokerAI = user && !noBrokerAIPages.includes(location.pathname);
