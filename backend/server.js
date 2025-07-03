@@ -59,9 +59,13 @@ app.options('*', cors());
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
+  max: process.env.NODE_ENV === 'production' ? 30 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
+  message: 'Too many requests, please try again later.',
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests, please try again later.' });
+  }
 });
 app.use('/api/', limiter);
 
@@ -309,9 +313,15 @@ app.use(express.json({ limit: '50mb' }));
 // ===========================
 app.get('/uploads/:filename', authenticateToken, async (req, res) => {
   const filename = req.params.filename;
+  
+  // Security check for path traversal
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).send('Invalid filename');
+  }
+  
   const filepath = path.join(uploadsDir, filename);
 
-    console.log('Requested file:', filename);
+  console.log('Requested file:', filename);
   console.log('Full path:', filepath);
   console.log('File exists:', fs.existsSync(filepath));
   
@@ -932,6 +942,27 @@ app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, re
     return res.status(400).json({ error: 'Required fields missing' });
   }
 
+  // Validate financial inputs
+if (loan_amount < 100000 || loan_amount > 100000000) {
+  return res.status(400).json({ error: 'Loan amount must be between $100,000 and $100,000,000' });
+}
+
+if (interest_rate && (interest_rate < 0 || interest_rate > 50)) {
+  return res.status(400).json({ error: 'Interest rate must be between 0% and 50%' });
+}
+
+if (loan_term && (loan_term < 1 || loan_term > 120)) {
+  return res.status(400).json({ error: 'Loan term must be between 1 and 120 months' });
+}
+
+if (total_project_cost && total_project_cost < 0) {
+  return res.status(400).json({ error: 'Total project cost cannot be negative' });
+}
+
+if (equity_contribution && equity_contribution < 0) {
+  return res.status(400).json({ error: 'Equity contribution cannot be negative' });
+}
+
   const lvr = land_value && loan_amount ? (loan_amount / land_value * 100) : null;
   const icr = expected_profit && loan_amount ? (expected_profit / loan_amount * 100) : null;
 
@@ -1121,13 +1152,30 @@ app.put('/api/projects/:id', authenticateToken, requireRole(['borrower']), (req,
   const projectId = req.params.id;
   const updateFields = req.body;
   
-  delete updateFields.id;
-  delete updateFields.created_at;
-  delete updateFields.borrower_id;
-  updateFields.updated_at = new Date().toISOString();
+  // SECURITY: Whitelist allowed fields
+  const allowedFields = [
+    'title', 'description', 'location', 'suburb', 'loan_amount',
+    'interest_rate', 'loan_term', 'property_type', 'development_stage',
+    'total_project_cost', 'equity_contribution', 'land_value',
+    'construction_cost', 'expected_gdc', 'expected_profit',
+    'project_size_sqm', 'number_of_units', 'number_of_levels',
+    'car_spaces', 'zoning', 'planning_permit_status',
+    'expected_start_date', 'expected_completion_date',
+    'market_risk_rating', 'construction_risk_rating', 'location_risk_rating'
+  ];
+  
+  // Filter out non-allowed fields
+  const filteredFields = {};
+  for (const field of allowedFields) {
+    if (updateFields.hasOwnProperty(field)) {
+      filteredFields[field] = updateFields[field];
+    }
+  }
+  
+  filteredFields.updated_at = new Date().toISOString();
 
-  const fields = Object.keys(updateFields);
-  const values = Object.values(updateFields);
+  const fields = Object.keys(filteredFields);
+  const values = Object.values(filteredFields);
   const placeholders = fields.map(field => `${field} = ?`).join(', ');
 
   db.run(
@@ -1636,74 +1684,6 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
   }
 });
 
-// Simulate subscription (for demo)
-app.post('/api/payments/simulate-subscription', authenticateToken, requireRole(['funder']), (req, res) => {
-  db.run(
-    'UPDATE users SET subscription_status = ? WHERE id = ?',
-    ['active', req.user.id],
-    function(err) {
-      if (err) {
-        console.error('Subscription update error:', err);
-        return res.status(500).json({ error: 'Failed to update subscription' });
-      }
-
-      res.json({ 
-        message: 'Subscription activated successfully',
-        status: 'active'
-      });
-    }
-  );
-});
-
-// Simulate payment success (for demo)
-app.post('/api/payments/simulate-success', authenticateToken, requireRole(['borrower']), async (req, res) => {
-  const { project_id, payment_intent_id } = req.body;
-
-  if (!project_id) {
-    return res.status(400).json({ error: 'Project ID required' });
-  }
-
-  db.serialize(() => {
-    db.run('BEGIN TRANSACTION');
-    
-    db.run(
-      'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND borrower_id = ?',
-      ['paid', payment_intent_id || 'pi_demo_' + Date.now(), project_id, req.user.id],
-      function(err) {
-        if (err) {
-          console.error('Project update error:', err);
-          db.run('ROLLBACK');
-          return res.status(500).json({ error: 'Failed to update project' });
-        }
-
-        if (this.changes === 0) {
-          db.run('ROLLBACK');
-          return res.status(404).json({ error: 'Project not found' });
-        }
-
-        db.run(
-          'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
-          [req.user.id, project_id, payment_intent_id || 'pi_demo_' + Date.now(), 49900, 'project_listing', 'completed'],
-          (paymentErr) => {
-            if (paymentErr) {
-              console.error('Payment record error:', paymentErr);
-              db.run('ROLLBACK');
-              return res.status(500).json({ error: 'Failed to create payment record' });
-            }
-
-            db.run('COMMIT');
-            
-            res.json({ 
-              message: 'Project published successfully',
-              project_id: project_id,
-              status: 'paid'
-            });
-          }
-        );
-      }
-    );
-  });
-});
 
 // Create subscription
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
@@ -1857,6 +1837,244 @@ app.get('/api/admin/system-settings', authenticateToken, requireRole(['admin']),
       res.json(settings);
     }
   );
+});
+
+// ===========================
+// ADMIN GOD MODE OVERRIDES
+// ===========================
+
+// Force approve a funder (bypass all checks)
+app.post('/api/admin/force-approve-funder/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+  const userId = req.params.id;
+  const { reason } = req.body;
+  
+  db.run(
+    `UPDATE users SET 
+     approved = 1, 
+     verification_status = 'verified',
+     subscription_status = 'active',
+     updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND role = 'funder'`,
+    [userId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to force approve' });
+      }
+      
+      // Log admin action
+      console.log(`ADMIN OVERRIDE: Force approved funder ${userId}. Reason: ${reason}`);
+      
+      res.json({ 
+        message: 'Funder force approved with active subscription',
+        changes: this.changes 
+      });
+    }
+  );
+});
+
+// Force publish a project (bypass payment)
+app.post('/api/admin/force-publish-project/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+  const projectId = req.params.id;
+  const { reason } = req.body;
+  
+  db.run(
+    `UPDATE projects SET 
+     payment_status = 'paid',
+     visible = 1,
+     stripe_payment_intent_id = 'admin_override_' || datetime('now'),
+     updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [projectId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to force publish' });
+      }
+      
+      // Create payment record for tracking
+      db.run(
+        `INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status)
+         SELECT borrower_id, ?, 'admin_override_' || datetime('now'), 0, 'project_listing', 'admin_override'
+         FROM projects WHERE id = ?`,
+        [projectId, projectId]
+      );
+      
+      console.log(`ADMIN OVERRIDE: Force published project ${projectId}. Reason: ${reason}`);
+      
+      res.json({ 
+        message: 'Project force published',
+        changes: this.changes 
+      });
+    }
+  );
+});
+
+// Force complete a deal
+app.post('/api/admin/force-complete-deal/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+  const dealId = req.params.id;
+  const { reason } = req.body;
+  
+  db.run(
+    `UPDATE deals SET 
+     status = 'completed',
+     updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [dealId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to force complete deal' });
+      }
+      
+      console.log(`ADMIN OVERRIDE: Force completed deal ${dealId}. Reason: ${reason}`);
+      
+      res.json({ 
+        message: 'Deal force completed',
+        changes: this.changes 
+      });
+    }
+  );
+});
+
+// Delete any project (with cascade)
+app.delete('/api/admin/delete-project/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+  const projectId = req.params.id;
+  const { reason } = req.body;
+  
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    
+    // Delete in order of dependencies
+    db.run('DELETE FROM messages WHERE access_request_id IN (SELECT id FROM access_requests WHERE project_id = ?)', [projectId]);
+    db.run('DELETE FROM access_requests WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM documents WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM payments WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM ai_chat_sessions WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM deals WHERE project_id = ?', [projectId]);
+    db.run('DELETE FROM projects WHERE id = ?', [projectId], function(err) {
+      if (err) {
+        db.run('ROLLBACK');
+        return res.status(500).json({ error: 'Failed to delete project' });
+      }
+      
+      db.run('COMMIT');
+      console.log(`ADMIN OVERRIDE: Deleted project ${projectId}. Reason: ${reason}`);
+      res.json({ message: 'Project and all related data deleted' });
+    });
+  });
+});
+
+// View all payments (including failed ones)
+app.get('/api/admin/all-payments', authenticateToken, requireRole(['admin']), (req, res) => {
+  db.all(
+    `SELECT p.*, u.name as user_name, u.email as user_email, 
+            pr.title as project_title
+     FROM payments p
+     JOIN users u ON p.user_id = u.id
+     LEFT JOIN projects pr ON p.project_id = pr.id
+     ORDER BY p.created_at DESC
+     LIMIT 100`,
+    (err, payments) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to fetch payments' });
+      }
+      res.json(payments);
+    }
+  );
+});
+
+// Masquerade as another user (view only)
+app.get('/api/admin/view-as-user/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+  const userId = req.params.id;
+  
+  db.get(
+    `SELECT * FROM users WHERE id = ?`,
+    [userId],
+    (err, user) => {
+      if (err || !user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Get user's projects or access requests
+      if (user.role === 'borrower') {
+        db.all(
+          `SELECT * FROM projects WHERE borrower_id = ?`,
+          [userId],
+          (err, projects) => {
+            res.json({ user, projects });
+          }
+        );
+      } else {
+        db.all(
+          `SELECT ar.*, p.title as project_title 
+           FROM access_requests ar
+           JOIN projects p ON ar.project_id = p.id
+           WHERE ar.funder_id = ?`,
+          [userId],
+          (err, requests) => {
+            res.json({ user, access_requests: requests });
+          }
+        );
+      }
+    }
+  );
+});
+
+// Send system message to any user
+app.post('/api/admin/send-system-message', authenticateToken, requireRole(['admin']), (req, res) => {
+  const { user_id, message, type = 'system' } = req.body;
+  
+  db.run(
+    `INSERT INTO notifications (user_id, type, message, related_id, created_at)
+     VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)`,
+    [user_id, type, message],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to send message' });
+      }
+      
+      res.json({ 
+        message: 'System message sent',
+        notification_id: this.lastID 
+      });
+    }
+  );
+});
+
+// Export all platform data
+app.get('/api/admin/export-all-data', authenticateToken, requireRole(['admin']), (req, res) => {
+  const data = {};
+  
+  db.serialize(() => {
+    db.all('SELECT * FROM users', (err, users) => {
+      data.users = users;
+      
+      db.all('SELECT * FROM projects', (err, projects) => {
+        data.projects = projects;
+        
+        db.all('SELECT * FROM deals', (err, deals) => {
+          data.deals = deals;
+          
+          db.all('SELECT * FROM payments', (err, payments) => {
+            data.payments = payments;
+            
+            db.all('SELECT * FROM access_requests', (err, requests) => {
+              data.access_requests = requests;
+              
+              res.json({
+                export_date: new Date().toISOString(),
+                platform_stats: {
+                  total_users: data.users.length,
+                  total_projects: data.projects.length,
+                  total_deals: data.deals.length,
+                  total_payments: data.payments.length
+                },
+                data: data
+              });
+            });
+          });
+        });
+      });
+    });
+  });
 });
 
 // Update system setting
