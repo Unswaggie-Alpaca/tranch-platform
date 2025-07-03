@@ -10,7 +10,6 @@ import {
   useLocation,
   useParams 
 } from 'react-router-dom';
-import { useNavigationType } from 'react-router-dom';
 import './App.css';
 import ReactMarkdown from 'react-markdown';
 import { loadStripe } from '@stripe/stripe-js';
@@ -10464,14 +10463,7 @@ function App() {
 const AppLayout = () => {
   const { user } = useApp();
   const location = useLocation();
-  const navigationType = useNavigationType();
   
-  // Fix back button issue
-  useEffect(() => {
-    if (navigationType === "POP") {
-      window.location.reload();
-    }
-  }, [navigationType]);
 
   // Pages where BrokerAI floating assistant should not appear
   const noBrokerAIPages = ['/', '/login', '/register', '/onboarding'];
