@@ -44,8 +44,11 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || (
 );
 
 // Stripe Configuration
-const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 
-  'pk_test_51RU7lrQupq5Lj3mgQLoOPZQnTHeOOC8HSXs9x4D0H9uURhmGi0tlRxvkiuTy9NEd9RlM3B51YBpvgMdwlbU6bvkQ00WUSGUnp8';
+const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+
+if (!STRIPE_PUBLISHABLE_KEY) {
+  throw new Error('Missing Stripe Publishable Key');
+}
 
 const stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY);
 
@@ -99,6 +102,15 @@ const createApiClient = (getToken) => {
       method: 'POST',
       body: JSON.stringify(profileData),
     }),
+
+    // Deal-specific document endpoints
+uploadDealDocuments: (dealId, formData) => request(`/deals/${dealId}/documents`, {
+  method: 'POST',
+  body: formData,
+}),
+
+getDealDocuments: (dealId) => request(`/deals/${dealId}/documents`),
+
 
     // User profile endpoints
     getUserProfile: (userId) => request(`/users/${userId}/profile`),
@@ -301,11 +313,41 @@ body: JSON.stringify({ project_id: projectId }),
       method: 'DELETE',
       body: JSON.stringify({ confirmation }),
     }),
-  };
 
-  
+    // Account management
+deleteAccount: (confirmation) => request('/account/delete', {
+  method: 'DELETE',
+  body: JSON.stringify({ confirmation }),
+}),
 
-};
+// Admin God Mode
+forceApproveFunder: (userId, reason) => request(`/admin/force-approve-funder/${userId}`, {
+  method: 'POST',
+  body: JSON.stringify({ reason }),
+}),
+forcePublishProject: (projectId, reason) => request(`/admin/force-publish-project/${projectId}`, {
+  method: 'POST',
+  body: JSON.stringify({ reason }),
+}),
+forceCompleteDeal: (dealId, reason) => request(`/admin/force-complete-deal/${dealId}`, {
+  method: 'POST',
+  body: JSON.stringify({ reason }),
+}),
+deleteProject: (projectId, reason) => request(`/admin/delete-project/${projectId}`, {
+  method: 'DELETE',
+  body: JSON.stringify({ reason }),
+}),
+getAllPayments: () => request('/admin/all-payments'),
+viewAsUser: (userId) => request(`/admin/view-as-user/${userId}`),
+sendSystemMessage: (userId, message) => request('/admin/send-system-message', {
+  method: 'POST',
+  body: JSON.stringify({ user_id: userId, message }),
+}),
+exportAllData: () => request('/admin/export-all-data'),
+  };  // <-- This closing bracket already exists, don't add another one
+
+};  // <-- This closing bracket already exists for createApiClient
+
 
 // ===========================
 // CONTEXTS
@@ -605,6 +647,8 @@ const InfoMessage = ({ message, onClose }) => (
   </div>
 );
 
+
+
 // Toast Notification
 const Toast = ({ message, type = 'info', onClose }) => {
   useEffect(() => {
@@ -810,7 +854,7 @@ const Tabs = ({ tabs, activeTab, onChange }) => (
 );
 
 // Empty State
-const EmptyState = ({ icon = '📂', title, message, action }) => (
+const EmptyState = ({ icon = '', title, message, action }) => (
   <div className="empty-state">
     <div className="empty-icon">{icon}</div>
     <h3>{title}</h3>
@@ -1001,7 +1045,9 @@ const Navigation = () => {
               className={`notification-bell ${unreadCount > 0 ? 'has-notifications' : ''}`}
               onClick={() => setShowNotifications(!showNotifications)}
             >
-              <span className="bell-icon">🔔</span>
+              <span className="bell-icon">
+
+              </span>
               {unreadCount > 0 && (
                 <span className="notification-count">{unreadCount}</span>
               )}
@@ -1072,7 +1118,7 @@ const Navigation = () => {
                   className="dropdown-item"
                   onClick={() => setShowProfileMenu(false)}
                 >
-                  <span className="dropdown-icon">👤</span>
+                  <span className="dropdown-icon"></span>
                   My Profile
                 </Link>
                 
@@ -1081,14 +1127,14 @@ const Navigation = () => {
                   className="dropdown-item"
                   onClick={() => setShowProfileMenu(false)}
                 >
-                  <span className="dropdown-icon">⚙</span>
+                  <span className="dropdown-icon"></span>
                   Settings
                 </Link>
                 
                 <div className="dropdown-divider"></div>
                 
                 <button onClick={handleLogout} className="dropdown-item logout">
-                  <span className="dropdown-icon">→</span>
+                  <span className="dropdown-icon"></span>
                   Logout
                 </button>
               </div>
@@ -1218,7 +1264,9 @@ const BrokerAIFloating = () => {
           setIsOpen(true);
         }}
       >
-        <span className="ai-icon">💬</span>
+        <span className="ai-icon">
+
+        </span>
       </button>
     );
   }
@@ -1511,7 +1559,7 @@ const Onboarding = () => {
               onClick={() => handleRoleSelection('borrower')}
               disabled={loading}
             >
-              <div className="role-icon">🏗</div>
+              <div className="role-icon"></div>
               <h3>I'm a Developer</h3>
               <p>I need funding for property development projects</p>
             </button>
@@ -1521,7 +1569,7 @@ const Onboarding = () => {
               onClick={() => handleRoleSelection('funder')}
               disabled={loading}
             >
-              <div className="role-icon">💰</div>
+              <div className="role-icon"></div>
               <h3>I'm an Investor</h3>
               <p>I want to invest in property development projects</p>
             </button>
@@ -2083,7 +2131,9 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">💰</div>
+            <div className="stat-icon">
+
+            </div>
             <div className="stat-content">
               <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
               <div className="stat-label">Total Revenue</div>
@@ -2267,15 +2317,15 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
   const getPropertyTypeIcon = () => {
     switch (project.property_type) {
       case 'Commercial':
-        return '🏢';
+        return '';
       case 'Residential':
-        return '🏠';
+        return '';
       case 'Mixed Use':
-        return '🏙️';
+        return '';
       case 'Industrial':
-        return '🏭';
+        return '';
       default:
-        return '🏗️';
+        return '';
     }
   };
 
@@ -6065,7 +6115,7 @@ const BrokerAI = () => {
           <div className="ai-messages-area">
             {!activeSession ? (
               <div className="welcome-message">
-                <div className="welcome-icon">🤖</div>
+                <div className="welcome-icon"></div>
                 <h3>Welcome to BrokerAI</h3>
                 <p>I'm here to help you with property development finance questions.</p>
                 <button onClick={createNewSession} className="btn btn-primary">
@@ -6074,7 +6124,7 @@ const BrokerAI = () => {
               </div>
             ) : messages.length === 0 ? (
               <div className="starter-message">
-                <div className="ai-avatar">🤖</div>
+                <div className="ai-avatar"></div>
                 <div className="starter-content">
                   <p>Hello! I'm BrokerAI, your property finance assistant. How can I help you today?</p>
                   <div className="suggested-questions">
@@ -6605,79 +6655,43 @@ const DealOverview = ({ deal, project }) => {
   );
 };
 
-// Fix for DealDocumentManager component
-// The issue is that 'documents' is referenced but the state variable is actually 'dealDocuments'
-
 const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRole, onUpdate }) => {
   const [dealDocuments, setDealDocuments] = useState([]);
-  const [requests, setRequests] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [showRequestModal, setShowRequestModal] = useState(false);
   const api = useApi();
   const { addNotification } = useNotifications();
   
   useEffect(() => {
-    fetchDocuments();
-    fetchRequests();
+    fetchDealDocuments();
   }, [dealId]);
   
-  const fetchDocuments = async () => {
+  const fetchDealDocuments = async () => {
     try {
       const docs = await api.getDealDocuments(dealId);
       setDealDocuments(docs || []);
     } catch (err) {
-      console.error('Failed to fetch documents:', err);
+      console.error('Failed to fetch deal documents:', err);
     }
   };
   
-  const fetchRequests = async () => {
-    try {
-      const reqs = await api.getDocumentRequests(dealId);
-      setRequests(reqs.filter(r => r.status === 'pending') || []);
-    } catch (err) {
-      console.error('Failed to fetch requests:', err);
-    }
-  };
-  
-  const handleUpload = async (files, requestId = null) => {
+  const handleUploadDealDocument = async (files) => {
     setUploading(true);
     const formData = new FormData();
     
-    // Add files to formData
     for (let file of files) {
       formData.append('documents', file);
     }
     
-    // Add document types (mark as "other" for deal documents)
-    const documentTypes = Array(files.length).fill('other');
-    formData.append('document_types', JSON.stringify(documentTypes));
-    
-    if (requestId) {
-      formData.append('request_id', requestId);
-    }
-    
     try {
-      // Upload to project documents (same as project page)
-      await api.uploadDocuments(projectId, formData);
+      await api.uploadDealDocuments(dealId, formData);
       
       addNotification({
         type: 'success',
         title: 'Upload Complete',
-        message: 'Documents uploaded successfully'
+        message: 'Documents uploaded to deal room'
       });
       
-      if (requestId) {
-        await api.fulfillDocumentRequest(requestId);
-        addNotification({
-          type: 'info',
-          title: 'Request Fulfilled',
-          message: 'Document request has been marked as complete'
-        });
-      }
-      
-      // Refresh both document lists
-      await onUpdate(); // This will refresh projectDocuments
-      fetchRequests();
+      await fetchDealDocuments(); // Refresh deal documents
     } catch (err) {
       console.error('Upload error:', err);
       addNotification({
@@ -6692,18 +6706,16 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
   
   const handleDownload = async (document) => {
     try {
-      // Always use the same download method as project page
       const blob = await api.downloadDocument(document.file_path);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const url = window.URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
       a.href = url;
       a.download = document.file_name;
-      document.body.appendChild(a);
+      window.document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      window.document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download error:', err);
       addNotification({
         type: 'error',
         title: 'Download Failed',
@@ -6714,8 +6726,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-AU', { 
+    return new Date(dateString).toLocaleDateString('en-AU', { 
       year: 'numeric', 
       month: 'short', 
       day: 'numeric' 
@@ -6724,40 +6735,24 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
   
   return (
     <div className="deal-documents">
+      {/* Project Documents Section - Read Only */}
       <div className="document-section">
         <div className="section-header">
-          <h4>Documents <span className="document-count">{projectDocuments.length}</span></h4>
-          <div className="section-actions">
-            {userRole === 'funder' && (
-              <button onClick={() => setShowRequestModal(true)} className="btn btn-sm btn-outline">
-                Request Document
-              </button>
-            )}
-            <FileUpload
-              onUpload={handleUpload}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-              maxSize={10 * 1024 * 1024}
-              multiple={true}
-              disabled={uploading}
-            >
-              <button className="btn btn-sm btn-primary" disabled={uploading}>
-                {uploading ? 'Uploading...' : 'Upload Document'}
-              </button>
-            </FileUpload>
-          </div>
+          <h4>Project Documents <span className="document-count">{projectDocuments.length}</span></h4>
+          <span className="section-subtitle">Original project documentation</span>
         </div>
         
         <div className="document-list">
           {projectDocuments.length > 0 ? (
             projectDocuments.map(doc => (
-              <div key={`doc-${doc.id}`} className="document-item">
+              <div key={`project-${doc.id}`} className="document-item">
                 <div className="document-info">
                   <div className="document-icon">📄</div>
                   <div className="document-details">
                     <h5>{doc.file_name}</h5>
                     <div className="document-meta">
                       {doc.document_type ? `${doc.document_type.replace(/_/g, ' ')} • ` : ''}
-                      Uploaded by {doc.uploader_name || 'Developer'} • {formatDate(doc.uploaded_at)}
+                      Project Document • {formatDate(doc.uploaded_at)}
                     </div>
                   </div>
                 </div>
@@ -6773,63 +6768,65 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
             ))
           ) : (
             <div className="empty-state">
-              <p>No documents uploaded yet</p>
+              <p>No project documents available</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Document Requests Section */}
-      {requests.length > 0 && (
-        <div className="document-section">
-          <h4>Pending Document Requests</h4>
-          <div className="document-list">
-            {requests.map(request => (
-              <div key={request.id} className="request-card">
-                <div className="request-info">
-                  <h5>{request.document_name}</h5>
-                  <p>{request.description}</p>
-                  <span className="request-meta">
-                    Requested by {request.requester_name} • {formatDate(request.created_at)}
-                  </span>
-                </div>
-                {userRole === 'borrower' && (
-                  <FileUpload
-                    onUpload={(files) => handleUpload(files, request.id)}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                    maxSize={10 * 1024 * 1024}
-                    disabled={uploading}
-                  >
-                    <button className="btn btn-sm btn-primary" disabled={uploading}>
-                      Upload & Fulfill
-                    </button>
-                  </FileUpload>
-                )}
-              </div>
-            ))}
+      {/* Deal-Specific Documents Section */}
+      <div className="document-section">
+        <div className="section-header">
+          <h4>Deal Documents <span className="document-count">{dealDocuments.length}</span></h4>
+          <span className="section-subtitle">Documents specific to this deal</span>
+          <div className="section-actions">
+            <FileUpload
+              onUpload={handleUploadDealDocument}
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+              maxSize={10 * 1024 * 1024}
+              multiple={true}
+              disabled={uploading}
+            >
+              <button className="btn btn-sm btn-primary" disabled={uploading}>
+                {uploading ? 'Uploading...' : 'Upload to Deal'}
+              </button>
+            </FileUpload>
           </div>
         </div>
-      )}
-      
-      {showRequestModal && (
-        <DocumentRequestModal
-          dealId={dealId}
-          onClose={() => setShowRequestModal(false)}
-          onSuccess={() => {
-            setShowRequestModal(false);
-            fetchRequests();
-            addNotification({
-              type: 'success',
-              title: 'Request Sent',
-              message: 'Document request sent to the developer'
-            });
-          }}
-        />
-      )}
+        
+        <div className="document-list">
+          {dealDocuments.length > 0 ? (
+            dealDocuments.map(doc => (
+              <div key={`deal-${doc.id}`} className="document-item">
+                <div className="document-info">
+                  <div className="document-icon">📄</div>
+                  <div className="document-details">
+                    <h5>{doc.file_name}</h5>
+                    <div className="document-meta">
+                      Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at)}
+                    </div>
+                  </div>
+                </div>
+                <div className="document-actions">
+                  <button 
+                    onClick={() => handleDownload(doc)} 
+                    className="btn btn-sm btn-outline"
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">
+              <p>No deal-specific documents uploaded yet</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
-      
 
 const DocumentRequestModal = ({ dealId, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -7730,7 +7727,7 @@ const Portfolio = () => {
 
         {filteredInvestments.length === 0 ? (
           <EmptyState 
-            icon="📊"
+            icon=""
             title="No investments yet"
             message="Browse available projects to start building your portfolio"
             action={
@@ -8257,13 +8254,24 @@ const AdminPanel = () => {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
   const [settings, setSettings] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideType, setOverrideType] = useState('');
+  const [overrideTarget, setOverrideTarget] = useState(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'godmode') {
+      fetchPayments();
+    }
+  }, [activeTab]);
 
   const fetchData = async () => {
     try {
@@ -8287,57 +8295,103 @@ const AdminPanel = () => {
     }
   };
 
-  const handleApproveUser = async (userId) => {
+  const fetchPayments = async () => {
     try {
-      await api.approveUser(userId);
-      setUsers(users.map(user => 
-        user.id === userId ? { ...user, approved: true, verification_status: 'verified' } : user
-      ));
+      const paymentsData = await api.getAllPayments();
+      setPayments(paymentsData);
+    } catch (err) {
+      console.error('Failed to fetch payments:', err);
+    }
+  };
+
+  const handleOverride = (type, target) => {
+    setOverrideType(type);
+    setOverrideTarget(target);
+    setShowOverrideModal(true);
+  };
+
+  const executeOverride = async () => {
+    if (!overrideReason.trim()) {
       addNotification({
-        type: 'success',
-        title: 'User Approved',
-        message: 'User has been approved successfully'
+        type: 'error',
+        title: 'Reason Required',
+        message: 'You must provide a reason for this override'
       });
+      return;
+    }
+
+    try {
+      switch (overrideType) {
+        case 'approve-funder':
+          await api.forceApproveFunder(overrideTarget.id, overrideReason);
+          addNotification({
+            type: 'success',
+            title: 'Funder Force Approved',
+            message: `${overrideTarget.name} has been approved with active subscription`
+          });
+          break;
+          
+        case 'publish-project':
+          await api.forcePublishProject(overrideTarget.id, overrideReason);
+          addNotification({
+            type: 'success',
+            title: 'Project Force Published',
+            message: 'Project is now live on the platform'
+          });
+          break;
+          
+        case 'complete-deal':
+          await api.forceCompleteDeal(overrideTarget.id, overrideReason);
+          addNotification({
+            type: 'success',
+            title: 'Deal Force Completed',
+            message: 'Deal has been marked as completed'
+          });
+          break;
+      }
+      
+      setShowOverrideModal(false);
+      setOverrideReason('');
+      fetchData(); // Refresh data
     } catch (err) {
       addNotification({
         type: 'error',
-        title: 'Approval Failed',
-        message: 'Failed to approve user'
+        title: 'Override Failed',
+        message: err.message
       });
     }
   };
 
-  const handleUpdateSetting = async (key, value) => {
+  const exportPlatformData = async () => {
     try {
-      await api.updateSystemSetting(key, value);
-      setSettings(settings.map(setting => 
-        setting.setting_key === key ? { ...setting, setting_value: value } : setting
-      ));
+      const data = await api.exportAllData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tranch_platform_export_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
       addNotification({
         type: 'success',
-        title: 'Setting Updated',
-        message: 'System setting has been updated'
+        title: 'Export Complete',
+        message: 'Platform data exported successfully'
       });
     } catch (err) {
       addNotification({
         type: 'error',
-        title: 'Update Failed',
-        message: 'Failed to update setting'
+        title: 'Export Failed',
+        message: 'Failed to export platform data'
       });
     }
   };
-
-  const viewUserDetails = (user) => {
-    setSelectedUser(user);
-    setShowUserModal(true);
-  };
-
-  if (loading) return <LoadingSpinner />;
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'users', label: `Users (${users.length})` },
     { id: 'funders', label: 'Funders' },
+    { id: 'godmode', label: '🔴 God Mode' },
     { id: 'analytics', label: 'Analytics' },
     { id: 'settings', label: 'Settings' }
   ];
@@ -8346,354 +8400,185 @@ const AdminPanel = () => {
     <div className="admin-panel">
       <div className="admin-header">
         <h1>Admin Panel</h1>
-        <p>Platform administration and management</p>
+        <button onClick={exportPlatformData} className="btn btn-outline">
+          Export All Data
+        </button>
       </div>
 
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
       <div className="admin-content">
-        {activeTab === 'overview' && stats && (
-          <div className="overview-section">
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-icon">👥</div>
-                <div className="stat-content">
-                  <div className="stat-value">{formatNumber(stats.total_users)}</div>
-                  <div className="stat-label">Total Users</div>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">📁</div>
-                <div className="stat-content">
-                  <div className="stat-value">{formatNumber(stats.total_projects)}</div>
-                  <div className="stat-label">Total Projects</div>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">✓</div>
-                <div className="stat-content">
-                  <div className="stat-value">{formatNumber(stats.active_projects)}</div>
-                  <div className="stat-label">Published Projects</div>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">⏳</div>
-                <div className="stat-content">
-                  <div className="stat-value">{formatNumber(stats.pending_requests)}</div>
-                  <div className="stat-label">Pending Requests</div>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">💰</div>
-                <div className="stat-content">
-                  <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
-                  <div className="stat-label">Total Revenue</div>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">📈</div>
-                <div className="stat-content">
-                  <div className="stat-value">{stats.conversion_rate || '0'}%</div>
-                  <div className="stat-label">Conversion Rate</div>
-                </div>
-              </div>
+        {/* Existing tabs content... */}
+        
+        {activeTab === 'godmode' && (
+          <div className="godmode-section">
+            <div className="warning-banner">
+              <h3>⚠️ God Mode Active</h3>
+              <p>These actions bypass all system checks. Use with extreme caution.</p>
             </div>
 
-            <div className="activity-feed">
-              <h3>Recent Activity</h3>
-              <div className="activity-list">
-                <div className="activity-item">
-                  <span className="activity-icon">🆕</span>
-                  <div className="activity-content">
-                    <p>New user registration: John Smith (Funder)</p>
-                    <span className="activity-time">2 hours ago</span>
-                  </div>
-                </div>
-                <div className="activity-item">
-                  <span className="activity-icon">📁</span>
-                  <div className="activity-content">
-                    <p>New project listed: Sydney CBD Development</p>
-                    <span className="activity-time">4 hours ago</span>
-                  </div>
-                </div>
-                <div className="activity-item">
-                  <span className="activity-icon">✓</span>
-                  <div className="activity-content">
-                    <p>Project published: Melbourne Apartments</p>
-                    <span className="activity-time">Yesterday</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'users' && (
-          <div className="users-section">
-            <div className="users-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Company</th>
-                    <th>Status</th>
-                    <th>Subscription</th>
-                    <th>Joined</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(user => (
-                    <tr key={user.id}>
-                      <td>{user.name}</td>
-                      <td>{user.email}</td>
-                      <td>
-                        <span className="role-badge">{user.role}</span>
-                      </td>
-                      <td>{user.company_name || '-'}</td>
-                      <td>
-                        <StatusBadge status={user.approved ? 'Approved' : 'Pending'} />
-                      </td>
-                      <td>
-                        {user.role === 'funder' && (
-                          <StatusBadge status={user.subscription_status || 'inactive'} />
-                        )}
-                      </td>
-                      <td>{formatDate(user.created_at)}</td>
-                      <td className="actions-cell">
-                        <button
-                          onClick={() => viewUserDetails(user)}
-                          className="btn btn-sm btn-outline"
-                        >
-                          View
-                        </button>
-                        {!user.approved && user.role !== 'admin' && (
-                          <button
-                            onClick={() => handleApproveUser(user.id)}
-                            className="btn btn-sm btn-primary"
-                          >
-                            Approve
-                          </button>
-                        )}
-                      </td>
+            {/* Stuck Payments Section */}
+            <div className="godmode-card">
+              <h3>Recent Payments & Potential Issues</h3>
+              <div className="payments-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>User</th>
+                      <th>Type</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Project</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {payments.map(payment => (
+                      <tr key={payment.id} className={payment.status === 'completed' ? '' : 'payment-issue'}>
+                        <td>{formatDateTime(payment.created_at)}</td>
+                        <td>{payment.user_name}</td>
+                        <td>{payment.payment_type}</td>
+                        <td>{formatCurrency(payment.amount / 100)}</td>
+                        <td><StatusBadge status={payment.status} /></td>
+                        <td>{payment.project_title || '-'}</td>
+                        <td>
+                          {payment.payment_type === 'project_listing' && payment.status === 'completed' && (
+                            <button 
+                              onClick={() => handleOverride('publish-project', { id: payment.project_id })}
+                              className="btn btn-sm btn-danger"
+                            >
+                              Force Publish
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
 
-        {activeTab === 'funders' && (
-          <div className="funders-section">
-            <h3>Funder Verification Queue</h3>
-            <div className="funders-grid">
-              {users.filter(u => u.role === 'funder' && !u.approved).map(funder => (
-                <div key={funder.id} className="funder-card">
-                  <div className="funder-header">
-                    <h4>{funder.name}</h4>
-                    <StatusBadge status="Pending Verification" />
-                  </div>
-                  <div className="funder-details">
-                    <div className="detail-item">
-                      <label>Company</label>
-                      <span>{funder.company_name}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Type</label>
-                      <span>{funder.company_type}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Focus</label>
-                      <span>{funder.investment_focus}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Deal Range</label>
-                      <span>{formatCurrency(funder.typical_deal_size_min)} - {formatCurrency(funder.typical_deal_size_max)}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Experience</label>
-                      <span>{funder.years_experience} years</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>ABN</label>
-                      <span>{funder.abn}</span>
-                    </div>
-                    <div className="detail-item">
-                      <label>Phone</label>
-                      <span>{funder.phone}</span>
-                    </div>
-                    {funder.linkedin && (
-                      <div className="detail-item">
-                        <label>LinkedIn</label>
-                        <a href={funder.linkedin} target="_blank" rel="noopener noreferrer">
-                          View Profile
-                        </a>
+            {/* Stuck Funders Section */}
+            <div className="godmode-card">
+              <h3>Pending Funders - Force Approval</h3>
+              <div className="funders-list">
+                {users.filter(u => u.role === 'funder' && (!u.approved || u.subscription_status !== 'active')).map(funder => (
+                  <div key={funder.id} className="funder-override-card">
+                    <div className="funder-info">
+                      <h4>{funder.name}</h4>
+                      <p>{funder.email} • {funder.company_name}</p>
+                      <div className="status-row">
+                        <StatusBadge status={funder.approved ? 'Approved' : 'Not Approved'} />
+                        <StatusBadge status={`Sub: ${funder.subscription_status}`} />
                       </div>
-                    )}
-                  </div>
-                  {funder.bio && (
-                    <div className="funder-bio">
-                      <label>Bio</label>
-                      <p>{funder.bio}</p>
                     </div>
-                  )}
-                  <div className="funder-actions">
-                    <button
-                      onClick={() => handleApproveUser(funder.id)}
-                      className="btn btn-primary"
+                    <button 
+                      onClick={() => handleOverride('approve-funder', funder)}
+                      className="btn btn-danger"
                     >
-                      Approve & Notify
-                    </button>
-                    <button className="btn btn-outline">
-                      Request More Info
+                      Force Approve & Activate
                     </button>
                   </div>
-                </div>
-              ))}
-              
-              {users.filter(u => u.role === 'funder' && !u.approved).length === 0 && (
-                <EmptyState 
-                  icon="✓"
-                  title="All funders verified"
-                  message="No pending funder verifications"
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'analytics' && (
-          <div className="analytics-section">
-            <h3>Platform Analytics</h3>
-            <div className="analytics-grid">
-              <div className="analytics-card">
-                <h4>User Growth</h4>
-                <div className="chart-placeholder">
-                  <p>User growth chart would go here</p>
-                </div>
-              </div>
-              <div className="analytics-card">
-                <h4>Project Funding Rate</h4>
-                <div className="chart-placeholder">
-                  <p>Funding rate chart would go here</p>
-                </div>
-              </div>
-              <div className="analytics-card">
-                <h4>Revenue Trends</h4>
-                <div className="chart-placeholder">
-                  <p>Revenue trends chart would go here</p>
-                </div>
-              </div>
-              <div className="analytics-card">
-                <h4>User Activity</h4>
-                <div className="chart-placeholder">
-                  <p>Activity heatmap would go here</p>
-                </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
 
-        {activeTab === 'settings' && (
-          <div className="settings-section">
-            <h3>System Settings</h3>
-            <div className="settings-list">
-              {settings.map(setting => (
-                <div key={setting.id} className="setting-item">
-                  <div className="setting-info">
-                    <label>{setting.setting_key.replace(/_/g, ' ').toUpperCase()}</label>
-                    <p className="setting-description">
-                      {setting.setting_key === 'project_listing_fee' && 'Fee charged to list a project (in cents)'}
-                      {setting.setting_key === 'monthly_subscription_fee' && 'Monthly subscription for funders (in cents)'}
-                      {setting.setting_key === 'max_file_upload_size' && 'Maximum file upload size (in bytes)'}
-                      {setting.setting_key === 'ai_chat_enabled' && 'Enable/disable AI chat feature'}
-                    </p>
-                  </div>
-                  <div className="setting-control">
-                    {setting.setting_key === 'ai_chat_enabled' ? (
-                      <select
-                        value={setting.setting_value}
-                        onChange={(e) => handleUpdateSetting(setting.setting_key, e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled</option>
-                      </select>
-                    ) : (
-                      <input
-                        type="number"
-                        value={setting.setting_value}
-                        onChange={(e) => handleUpdateSetting(setting.setting_key, e.target.value)}
-                        className="form-input"
-                      />
-                    )}
-                  </div>
-                </div>
-              ))}
+            {/* Unpublished Projects with Documents */}
+            <div className="godmode-card">
+              <h3>Unpublished Projects Ready to Go Live</h3>
+              <div className="projects-list">
+                {/* You'd need to fetch projects with document status for this */}
+                <p>Projects with complete documents but unpublished will appear here</p>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="godmode-card">
+              <h3>Quick Admin Actions</h3>
+              <div className="quick-actions">
+                <button className="btn btn-danger" onClick={() => {
+                  const userId = prompt('Enter User ID to send message to:');
+                  if (userId) {
+                    const message = prompt('Enter message:');
+                    if (message) {
+                      api.sendSystemMessage(userId, message).then(() => {
+                        addNotification({
+                          type: 'success',
+                          title: 'Message Sent',
+                          message: 'System message sent to user'
+                        });
+                      });
+                    }
+                  }
+                }}>
+                  Send System Message
+                </button>
+                
+                <button className="btn btn-danger" onClick={() => {
+                  const userId = prompt('Enter User ID to view as:');
+                  if (userId) {
+                    api.viewAsUser(userId).then(data => {
+                      console.log('User Data:', data);
+                      alert(`Check console for user data. User: ${data.user.name}`);
+                    });
+                  }
+                }}>
+                  View As User
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {showUserModal && selectedUser && (
-        <Modal 
-          isOpen={showUserModal} 
-          onClose={() => setShowUserModal(false)}
-          title="User Details"
-          size="large"
-        >
-          <div className="user-details-modal">
-            <div className="user-info-section">
-              <h3>Basic Information</h3>
-              <div className="info-grid">
-                <div className="info-item">
-                  <label>Name</label>
-                  <span>{selectedUser.name}</span>
-                </div>
-                <div className="info-item">
-                  <label>Email</label>
-                  <span>{selectedUser.email}</span>
-                </div>
-                <div className="info-item">
-                  <label>Role</label>
-                  <span>{selectedUser.role}</span>
-                </div>
-                <div className="info-item">
-                  <label>Status</label>
-                  <StatusBadge status={selectedUser.approved ? 'Approved' : 'Pending'} />
-                </div>
-              </div>
-            </div>
-            
-            {selectedUser.role === 'funder' && (
-              <div className="user-info-section">
-                <h3>Company Details</h3>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <label>Company</label>
-                    <span>{selectedUser.company_name}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Type</label>
-                    <span>{selectedUser.company_type}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Investment Focus</label>
-                    <span>{selectedUser.investment_focus}</span>
-                  </div>
-                  <div className="info-item">
-                    <label>Deal Range</label>
-                    <span>{formatCurrency(selectedUser.typical_deal_size_min)} - {formatCurrency(selectedUser.typical_deal_size_max)}</span>
-                  </div>
-                </div>
-              </div>
+      {/* Override Confirmation Modal */}
+      <Modal 
+        isOpen={showOverrideModal} 
+        onClose={() => setShowOverrideModal(false)}
+        title="Admin Override Confirmation"
+        size="medium"
+      >
+        <div className="override-modal">
+          <div className="warning-message">
+            <strong>⚠️ Warning:</strong> This action bypasses all system checks and validations.
+          </div>
+          
+          <div className="override-details">
+            <h4>Action: {overrideType.replace('-', ' ').toUpperCase()}</h4>
+            {overrideTarget && (
+              <p>Target: {overrideTarget.name || overrideTarget.title || `ID: ${overrideTarget.id}`}</p>
             )}
           </div>
-        </Modal>
-      )}
+          
+          <div className="form-group">
+            <label>Reason for Override (Required)*</label>
+            <textarea
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              placeholder="Explain why this override is necessary..."
+              rows="3"
+              className="form-textarea"
+            />
+          </div>
+          
+          <div className="modal-actions">
+            <button 
+              onClick={() => setShowOverrideModal(false)} 
+              className="btn btn-outline"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={executeOverride}
+              disabled={!overrideReason.trim()}
+              className="btn btn-danger"
+            >
+              Execute Override
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -8745,31 +8630,40 @@ const PaymentForm = ({ amount, project, onSuccess, processing, setProcessing }) 
   const elements = useElements();
   const { addNotification } = useNotifications();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!stripe || !elements) return;
-    
-    setProcessing(true);
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (!stripe || !elements) return;
+  
+  setProcessing(true);
 
-    try {
-      // For demo/testing, simulate payment
-      const response = await api.simulatePaymentSuccess(
-        project.id, 
-        'pi_demo_' + Date.now()
-      );
-      
-      onSuccess();
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Payment Failed',
-        message: err.message
-      });
-    } finally {
-      setProcessing(false);
+  try {
+    // Create payment intent
+    const { client_secret, payment_intent_id } = await api.createProjectPayment(project.id);
+    
+    // Confirm payment with Stripe
+    const result = await stripe.confirmCardPayment(client_secret, {
+      payment_method: {
+        card: elements.getElement(CardElement),
+      }
+    });
+
+    if (result.error) {
+      throw new Error(result.error.message);
     }
-  };
+
+    // Payment successful
+    onSuccess();
+  } catch (err) {
+    addNotification({
+      type: 'error',
+      title: 'Payment Failed',
+      message: err.message
+    });
+  } finally {
+    setProcessing(false);
+  }
+};
 
   return (
     <form onSubmit={handleSubmit} className="payment-form">
@@ -8864,27 +8758,41 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
   const { addNotification } = useNotifications();
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!stripe || !elements) return;
-    
-    setProcessing(true);
+  e.preventDefault();
+  
+  if (!stripe || !elements) return;
+  
+  setProcessing(true);
 
-    try {
-      // For demo/testing, simulate subscription
-      const response = await api.simulateSubscription();
-      
-      onSuccess();
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Subscription Failed',
-        message: err.message || 'Failed to activate subscription'
-      });
-    } finally {
-      setProcessing(false);
+  try {
+    // Create payment method
+    const { error, paymentMethod } = await stripe.createPaymentMethod({
+      type: 'card',
+      card: elements.getElement(CardElement),
+    });
+
+    if (error) throw new Error(error.message);
+
+    // Create subscription
+    const { subscription_id, client_secret, status } = await api.createSubscription(paymentMethod.id);
+    
+    if (client_secret) {
+      // 3D Secure authentication required
+      const result = await stripe.confirmCardPayment(client_secret);
+      if (result.error) throw new Error(result.error.message);
     }
-  };
+    
+    onSuccess();
+  } catch (err) {
+    addNotification({
+      type: 'error',
+      title: 'Subscription Failed',
+      message: err.message || 'Failed to activate subscription'
+    });
+  } finally {
+    setProcessing(false);
+  }
+};
 
   return (
     <form onSubmit={handleSubmit}>

@@ -9281,3 +9281,75 @@ td {
   color: white !important;
   opacity: 0.8;  /* Slightly transparent for subtitle */
 }
+
+
+/* God Mode Styles */
+.godmode-section {
+  padding: 20px;
+}
+
+.warning-banner {
+  background: #fef2f2;
+  border: 2px solid #ef4444;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.warning-banner h3 {
+  color: #dc2626;
+  margin: 0 0 10px 0;
+}
+
+.godmode-card {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  margin-bottom: 30px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.payment-issue {
+  background-color: #fef3c7;
+}
+
+.funder-override-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.status-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.override-modal .warning-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  color: #991b1b;
+}
