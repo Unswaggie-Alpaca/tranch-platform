@@ -1060,42 +1060,6 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
     }
   };
 
-  const pollPaymentStatus = async (projectId) => {
-    let attempts = 0;
-    const maxAttempts = 30; // 30 seconds
-    
-    const checkStatus = async () => {
-      try {
-        const project = await api.getProject(projectId);
-        
-        if (project.payment_status === 'paid') {
-          addNotification({
-            type: 'success',
-            title: 'Project Published!',
-            message: 'Your project is now live on the platform.'
-          });
-          onSuccess();
-          return;
-        }
-        
-        attempts++;
-        if (attempts < maxAttempts) {
-          setTimeout(checkStatus, 1000); // Check every second
-        } else {
-          addNotification({
-            type: 'warning',
-            title: 'Processing Delayed',
-            message: 'Payment processing is taking longer than expected. You will be notified once complete.'
-          });
-          setProcessing(false);
-        }
-      } catch (err) {
-        console.error('Status check failed:', err);
-      }
-    };
-    
-    setTimeout(checkStatus, 2000); // Start checking after 2 seconds
-  };
 
   return (
     <form onSubmit={handleSubmit} className="payment-form">
@@ -9358,43 +9322,7 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
     }
   };
 
-  const pollSubscriptionStatus = async () => {
-    let attempts = 0;
-    const maxAttempts = 30; // 30 seconds
-    
-    const checkStatus = async () => {
-      try {
-        await refreshUser();
-        const updatedUser = await api.getCurrentUser();
-        
-        if (updatedUser.user.subscription_status === 'active' && updatedUser.user.approved) {
-          addNotification({
-            type: 'success',
-            title: 'Subscription Active!',
-            message: 'Your subscription is now active and you have full access.'
-          });
-          onSuccess();
-          return;
-        }
-        
-        attempts++;
-        if (attempts < maxAttempts) {
-          setTimeout(checkStatus, 1000); // Check every second
-        } else {
-          addNotification({
-            type: 'warning',
-            title: 'Processing Delayed',
-            message: 'Subscription processing is taking longer than expected. Our team will verify and activate your account shortly.'
-          });
-          setProcessing(false);
-        }
-      } catch (err) {
-        console.error('Status check failed:', err);
-      }
-    };
-    
-    setTimeout(checkStatus, 2000); // Start checking after 2 seconds
-  };
+
 
   return (
     <form onSubmit={handleSubmit}>
