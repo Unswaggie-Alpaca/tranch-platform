@@ -625,7 +625,17 @@ db.run(`CREATE TABLE IF NOT EXISTS notifications (
     ('monthly_subscription_fee', '29900'),
     ('max_file_upload_size', '10485760'),
     ('ai_chat_enabled', 'true')`);
-
+// Admin overrides tracking table
+  db.run(`CREATE TABLE IF NOT EXISTS admin_overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER NOT NULL,
+    action_type TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    target_type TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_id) REFERENCES users (id)
+  )`);
     
 });
 
@@ -1110,9 +1120,15 @@ app.get('/api/projects/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
     
-    // Check access permissions for funders
+  // Check access permissions for funders
     if (req.user.role === 'funder' && project.payment_status !== 'paid' && !project.access_status) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Don't show payment_status details to non-owners
+    if (req.user.role === 'funder' && project.payment_status !== 'paid') {
+      delete project.payment_status;
+      delete project.stripe_payment_intent_id;
     }
     
     res.json(project);
@@ -1650,17 +1666,47 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
 // ================================
 
 // Create project payment
+// Create project payment
 app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
   try {
     const { project_id } = req.body;
     const amount = 49900; // $499 in cents
 
+    // Check if project already has a pending or completed payment
+    const existingPayment = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM payments 
+         WHERE project_id = ? 
+         AND payment_type = 'project_listing'
+         AND status IN ('pending', 'completed')
+         ORDER BY created_at DESC LIMIT 1`,
+        [project_id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (existingPayment) {
+      if (existingPayment.status === 'completed') {
+        return res.status(400).json({ error: 'Project already paid for' });
+      }
+      // Return existing pending payment
+      return res.json({
+        client_secret: existingPayment.stripe_payment_intent_id, // This should be stored properly
+        payment_intent_id: existingPayment.stripe_payment_intent_id,
+        amount: existingPayment.amount,
+        status: 'pending'
+      });
+    }
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: 'aud',
       metadata: {
-        project_id,
-        user_id: req.user.id,
+        project_id: String(project_id),
+        user_id: String(req.user.id),
         payment_type: 'project_listing'
       },
       automatic_payment_methods: {
@@ -1668,15 +1714,35 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       },
     });
 
-    db.run(
-      'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type) VALUES (?, ?, ?, ?, ?)',
-      [req.user.id, project_id, paymentIntent.id, amount, 'project_listing']
-    );
+    // Insert payment record with pending status
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.user.id, project_id, paymentIntent.id, amount, 'project_listing', 'pending'],
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
+        }
+      );
+    });
+
+    // Update project to pending payment status
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE projects SET payment_status = ?, stripe_payment_intent_id = ? WHERE id = ?',
+        ['pending', paymentIntent.id, project_id],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
 
     res.json({
       client_secret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
-      amount: amount
+      amount: amount,
+      status: 'pending'
     });
   } catch (error) {
     console.error('Payment creation error:', error);
@@ -1689,6 +1755,34 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
   try {
     const { payment_method_id } = req.body;
+    
+    // Check if user already has a pending or active subscription payment
+    const existingPayment = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM payments 
+         WHERE user_id = ? 
+         AND payment_type = 'subscription'
+         AND status IN ('pending', 'completed')
+         ORDER BY created_at DESC LIMIT 1`,
+        [req.user.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (existingPayment) {
+      if (existingPayment.status === 'completed' || req.user.subscription_status === 'active') {
+        return res.status(400).json({ error: 'Already have an active subscription' });
+      }
+      // Return existing pending payment
+      return res.json({
+        subscription_id: existingPayment.stripe_payment_intent_id,
+        status: 'pending',
+        message: 'Subscription payment is being processed'
+      });
+    }
     
     let customerId = req.user.stripe_customer_id;
     
@@ -1734,21 +1828,39 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
         save_default_payment_method: 'on_subscription' 
       },
       expand: ['latest_invoice.payment_intent'],
+      metadata: {
+        user_id: String(req.user.id),
+        user_email: req.user.email
+      }
     });
 
-    if (subscription.status === 'active' || subscription.status === 'trialing') {
-      await new Promise((resolve, reject) => {
-        db.run(
-          'UPDATE users SET subscription_status = ? WHERE id = ?', 
-          ['active', req.user.id], 
-          (err) => err ? reject(err) : resolve()
-        );
-      });
-    }
+    // Create payment record with pending status
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT INTO payments (user_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?)',
+        [req.user.id, subscription.id, 29900, 'subscription', 'pending'],
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
+        }
+      );
+    });
+
+    // Update user subscription status to pending
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE users SET subscription_status = ? WHERE id = ?',
+        ['pending', req.user.id],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
 
     const response = {
       subscription_id: subscription.id,
-      status: subscription.status
+      status: 'pending'
     };
 
     if (subscription.latest_invoice?.payment_intent?.client_secret) {
@@ -2271,7 +2383,7 @@ app.put('/api/admin/system-settings/:key', authenticateToken, requireRole(['admi
 // STRIPE WEBHOOKS
 // ================================
 
-app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
+app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
 
@@ -2283,76 +2395,160 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, 
   }
 
   console.log('Stripe webhook received:', event.type);
+console.log('Stripe webhook received:', event.type);
 
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      const paymentIntent = event.data.object;
-      console.log('Payment intent succeeded:', paymentIntent.id, 'Project ID:', paymentIntent.metadata.project_id);
-      
-      if (paymentIntent.metadata.payment_type === 'project_listing') {
-        db.run(
-          'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ? WHERE id = ?',
-          ['paid', paymentIntent.id, paymentIntent.metadata.project_id],
-          function(err) {
-            if (err) {
-              console.error('Failed to update project:', err);
-            } else {
-              console.log('Project updated successfully. Rows changed:', this.changes);
-            }
-          }
-        );
-        
-        db.run(
-          'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
-          ['completed', paymentIntent.id],
-          function(err) {
-            if (err) {
-              console.error('Failed to update payment:', err);
-            }
-          }
-        );
+  // Wrap your database updates in a retry mechanism
+  const retryDbOperation = async (operation, maxRetries = 3) => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await operation();
+      } catch (err) {
+        if (err.code === 'SQLITE_BUSY' && i < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+          continue;
+        }
+        throw err;
       }
-      break;
+    }
+  };
 
-    case 'invoice.payment_succeeded':
-      const invoice = event.data.object;
-      if (invoice.subscription) {
+  try {
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        const paymentIntent = event.data.object;
+        console.log('Payment intent succeeded:', paymentIntent.id);
+        console.log('Metadata:', paymentIntent.metadata);
+        
+        if (paymentIntent.metadata.payment_type === 'project_listing') {
+          const projectId = paymentIntent.metadata.project_id;
+          
+          // Update project status
+          await new Promise((resolve, reject) => {
+            db.run(
+              'UPDATE projects SET payment_status = ?, visible = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+              ['paid', projectId],
+              function(err) {
+                if (err) {
+                  console.error('Failed to update project:', err);
+                  reject(err);
+                } else {
+                  console.log('Project updated successfully. Project ID:', projectId, 'Rows changed:', this.changes);
+                  resolve();
+                }
+              }
+            );
+          });
+          
+          // Update payment status
+          await new Promise((resolve, reject) => {
+            db.run(
+              'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
+              ['completed', paymentIntent.id],
+              function(err) {
+                if (err) {
+                  console.error('Failed to update payment:', err);
+                  reject(err);
+                } else {
+                  console.log('Payment updated successfully. Rows changed:', this.changes);
+                  resolve();
+                }
+              }
+            );
+          });
+        }
+        break;
+
+      case 'payment_intent.payment_failed':
+        const failedIntent = event.data.object;
+        if (failedIntent.metadata.payment_type === 'project_listing') {
+          await new Promise((resolve, reject) => {
+            db.run(
+              'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
+              ['failed', failedIntent.id],
+              (err) => err ? reject(err) : resolve()
+            );
+          });
+          
+          await new Promise((resolve, reject) => {
+            db.run(
+              'UPDATE projects SET payment_status = ? WHERE id = ?',
+              ['unpaid', failedIntent.metadata.project_id],
+              (err) => err ? reject(err) : resolve()
+            );
+          });
+        }
+        break;
+
+      case 'invoice.payment_succeeded':
+        const invoice = event.data.object;
+        if (invoice.subscription) {
+          await new Promise((resolve, reject) => {
+            db.get(
+              'SELECT * FROM users WHERE stripe_customer_id = ?', 
+              [invoice.customer], 
+              (err, user) => {
+                if (err) {
+                  reject(err);
+                } else if (user) {
+                  // Update user subscription status
+                  db.run(
+                    'UPDATE users SET subscription_status = ?, approved = 1, verification_status = ? WHERE id = ?', 
+                    ['active', 'verified', user.id],
+                    (updateErr) => {
+                      if (updateErr) {
+                        console.error('Failed to update user subscription:', updateErr);
+                        reject(updateErr);
+                      } else {
+                        console.log('User subscription activated:', user.id);
+                        
+                        // Update payment record
+                        db.run(
+                          'UPDATE payments SET status = ? WHERE user_id = ? AND payment_type = ? AND status = ?',
+                          ['completed', user.id, 'subscription', 'pending'],
+                          (paymentErr) => {
+                            if (paymentErr) {
+                              console.error('Failed to update payment:', paymentErr);
+                            }
+                            resolve();
+                          }
+                        );
+                      }
+                    }
+                  );
+                } else {
+                  resolve();
+                }
+              }
+            );
+          });
+        }
+        break;
+
+      case 'customer.subscription.deleted':
+        const subscription = event.data.object;
         db.get(
           'SELECT * FROM users WHERE stripe_customer_id = ?', 
-          [invoice.customer], 
+          [subscription.customer], 
           (err, user) => {
             if (user) {
               db.run(
                 'UPDATE users SET subscription_status = ? WHERE id = ?', 
-                ['active', user.id]
+                ['cancelled', user.id]
               );
             }
           }
         );
-      }
-      break;
+        break;
 
-    case 'customer.subscription.deleted':
-      const subscription = event.data.object;
-      db.get(
-        'SELECT * FROM users WHERE stripe_customer_id = ?', 
-        [subscription.customer], 
-        (err, user) => {
-          if (user) {
-            db.run(
-              'UPDATE users SET subscription_status = ? WHERE id = ?', 
-              ['cancelled', user.id]
-            );
-          }
-        }
-      );
-      break;
-
-    default:
-      console.log(`Unhandled event type ${event.type}`);
+      default:
+        console.log(`Unhandled event type ${event.type}`);
+    }
+    
+    res.json({received: true});
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
   }
-
-  res.json({received: true});
 });
 
 // ================================
