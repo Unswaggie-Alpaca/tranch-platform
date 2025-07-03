@@ -1873,39 +1873,202 @@ app.post('/api/admin/force-approve-funder/:id', authenticateToken, requireRole([
 });
 
 // Force publish a project (bypass payment)
-app.post('/api/admin/force-publish-project/:id', authenticateToken, requireRole(['admin']), (req, res) => {
-  const projectId = req.params.id;
-  const { reason } = req.body;
-  
-  db.run(
-    `UPDATE projects SET 
-     payment_status = 'paid',
-     visible = 1,
-     stripe_payment_intent_id = 'admin_override_' || datetime('now'),
-     updated_at = CURRENT_TIMESTAMP
-     WHERE id = ?`,
-    [projectId],
-    function(err) {
+app.get('/api/admin/unpaid-projects', authenticateToken, requireRole(['admin']), (req, res) => {
+  db.all(
+    `SELECT p.*, u.name as borrower_name, u.email as borrower_email,
+            pay.stripe_payment_intent_id, pay.status as payment_status,
+            pay.created_at as payment_date, pay.amount as payment_amount
+     FROM projects p
+     JOIN users u ON p.borrower_id = u.id
+     LEFT JOIN payments pay ON p.id = pay.project_id
+     WHERE p.payment_status = 'unpaid'
+     ORDER BY p.created_at DESC`,
+    (err, projects) => {
       if (err) {
-        return res.status(500).json({ error: 'Failed to force publish' });
+        console.error('Failed to fetch unpaid projects:', err);
+        return res.status(500).json({ error: 'Failed to fetch projects' });
       }
-      
-      // Create payment record for tracking
-      db.run(
-        `INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status)
-         SELECT borrower_id, ?, 'admin_override_' || datetime('now'), 0, 'project_listing', 'admin_override'
-         FROM projects WHERE id = ?`,
-        [projectId, projectId]
-      );
-      
-      console.log(`ADMIN OVERRIDE: Force published project ${projectId}. Reason: ${reason}`);
-      
-      res.json({ 
-        message: 'Project force published',
-        changes: this.changes 
-      });
+      res.json(projects);
     }
   );
+});
+
+// Check Stripe payment status
+app.post('/api/admin/check-stripe-payment/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  
+  try {
+    // Get payment intent from database
+    const payment = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM payments WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`,
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!payment || !payment.stripe_payment_intent_id) {
+      return res.json({ 
+        hasPayment: false, 
+        message: 'No payment found for this project' 
+      });
+    }
+    
+    // Check payment status in Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment.stripe_payment_intent_id);
+    
+    res.json({
+      hasPayment: true,
+      paymentStatus: paymentIntent.status,
+      amount: paymentIntent.amount,
+      created: new Date(paymentIntent.created * 1000),
+      paymentMethod: paymentIntent.payment_method,
+      stripePaymentId: paymentIntent.id
+    });
+  } catch (err) {
+    console.error('Stripe check error:', err);
+    res.status(500).json({ error: 'Failed to check Stripe payment' });
+  }
+});
+
+// Enhanced force publish with logging
+app.post('/api/admin/force-publish-project/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const projectId = req.params.id;
+  const { reason, stripePaymentVerified } = req.body;
+  
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    
+    // Update project status
+    db.run(
+      `UPDATE projects SET 
+       payment_status = 'paid',
+       visible = 1,
+       stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, 'admin_override_' || datetime('now')),
+       updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [projectId],
+      function(err) {
+        if (err) {
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Failed to update project' });
+        }
+        
+        // Log the override
+        db.run(
+          `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+           VALUES (?, 'force_publish', ?, 'project', ?)`,
+          [req.user.id, projectId, reason + (stripePaymentVerified ? ' [Stripe Payment Verified]' : '')],
+          (err) => {
+            if (err) console.error('Failed to log override:', err);
+          }
+        );
+        
+        // Update payment record if exists
+        db.run(
+          `UPDATE payments SET status = 'completed' 
+           WHERE project_id = ? AND status = 'pending'`,
+          [projectId]
+        );
+        
+        db.run('COMMIT');
+        
+        console.log(`ADMIN OVERRIDE: Force published project ${projectId}. Reason: ${reason}`);
+        
+        res.json({ 
+          message: 'Project force published',
+          changes: this.changes 
+        });
+      }
+    );
+  });
+});
+
+// Get admin override history
+app.get('/api/admin/override-history', authenticateToken, requireRole(['admin']), (req, res) => {
+  db.all(
+    `SELECT ao.*, u.name as admin_name 
+     FROM admin_overrides ao
+     JOIN users u ON ao.admin_id = u.id
+     ORDER BY ao.created_at DESC
+     LIMIT 100`,
+    (err, overrides) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to fetch override history' });
+      }
+      res.json(overrides);
+    }
+  );
+});
+
+// Sync Stripe payment status for a project
+app.post('/api/admin/sync-stripe-payment/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  
+  try {
+    // Get the latest payment for this project
+    const payment = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM payments 
+         WHERE project_id = ? AND stripe_payment_intent_id IS NOT NULL 
+         ORDER BY created_at DESC LIMIT 1`,
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!payment) {
+      return res.status(404).json({ error: 'No payment found for this project' });
+    }
+    
+    // Check Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment.stripe_payment_intent_id);
+    
+    if (paymentIntent.status === 'succeeded') {
+      // Update project and payment status
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        
+        db.run(
+          `UPDATE projects SET 
+           payment_status = 'paid',
+           visible = 1,
+           stripe_payment_intent_id = ?,
+           updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [paymentIntent.id, projectId]
+        );
+        
+        db.run(
+          `UPDATE payments SET status = 'completed' WHERE id = ?`,
+          [payment.id]
+        );
+        
+        db.run('COMMIT');
+        
+        res.json({ 
+          message: 'Payment synced successfully',
+          stripeStatus: paymentIntent.status,
+          projectUpdated: true
+        });
+      });
+    } else {
+      res.json({ 
+        message: 'Payment not succeeded in Stripe',
+        stripeStatus: paymentIntent.status,
+        projectUpdated: false
+      });
+    }
+  } catch (err) {
+    console.error('Sync error:', err);
+    res.status(500).json({ error: 'Failed to sync payment' });
+  }
 });
 
 // Force complete a deal
@@ -2104,6 +2267,10 @@ app.put('/api/admin/system-settings/:key', authenticateToken, requireRole(['admi
 // STRIPE WEBHOOKS
 // ================================
 
+// ================================
+// STRIPE WEBHOOKS
+// ================================
+
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -2115,18 +2282,34 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), (req, 
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  console.log('Stripe webhook received:', event.type);
+
   switch (event.type) {
     case 'payment_intent.succeeded':
       const paymentIntent = event.data.object;
+      console.log('Payment intent succeeded:', paymentIntent.id, 'Project ID:', paymentIntent.metadata.project_id);
+      
       if (paymentIntent.metadata.payment_type === 'project_listing') {
         db.run(
           'UPDATE projects SET payment_status = ?, visible = TRUE, stripe_payment_intent_id = ? WHERE id = ?',
-          ['paid', paymentIntent.id, paymentIntent.metadata.project_id]
+          ['paid', paymentIntent.id, paymentIntent.metadata.project_id],
+          function(err) {
+            if (err) {
+              console.error('Failed to update project:', err);
+            } else {
+              console.log('Project updated successfully. Rows changed:', this.changes);
+            }
+          }
         );
         
         db.run(
           'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
-          ['completed', paymentIntent.id]
+          ['completed', paymentIntent.id],
+          function(err) {
+            if (err) {
+              console.error('Failed to update payment:', err);
+            }
+          }
         );
       }
       break;
