@@ -2350,7 +2350,7 @@ const Dashboard = () => {
       {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id)
         .slice(0, 3)
         .map((project) => (
-          <MarketplaceProjectCard 
+          <FunderProjectCard 
             key={project.id} 
             project={project}
             onProjectUpdate={handleProjectUpdate}
@@ -2705,6 +2705,39 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
   const [showPreview, setShowPreview] = useState(false);
+  const [showAccessForm, setShowAccessForm] = useState(false);
+  const [accessMessage, setAccessMessage] = useState('');
+  const [requesting, setRequesting] = useState(false);
+
+  const handleRequestAccess = async () => {
+    setRequesting(true);
+    try {
+      await api.requestAccess(project.id, accessMessage.trim() || null);
+      
+      await api.sendEmailNotification('access_request_received', project.borrower_id, {
+        project_title: project.title,
+        funder_name: 'A verified funder'
+      });
+      
+      addNotification({
+        type: 'success',
+        title: 'Access Request Sent',
+        message: 'Your request has been sent to the developer.'
+      });
+      
+      setShowAccessForm(false);
+      setAccessMessage('');
+      if (onProjectUpdate) onProjectUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Request Failed',
+        message: err.message || 'Failed to send access request'
+      });
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   const handleEngage = async () => {
     try {
@@ -2800,184 +2833,46 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
             >
               ⏳ Request Pending
             </button>
-          ) : (
-            <button 
-              onClick={() => setShowPreview(true)}
-              className="btn-primary-clean full-width"
-            >
-              View Preview
-            </button>
-          )}
-        </div>
-      </div>
-
-      <ProjectPreviewModal
-        project={project}
-        isOpen={showPreview}
-        onClose={() => setShowPreview(false)}
-        onRequestAccess={onProjectUpdate}
-      />
-    </>
-  );
-};
-
-const MarketplaceProjectCard = ({ project, onProjectUpdate }) => {
-  const api = useApi();
-  const navigate = useNavigate();
-  const { addNotification } = useNotifications();
-  const [showAccessForm, setShowAccessForm] = useState(false);
-  const [accessMessage, setAccessMessage] = useState('');
-  const [requesting, setRequesting] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-
-  const handleRequestAccess = async () => {
-    setRequesting(true);
-    try {
-      await api.requestAccess(project.id, accessMessage.trim() || null);
-      
-      await api.sendEmailNotification('access_request_received', project.borrower_id, {
-        project_title: project.title,
-        funder_name: 'A verified funder'
-      });
-      
-      addNotification({
-        type: 'success',
-        title: 'Access Request Sent',
-        message: 'Your request has been sent to the developer.'
-      });
-      
-      setShowAccessForm(false);
-      setAccessMessage('');
-      if (onProjectUpdate) onProjectUpdate();
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Request Failed',
-        message: err.message || 'Failed to send access request'
-      });
-    } finally {
-      setRequesting(false);
-    }
-  };
-
-  const getRiskIndicator = () => {
-    const risks = [
-      project.market_risk_rating,
-      project.construction_risk_rating,
-      project.location_risk_rating
-    ].filter(r => r);
-    
-    if (risks.length === 0) return null;
-    
-    const riskMap = { 'low': 1, 'medium': 2, 'high': 3 };
-    const avgRisk = risks.reduce((sum, risk) => sum + (riskMap[risk] || 2), 0) / risks.length;
-    
-    if (avgRisk <= 1.5) return { level: 'LOW RISK', color: '#10b981' };
-    if (avgRisk <= 2.5) return { level: 'MEDIUM RISK', color: '#f59e0b' };
-    return { level: 'HIGH RISK', color: '#ef4444' };
-  };
-
-  const risk = getRiskIndicator();
-
-  return (
-    <>
-      <div className="project-card">
-        <div className="project-card-header">
-          <StatusBadge status="OPPORTUNITY" />
-          {risk && (
-            <span className="risk-badge" style={{ color: risk.color, fontSize: '12px', fontWeight: '600' }}>
-              {risk.level}
-            </span>
-          )}
-        </div>
-        
-        <h3 className="project-title">{project.title || 'Untitled Project'}</h3>
-        
-        <div className="project-location">
-          <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-          </svg>
-          <span>{project.suburb || 'Location not specified'}</span>
-        </div>
-        
-        <div className="project-info">
-          <div className="info-item">
-            <span className="label">LOAN AMOUNT</span>
-            <span className="value">{formatCurrency(project.loan_amount)}</span>
-          </div>
-          <div className="info-item">
-            <span className="label">TYPE</span>
-            <span className="value">{project.property_type || 'Not specified'}</span>
-          </div>
-        </div>
-
-        {/* Metrics Pills */}
-        <div className="project-metrics">
-          {project.lvr && (
-            <div className="metric-pill">
-              <span className="metric-label">LVR</span>
-              <span className="metric-value">{project.lvr.toFixed(1)}%</span>
-            </div>
-          )}
-          {project.expected_profit && project.total_project_cost && (
-            <div className="metric-pill">
-              <span className="metric-label">ROI</span>
-              <span className="metric-value">
-                {((project.expected_profit / project.total_project_cost) * 100).toFixed(1)}%
-              </span>
-            </div>
-          )}
-          {project.development_stage && (
-            <div className="metric-pill">
-              <span className="metric-label">Stage</span>
-              <span className="metric-value">{project.development_stage}</span>
-            </div>
-          )}
-        </div>
-        
-        <div className="project-actions">
-          {!showAccessForm ? (
+          ) : !showAccessForm ? (
             <>
               <button 
                 onClick={() => setShowPreview(true)}
-                className="btn btn-outline"
+                className="btn-text-clean"
               >
                 View Preview
               </button>
               <button 
                 onClick={() => setShowAccessForm(true)}
-                className="btn btn-primary"
+                className="btn-primary-clean"
               >
-                Request Full Access
+                Request Access
               </button>
             </>
           ) : (
-            <div className="access-request-inline">
+            <div className="access-form-inline">
               <textarea
                 value={accessMessage}
                 onChange={(e) => setAccessMessage(e.target.value)}
-                placeholder="Introduce yourself and your interest..."
-                className="message-textarea"
-                rows="3"
-                maxLength="500"
+                placeholder="Introduce yourself (optional)..."
+                className="access-message-input"
+                rows="2"
               />
-              <div className="character-count">{accessMessage.length}/500</div>
-              <div className="message-actions">
+              <div className="access-form-actions">
                 <button 
                   onClick={() => {
                     setShowAccessForm(false);
                     setAccessMessage('');
                   }}
-                  className="btn btn-sm btn-outline"
+                  className="btn-text-clean"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleRequestAccess}
                   disabled={requesting}
-                  className="btn btn-sm btn-primary"
+                  className="btn-primary-clean"
                 >
-                  {requesting ? 'Sending...' : 'Send Request'}
+                  {requesting ? 'Sending...' : 'Send'}
                 </button>
               </div>
             </div>
@@ -2994,6 +2889,8 @@ const MarketplaceProjectCard = ({ project, onProjectUpdate }) => {
     </>
   );
 };
+
+
 
 // ===========================
 // PROJECT CARD COMPONENT
@@ -3719,9 +3616,9 @@ const ProjectsPage = () => {
         }
       />
     ) : (
-      <div className="projects-grid">
+      <div className="projects-grid-clean">
         {filteredProjects.map((project) => (
-          <MarketplaceProjectCard 
+          <FunderProjectCard 
             key={project.id} 
             project={project} 
             onProjectUpdate={fetchProjects}
