@@ -77,9 +77,8 @@ const createApiClient = (getToken) => {
 
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
       
-      // First check if response is ok
+      // Handle non-OK responses
       if (!response.ok) {
-        // Try to get error message from response
         let errorMessage = `HTTP ${response.status}`;
         const contentType = response.headers.get('content-type');
         
@@ -88,11 +87,9 @@ const createApiClient = (getToken) => {
             const errorData = await response.json();
             errorMessage = errorData.error || errorMessage;
           } catch (e) {
-            // If JSON parsing fails, use status text
             errorMessage = response.statusText || errorMessage;
           }
         } else {
-          // Try to get text response for non-JSON errors
           try {
             const textError = await response.text();
             if (textError && textError.length < 200) {
@@ -106,17 +103,21 @@ const createApiClient = (getToken) => {
         throw new Error(errorMessage);
       }
 
-      // Handle empty responses (204 No Content, etc)
+      // Handle empty responses
       if (response.status === 204 || response.headers.get('content-length') === '0') {
-        return null;
+        return {};
       }
 
       // Try to parse JSON
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        try {
+          return await response.json();
+        } catch (e) {
+          console.warn('Failed to parse JSON response');
+          return {};
+        }
       } else {
-        // Return text for non-JSON responses
         const text = await response.text();
         console.warn('Non-JSON response received:', text);
         return { data: text };
@@ -140,15 +141,6 @@ const createApiClient = (getToken) => {
       method: 'POST',
       body: JSON.stringify(profileData),
     }),
-
-    // Deal-specific document endpoints
-uploadDealDocuments: (dealId, formData) => request(`/deals/${dealId}/documents`, {
-  method: 'POST',
-  body: formData,
-}),
-
-getDealDocuments: (dealId) => request(`/deals/${dealId}/documents`),
-
 
     // User profile endpoints
     getUserProfile: (userId) => request(`/users/${userId}/profile`),
@@ -182,109 +174,97 @@ getDealDocuments: (dealId) => request(`/deals/${dealId}/documents`),
     
     // Document download
     async downloadDocument(filePath) {
-  const token = await getToken();
-  // Extract just the filename from any path format
-  const filename = filePath.split('/').pop();
-  const response = await fetch(`${API_BASE_URL.replace('/api', '')}/uploads/${filename}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
-  
-  if (!response.ok) throw new Error('Download failed');
-  return response.blob();
-},
+      const token = await getToken();
+      const filename = filePath.split('/').pop();
+      const response = await fetch(`${API_BASE_URL.replace('/api', '')}/uploads/${filename}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Download failed');
+      return response.blob();
+    },
 
-// Add these API endpoints to your api client object in App.jsx
+    // Deal endpoints
+    getDeal: (dealId) => request(`/deals/${dealId}`),
+    createDeal: (projectId, accessRequestId) => request('/deals', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, access_request_id: accessRequestId }),
+    }),
+    completeDeal: (dealId) => request(`/deals/${dealId}/complete`, {
+      method: 'PUT',
+    }),
 
-// Deal endpoints
-getDeal: (dealId) => request(`/deals/${dealId}`),
-createDeal: (projectId, accessRequestId) => request('/deals', {
-  method: 'POST',
-  body: JSON.stringify({ project_id: projectId, access_request_id: accessRequestId }),
-}),
-completeDeal: (dealId) => request(`/deals/${dealId}/complete`, {
-  method: 'PUT',
-}),
+    // Deal documents
+    getDealDocuments: (dealId) => request(`/deals/${dealId}/documents`),
+    uploadDealDocuments: (dealId, formData) => request(`/deals/${dealId}/documents`, {
+      method: 'POST',
+      body: formData,
+    }),
+    downloadDealDocument: async (dealId, documentId) => {
+      const token = await getToken();
+      const response = await fetch(`${API_BASE_URL}/deals/${dealId}/documents/${documentId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Download failed');
+      return response.blob();
+    },
 
-// Deal documents
-getDealDocuments: (dealId) => request(`/deals/${dealId}/documents`),
-uploadDealDocuments: (dealId, formData) => request(`/deals/${dealId}/documents`, {
-  method: 'POST',
-  body: formData,
-}),
-downloadDealDocument: async (dealId, documentId) => {
-  const token = await getToken();
-  const response = await fetch(`${API_BASE_URL}/deals/${dealId}/documents/${documentId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
-  
-  if (!response.ok) throw new Error('Download failed');
-  return response.blob();
-},
+    // Document requests
+    getDocumentRequests: (dealId) => request(`/deals/${dealId}/document-requests`),
+    createDocumentRequest: (dealId, requestData) => request(`/deals/${dealId}/document-requests`, {
+      method: 'POST',
+      body: JSON.stringify(requestData),
+    }),
+    fulfillDocumentRequest: (requestId) => request(`/document-requests/${requestId}/fulfill`, {
+      method: 'PUT',
+    }),
 
-// Document requests
-getDocumentRequests: (dealId) => request(`/deals/${dealId}/document-requests`),
-createDocumentRequest: (dealId, requestData) => request(`/deals/${dealId}/document-requests`, {
-  method: 'POST',
-  body: JSON.stringify(requestData),
-}),
-fulfillDocumentRequest: (requestId) => request(`/document-requests/${requestId}/fulfill`, {
-  method: 'PUT',
-}),
+    // Deal comments
+    getDealComments: (dealId) => request(`/deals/${dealId}/comments`),
+    createDealComment: (dealId, commentData) => request(`/deals/${dealId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(commentData),
+    }),
 
-// Deal comments
-getDealComments: (dealId) => request(`/deals/${dealId}/comments`),
-createDealComment: (dealId, commentData) => request(`/deals/${dealId}/comments`, {
-  method: 'POST',
-  body: JSON.stringify(commentData),
-}),
+    getProjectDeals: (projectId) => request(`/projects/${projectId}/deals`),
+    getProjectDocumentsForDeal: (projectId) => request(`/projects/${projectId}/documents/deal`),
 
- getProjectDeals: (projectId) => request(`/projects/${projectId}/deals`),
+    // Proposals
+    getDealProposal: (dealId) => request(`/deals/${dealId}/proposal`),
+    createProposal: (dealId, proposalData) => request(`/deals/${dealId}/proposals`, {
+      method: 'POST',
+      body: JSON.stringify(proposalData),
+    }),
+    respondToProposal: (proposalId, response) => request(`/proposals/${proposalId}/respond`, {
+      method: 'PUT',
+      body: JSON.stringify(response),
+    }),
 
-  getProjectDocumentsForDeal: (projectId) => request(`/projects/${projectId}/documents/deal`),
-// Proposals
-getDealProposal: (dealId) => request(`/deals/${dealId}/proposal`),
-createProposal: (dealId, proposalData) => request(`/deals/${dealId}/proposals`, {
-  method: 'POST',
-  body: JSON.stringify(proposalData),
-}),
-respondToProposal: (proposalId, response) => request(`/proposals/${proposalId}/respond`, {
-  method: 'PUT',
-  body: JSON.stringify(response),
-}),
+    // Notifications
+    createNotification: (dealId, notificationData) => request(`/deals/${dealId}/notifications`, {
+      method: 'POST',
+      body: JSON.stringify(notificationData),
+    }),
+    getNotifications: () => request('/notifications'),
+    markNotificationRead: (notificationId) => request(`/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    }),
 
-// Notifications
-createNotification: (dealId, notificationData) => request(`/deals/${dealId}/notifications`, {
-  method: 'POST',
-  body: JSON.stringify(notificationData),
-}),
-getNotifications: () => request('/notifications'),
-markNotificationRead: (notificationId) => request(`/notifications/${notificationId}/read`, {
-  method: 'PUT',
-}),
-
-// Payment endpoints
-createProjectPayment: (projectId) => request('/payments/create-project-payment', {
-method: 'POST',
-body: JSON.stringify({ project_id: projectId }),
+    // Payment endpoints
+    createProjectPayment: (projectId) => request('/payments/create-project-payment', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId }),
     }),
     createSubscription: (paymentMethodId) => request('/payments/create-subscription', {
       method: 'POST',
       body: JSON.stringify({ payment_method_id: paymentMethodId }),
     }),
     cancelSubscription: () => request('/payments/cancel-subscription', {
-      method: 'POST',
-    }),
-    
-    // For development/testing
-    simulatePaymentSuccess: (projectId, paymentIntentId) => request('/payments/simulate-success', {
-      method: 'POST',
-      body: JSON.stringify({ project_id: projectId, payment_intent_id: paymentIntentId }),
-    }),
-    simulateSubscription: () => request('/payments/simulate-subscription', {
       method: 'POST',
     }),
 
@@ -342,49 +322,57 @@ body: JSON.stringify({ project_id: projectId }),
       body: JSON.stringify(preferences),
     }),
 
-    // Data export
-    exportUserData: () => request('/export/user-data'),
-    exportProjects: () => request('/export/projects'),
-    
-    // Account management
-    deleteAccount: (confirmation) => request('/account/delete', {
-      method: 'DELETE',
-      body: JSON.stringify({ confirmation }),
+    // Email notification endpoints
+    sendEmailNotification: (type, recipientId, data) => request('/notifications/email', {
+      method: 'POST',
+      body: JSON.stringify({ type, recipient_id: recipientId, data }),
     }),
 
-    // Account management
-deleteAccount: (confirmation) => request('/account/delete', {
-  method: 'DELETE',
-  body: JSON.stringify({ confirmation }),
-}),
+    // Contact info endpoints
+    getContactInfo: (userId) => request(`/users/${userId}/contact`),
+    shareContactInfo: (userId, targetUserId) => request('/users/share-contact', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, target_user_id: targetUserId }),
+    }),
 
-// Admin God Mode
-forceApproveFunder: (userId, reason) => request(`/admin/force-approve-funder/${userId}`, {
-  method: 'POST',
-  body: JSON.stringify({ reason }),
-}),
-forcePublishProject: (projectId, reason) => request(`/admin/force-publish-project/${projectId}`, {
-  method: 'POST',
-  body: JSON.stringify({ reason }),
-}),
-forceCompleteDeal: (dealId, reason) => request(`/admin/force-complete-deal/${dealId}`, {
-  method: 'POST',
-  body: JSON.stringify({ reason }),
-}),
-deleteProject: (projectId, reason) => request(`/admin/delete-project/${projectId}`, {
-  method: 'DELETE',
-  body: JSON.stringify({ reason }),
-}),
-getAllPayments: () => request('/admin/all-payments'),
-viewAsUser: (userId) => request(`/admin/view-as-user/${userId}`),
-sendSystemMessage: (userId, message) => request('/admin/send-system-message', {
-  method: 'POST',
-  body: JSON.stringify({ user_id: userId, message }),
-}),
-exportAllData: () => request('/admin/export-all-data'),
-  };  // <-- This closing bracket already exists, don't add another one
-
-};  // <-- This closing bracket already exists for createApiClient
+    // Admin God Mode - ENHANCED
+    getUnpaidProjects: () => request('/admin/unpaid-projects'),
+    forceApproveFunder: (userId, reason) => request(`/admin/force-approve-funder/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+    forcePublishProject: (projectId, reason, stripePaymentVerified = false) => request(`/admin/force-publish-project/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, stripePaymentVerified }),
+    }),
+    rejectProject: (projectId, reason) => request(`/admin/reject-project/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+    forceCompleteDeal: (dealId, reason) => request(`/admin/force-complete-deal/${dealId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+    deleteProject: (projectId, reason) => request(`/admin/delete-project/${projectId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }),
+    getAllPayments: () => request('/admin/all-payments'),
+    viewAsUser: (userId) => request(`/admin/view-as-user/${userId}`),
+    sendSystemMessage: (userId, message) => request('/admin/send-system-message', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, message }),
+    }),
+    exportAllData: () => request('/admin/export-all-data'),
+    checkStripePayment: (projectId) => request(`/admin/check-stripe-payment/${projectId}`, {
+      method: 'POST',
+    }),
+    syncStripePayment: (projectId) => request(`/admin/sync-stripe-payment/${projectId}`, {
+      method: 'POST',
+    }),
+    getOverrideHistory: () => request('/admin/override-history'),
+  };
+};
 
 
 // ===========================
@@ -2225,75 +2213,124 @@ const Dashboard = () => {
 
       {/* Funder Dashboard */}
       {user.role === 'funder' && (
-        <>
-          {!user.approved && (
-            <div className="warning-message">
-              <h3>Account Pending Approval</h3>
-              <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
-            </div>
-          )}
+  <>
+    {!user.approved && (
+      <div className="warning-message">
+        <h3>Account Pending Approval</h3>
+        <p>Your account is currently under review. You'll be able to access projects once approved by our team.</p>
+      </div>
+    )}
 
-          {user.approved && user.subscription_status === 'pending' && (
-            <div className="subscription-banner pending">
-              <div className="banner-content">
-                <h3>Subscription Payment Processing</h3>
-                <p>Your subscription payment is being processed. This usually takes just a few moments.</p>
-              </div>
-              <button 
-                disabled
-                className="btn btn-primary disabled"
-              >
-                <span className="spinner-small"></span>
-                Processing Payment...
-              </button>
-            </div>
-          )}
+    {user.approved && user.subscription_status === 'pending' && (
+      <div className="subscription-banner pending">
+        <div className="banner-content">
+          <h3>Subscription Payment Processing</h3>
+          <p>Your subscription payment is being processed. This usually takes just a few moments.</p>
+        </div>
+        <button 
+          disabled
+          className="btn btn-primary disabled"
+        >
+          <span className="spinner-small"></span>
+          Processing Payment...
+        </button>
+      </div>
+    )}
 
-          {user.approved && user.subscription_status !== 'active' && user.subscription_status !== 'pending' && (
-            <div className="subscription-banner">
-              <div className="banner-content">
-                <h3>Activate Your Subscription</h3>
-                <p>Subscribe to unlock full access to all projects and features</p>
-              </div>
-              <button 
-                onClick={() => setShowSubscriptionModal(true)}
-                className="btn btn-primary"
-              >
-                Subscribe Now - $299/month
-              </button>
-            </div>
-          )}
+    {user.approved && user.subscription_status !== 'active' && user.subscription_status !== 'pending' && (
+      <div className="subscription-banner">
+        <div className="banner-content">
+          <h3>Activate Your Subscription</h3>
+          <p>Subscribe to unlock full access to all projects and features</p>
+        </div>
+        <button 
+          onClick={() => setShowSubscriptionModal(true)}
+          className="btn btn-primary"
+        >
+          Subscribe Now - $299/month
+        </button>
+      </div>
+    )}
 
-          {user.approved && user.subscription_status === 'active' && (
-            <div className="projects-section">
-              <div className="section-header">
-                <h2>
-                  Available Projects ({projects.length})
-                </h2>
-              </div>
+    {user.approved && user.subscription_status === 'active' && (
+      <>
+        <div className="funder-stats">
+          <div className="stat-card">
+            <h3>Your Portfolio</h3>
+            <div className="stat-value">{projects.filter(p => p.access_status === 'approved' || p.deal_id).length}</div>
+            <div className="stat-label">Active Engagements</div>
+          </div>
+          <div className="stat-card">
+            <h3>Deal Rooms</h3>
+            <div className="stat-value">{projects.filter(p => p.deal_id).length}</div>
+            <div className="stat-label">Active Negotiations</div>
+          </div>
+          <div className="stat-card">
+            <h3>New Opportunities</h3>
+            <div className="stat-value">{projects.filter(p => !p.access_status).length}</div>
+            <div className="stat-label">Available Projects</div>
+          </div>
+        </div>
 
-              {projects.length === 0 ? (
-                <EmptyState 
-                  icon=""
-                  title="No projects available"
-                  message="Check back soon for new investment opportunities."
+        <div className="projects-section">
+          <div className="section-header">
+            <h2>Your Active Engagements</h2>
+            <Link to="/projects" className="btn btn-outline">
+              Browse All Projects →
+            </Link>
+          </div>
+
+          {projects.filter(p => p.access_status === 'approved' || p.deal_id).length === 0 ? (
+            <EmptyState 
+              icon="📂"
+              title="No active engagements yet"
+              message="Browse available projects to start building your portfolio"
+              action={
+                <Link to="/projects" className="btn btn-primary">
+                  Browse Projects
+                </Link>
+              }
+            />
+          ) : (
+            <div className="projects-grid-clean">
+              {projects.filter(p => p.access_status === 'approved' || p.deal_id).map((project) => (
+                <FunderProjectCard 
+                  key={project.id} 
+                  project={project}
+                  onProjectUpdate={handleProjectUpdate}
                 />
-              ) : (
-                <div className="projects-grid-clean">
-                  {projects.map((project) => (
-                    <ProjectCard 
-                      key={project.id} 
-                      project={project} 
-                      userRole={user.role}
-                      onProjectUpdate={handleProjectUpdate}
-                    />
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        <div className="projects-section">
+          <div className="section-header">
+            <h2>New Opportunities</h2>
+          </div>
+
+          {projects.filter(p => !p.access_status && !p.deal_id).length === 0 ? (
+            <EmptyState 
+              icon=""
+              title="No new projects available"
+              message="Check back soon for new investment opportunities"
+            />
+          ) : (
+            <div className="projects-grid-clean">
+              {projects.filter(p => !p.access_status && !p.deal_id).slice(0, 3).map((project) => (
+                <FunderProjectCard 
+                  key={project.id} 
+                  project={project}
+                  onProjectUpdate={handleProjectUpdate}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </>
+)}
 
       {/* Admin Dashboard */}
       {user.role === 'admin' && stats && (
@@ -2634,151 +2671,119 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
   const api = useApi();
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
-  const [requesting, setRequesting] = useState(false);
-  const [showMessageInput, setShowMessageInput] = useState(false);
-  const [accessMessage, setAccessMessage] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
-  const handleRequestAccess = async () => {
-    setRequesting(true);
+  const handleEngage = async () => {
     try {
-      await api.requestAccess(project.id, accessMessage.trim() || null);
+      const response = await api.createDeal(project.id, project.access_request_id);
+      
+      // Send email notification to borrower
+      await api.sendEmailNotification('deal_room_created', project.borrower_id, {
+        project_title: project.title,
+        funder_name: 'A verified funder'
+      });
+      
       addNotification({
         type: 'success',
-        title: 'Access Request Sent',
-        message: 'Your request has been sent to the developer.'
+        title: 'Deal Room Created',
+        message: 'Successfully created deal room'
       });
-      setShowMessageInput(false);
-      setAccessMessage('');
-      if (onProjectUpdate) onProjectUpdate();
+      
+      navigate(`/project/${project.id}/deal/${response.deal_id}`);
     } catch (err) {
       addNotification({
         type: 'error',
-        title: 'Request Failed',
-        message: err.message || 'Failed to send access request'
+        title: 'Failed to create deal room',
+        message: err.message || 'Could not create deal room'
       });
-    } finally {
-      setRequesting(false);
     }
   };
 
   return (
-    <div className="project-card-v2 funder">
-      <div className="card-header">
-        <span className="status-badge-v2 opportunity">OPPORTUNITY</span>
-      </div>
-
-      <div className="card-body">
-        <h3 className="project-name">{project.title}</h3>
-        
-        <div className="location-row">
-          <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-          </svg>
-          <span>{project.suburb}</span>
+    <>
+      <div className="project-card-v2 funder">
+        <div className="card-header">
+          <span className="status-badge-v2 opportunity">OPPORTUNITY</span>
         </div>
 
-        <div className="project-details">
-          <div className="detail-row">
-            <span className="detail-label">LOAN AMOUNT</span>
-            <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
+        <div className="card-body">
+          <h3 className="project-name">{project.title}</h3>
+          
+          <div className="location-row">
+            <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+            </svg>
+            <span>{project.suburb}</span>
           </div>
-          <div className="detail-row">
-            <span className="detail-label">TYPE</span>
-            <span className="detail-value">{project.property_type}</span>
+
+          <div className="project-details">
+            <div className="detail-row">
+              <label>LOAN AMOUNT</label>
+              <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
+            </div>
+            <div className="detail-row">
+              <label>TYPE</label>
+              <span className="detail-value">{project.property_type}</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="card-footer">
-        {project.access_status === 'approved' && !project.deal_id ? (
-          <>
-            <button 
-              onClick={() => navigate(`/project/${project.id}`)}
-              className="btn-text"
-            >
-              View Details
-            </button>
-            <button 
-              onClick={async () => {
-                try {
-                  const response = await api.createDeal(project.id, project.access_request_id);
-                  addNotification({
-                    type: 'success',
-                    title: 'Deal Room Created',
-                    message: 'Successfully created deal room'
-                  });
-                  navigate(`/project/${project.id}/deal/${response.deal_id}`);
-                } catch (err) {
-                  addNotification({
-                    type: 'error',
-                    title: 'Failed to create deal room',
-                    message: err.message || 'Could not create deal room'
-                  });
-                }
-              }}
-              className="btn-primary-small"
-            >
-              Engage
-            </button>
-          </>
-        ) : project.access_status === 'approved' && project.deal_id ? (
-          <>
-            <button 
-              onClick={() => navigate(`/project/${project.id}`)}
-              className="btn-text"
-            >
-              View Details
-            </button>
-            <button 
-              onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
-              className="btn-primary-small"
-            >
-              Deal Room
-            </button>
-          </>
-        ) : (
-          <>
-            {!showMessageInput ? (
+        <div className="card-footer">
+          {project.access_status === 'approved' && !project.deal_id ? (
+            <>
               <button 
-                onClick={() => setShowMessageInput(true)}
-                disabled={project.access_status === 'pending'}
-                className="btn-primary-small full-width"
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
               >
-                {project.access_status === 'pending' ? '⏳ Request Pending' : '🔓 Request Access'}
+                View Details
               </button>
-            ) : (
-              <div className="access-request-form">
-                <textarea
-                  value={accessMessage}
-                  onChange={(e) => setAccessMessage(e.target.value)}
-                  placeholder="Introduce yourself and explain your interest..."
-                  className="message-input"
-                  rows="3"
-                />
-                <div className="form-actions">
-                  <button 
-                    onClick={() => {
-                      setShowMessageInput(false);
-                      setAccessMessage('');
-                    }}
-                    className="btn-text"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={handleRequestAccess}
-                    disabled={requesting}
-                    className="btn-primary-small"
-                  >
-                    {requesting ? 'Sending...' : 'Send'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+              <button 
+                onClick={handleEngage}
+                className="btn-primary-small"
+              >
+                Engage
+              </button>
+            </>
+          ) : project.access_status === 'approved' && project.deal_id ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
+              >
+                View Details
+              </button>
+              <button 
+                onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
+                className="btn-primary-small"
+              >
+                Deal Room
+              </button>
+            </>
+          ) : project.access_status === 'pending' ? (
+            <button 
+              disabled
+              className="btn-primary-small full-width"
+            >
+              ⏳ Request Pending
+            </button>
+          ) : (
+            <button 
+              onClick={() => setShowPreview(true)}
+              className="btn-primary-small full-width"
+            >
+              View Preview
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+
+      <ProjectPreviewModal
+        project={project}
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        onRequestAccess={onProjectUpdate}
+      />
+    </>
   );
 };
 // ===========================
@@ -3353,6 +3358,106 @@ const ProjectsPage = () => {
   );
 };
 
+
+const AddressAutocomplete = ({ value, onChange, onSelect }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const suggestionsRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const searchAddresses = async (query) => {
+    if (query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Using Google Places Autocomplete API (you'll need to add your API key)
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:au&types=address&key=${import.meta.env.VITE_GOOGLE_PLACES_API_KEY}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestions(data.predictions || []);
+        setShowSuggestions(true);
+      }
+    } catch (err) {
+      console.error('Address search failed:', err);
+      // Fallback to mock suggestions for now
+      setSuggestions([
+        { description: `${query}, Brisbane QLD 4000`, place_id: '1' },
+        { description: `${query}, Sydney NSW 2000`, place_id: '2' },
+        { description: `${query}, Melbourne VIC 3000`, place_id: '3' }
+      ]);
+      setShowSuggestions(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const newValue = e.target.value;
+    onChange(newValue);
+    searchAddresses(newValue);
+  };
+
+  const handleSelectSuggestion = async (suggestion) => {
+    const parts = suggestion.description.split(',');
+    const suburb = parts[1] ? parts[1].trim().split(' ')[0] : '';
+    
+    onSelect({
+      location: suggestion.description,
+      suburb: suburb
+    });
+    
+    setShowSuggestions(false);
+  };
+
+  return (
+    <div className="address-autocomplete" ref={suggestionsRef}>
+      <input
+        type="text"
+        value={value}
+        onChange={handleInputChange}
+        className="form-input"
+        placeholder="Start typing address..."
+        onFocus={() => value.length >= 3 && setShowSuggestions(true)}
+      />
+      
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="address-suggestions">
+          {loading && <div className="suggestion-loading">Searching...</div>}
+          {suggestions.map((suggestion) => (
+            <div
+              key={suggestion.place_id}
+              className="suggestion-item"
+              onClick={() => handleSelectSuggestion(suggestion)}
+            >
+              <svg className="suggestion-icon" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+              <span>{suggestion.description}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ===========================
 // CREATE PROJECT WIZARD
 // ===========================
@@ -3679,48 +3784,48 @@ const CreateProject = () => {
             </div>
 
             <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="location">
-                  Full Address *
-                  <Tooltip content="Street address of the development site">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="text"
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  required
-                  className={`form-input ${validationErrors.location ? 'error' : ''}`}
-                  placeholder="123 Collins St, Melbourne VIC 3000"
-                />
-                {validationErrors.location && (
-                  <span className="field-error">{validationErrors.location}</span>
-                )}
-              </div>
+  <div className="form-group">
+    <label htmlFor="location">
+      Full Address *
+      <Tooltip content="Start typing to search for addresses">
+        <span className="help-icon">?</span>
+      </Tooltip>
+    </label>
+    <AddressAutocomplete
+      value={formData.location}
+      onChange={(value) => setFormData({ ...formData, location: value })}
+      onSelect={(addressData) => setFormData({ 
+        ...formData, 
+        location: addressData.location,
+        suburb: addressData.suburb 
+      })}
+    />
+    {validationErrors.location && (
+      <span className="field-error">{validationErrors.location}</span>
+    )}
+  </div>
 
-              <div className="form-group">
-                <label htmlFor="suburb">
-                  Suburb *
-                  <Tooltip content="Suburb where the project is located">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <input
-                  type="text"
-                  id="suburb"
-                  value={formData.suburb}
-                  onChange={(e) => setFormData({ ...formData, suburb: e.target.value })}
-                  required
-                  className={`form-input ${validationErrors.suburb ? 'error' : ''}`}
-                  placeholder="Melbourne"
-                />
-                {validationErrors.suburb && (
-                  <span className="field-error">{validationErrors.suburb}</span>
-                )}
-              </div>
-            </div>
+  <div className="form-group">
+    <label htmlFor="suburb">
+      Suburb *
+      <Tooltip content="Auto-filled from address selection">
+        <span className="help-icon">?</span>
+      </Tooltip>
+    </label>
+    <input
+      type="text"
+      id="suburb"
+      value={formData.suburb}
+      onChange={(e) => setFormData({ ...formData, suburb: e.target.value })}
+      required
+      className={`form-input ${validationErrors.suburb ? 'error' : ''}`}
+      placeholder="Auto-filled from address"
+    />
+    {validationErrors.suburb && (
+      <span className="field-error">{validationErrors.suburb}</span>
+    )}
+  </div>
+</div>
 
             <div className="form-row">
               <div className="form-group">
@@ -3926,21 +4031,21 @@ const CreateProject = () => {
 
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="expected_gdc">
-                  Expected GDC (AUD)
-                  <Tooltip content="Gross Development Cost - total project cost including all fees">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="expected_gdc"
-                  value={formData.expected_gdc}
-                  onChange={(value) => setFormData({ ...formData, expected_gdc: value })}
-                  placeholder="11,000,000"
-                  prefix="$"
-                  min={0}
-                />
-              </div>
+  <label htmlFor="expected_profit">
+    Expected Profit (AUD)
+    <Tooltip content="Projected profit after all costs">
+      <span className="help-icon">?</span>
+    </Tooltip>
+  </label>
+  <NumberInput
+    id="expected_profit"
+    value={formData.expected_profit}
+    onChange={(value) => setFormData({ ...formData, expected_profit: value })}
+    placeholder="2,500,000"
+    prefix="$"
+    min={0}
+  />
+</div>
 
               <div className="form-group">
                 <label htmlFor="expected_profit">
@@ -6518,6 +6623,7 @@ const DealRoom = () => {
   const [proposal, setProposal] = useState(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [projectDocuments, setProjectDocuments] = useState([]);
+  const [showContactModal, setShowContactModal] = useState(false);
   
   useEffect(() => {
     fetchDealData();
@@ -6645,6 +6751,13 @@ const DealRoom = () => {
           </div>
         </div>
         
+<button 
+  onClick={() => setShowContactModal(true)}
+  className="btn btn-outline"
+>
+  Share Contact Info
+</button>
+
         {deal.status === 'accepted' && (
           <div className="deal-completion-banner">
             <div className="completion-icon">✓</div>
@@ -6714,6 +6827,18 @@ const DealRoom = () => {
         message="Are you sure you want to mark this deal as complete? This will remove it from the live market."
         confirmText="Complete Deal"
       />
+
+      <ContactInfoModal
+  user={user}
+  targetUser={{
+    id: user.role === 'borrower' ? deal.funder_id : deal.borrower_id,
+    name: user.role === 'borrower' ? deal.funder_name : deal.borrower_name,
+    email: user.role === 'borrower' ? deal.funder_email : deal.borrower_email
+  }}
+  dealId={dealId}
+  isOpen={showContactModal}
+  onClose={() => setShowContactModal(false)}
+/>
     </div>
   );
 };
@@ -7831,6 +7956,119 @@ ${formData.counter_notes ? `\nNotes: ${formData.counter_notes}` : ''}`;
   );
 };
 
+const ContactInfoModal = ({ user, targetUser, dealId, isOpen, onClose }) => {
+  const [showInfo, setShowInfo] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
+
+  const handleShareContact = async () => {
+    setSharing(true);
+    try {
+      await api.shareContactInfo(user.id, targetUser.id);
+      setShowInfo(true);
+      
+      addNotification({
+        type: 'success',
+        title: 'Contact Shared',
+        message: 'Your contact information has been shared'
+      });
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Share Failed',
+        message: 'Failed to share contact information'
+      });
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Contact Information" size="medium">
+      <div className="contact-info-modal">
+        {!showInfo ? (
+          <>
+            <p>Share contact information to continue discussions outside the platform.</p>
+            
+            <div className="contact-preview">
+              <h4>Your Contact Info</h4>
+              <div className="contact-details">
+                <div className="contact-item">
+                  <label>Name:</label>
+                  <span>{user.name}</span>
+                </div>
+                <div className="contact-item">
+                  <label>Email:</label>
+                  <span>{user.email}</span>
+                </div>
+                {user.phone && (
+                  <div className="contact-item">
+                    <label>Phone:</label>
+                    <span>{user.phone}</span>
+                  </div>
+                )}
+                {user.company_name && (
+                  <div className="contact-item">
+                    <label>Company:</label>
+                    <span>{user.company_name}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <button 
+              onClick={handleShareContact}
+              disabled={sharing}
+              className="btn btn-primary btn-block"
+            >
+              {sharing ? 'Sharing...' : 'Share My Contact Info'}
+            </button>
+          </>
+        ) : (
+          <div className="shared-contacts">
+            <h4>Contact Information Shared</h4>
+            
+            <div className="contact-card">
+              <h5>{targetUser.name}</h5>
+              <div className="contact-details">
+                <div className="contact-item">
+                  <label>Email:</label>
+                  <a href={`mailto:${targetUser.email}`}>{targetUser.email}</a>
+                </div>
+                {targetUser.phone && (
+                  <div className="contact-item">
+                    <label>Phone:</label>
+                    <a href={`tel:${targetUser.phone}`}>{targetUser.phone}</a>
+                  </div>
+                )}
+                {targetUser.company_name && (
+                  <div className="contact-item">
+                    <label>Company:</label>
+                    <span>{targetUser.company_name}</span>
+                  </div>
+                )}
+                {targetUser.linkedin && (
+                  <div className="contact-item">
+                    <label>LinkedIn:</label>
+                    <a href={targetUser.linkedin} target="_blank" rel="noopener noreferrer">
+                      View Profile
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <button onClick={onClose} className="btn btn-primary btn-block">
+              Close
+            </button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};
+
 // ===========================
 // PORTFOLIO PAGE
 // ===========================
@@ -8373,11 +8611,26 @@ const SettingsPage = () => {
   const api = useApi();
   const { user } = useApp();
   const { addNotification } = useNotifications();
-  const [notifications, setNotifications] = useState({
+  const [emailPreferences, setEmailPreferences] = useState({
+    // Common
     email_messages: true,
-    email_access_requests: true,
     email_project_updates: true,
-    email_newsletter: false
+    email_newsletter: false,
+    
+    // Borrower specific
+    email_access_requests: true,
+    email_deal_engagement: true,
+    email_proposals: true,
+    email_document_requests: true,
+    email_project_published: true,
+    email_project_rejected: true,
+    
+    // Funder specific
+    email_access_approved: true,
+    email_proposal_response: true,
+    email_borrower_messages: true,
+    email_account_approved: true,
+    email_payment_success: true
   });
   const [saving, setSaving] = useState(false);
 
@@ -8388,7 +8641,7 @@ const SettingsPage = () => {
   const fetchNotificationPreferences = async () => {
     try {
       const prefs = await api.getNotificationPreferences();
-      setNotifications(prefs);
+      setEmailPreferences(prefs);
     } catch (err) {
       console.error('Failed to fetch notification preferences:', err);
     }
@@ -8397,7 +8650,7 @@ const SettingsPage = () => {
   const handleSaveNotifications = async () => {
     setSaving(true);
     try {
-      await api.updateNotificationPreferences(notifications);
+      await api.updateNotificationPreferences(emailPreferences);
       addNotification({
         type: 'success',
         title: 'Settings Saved',
@@ -8418,98 +8671,273 @@ const SettingsPage = () => {
     <div className="settings-page">
       <div className="page-header">
         <h1>Settings</h1>
+        <p>Manage your notification preferences and account settings</p>
       </div>
 
       <div className="settings-content">
         <div className="settings-section">
           <h3>Email Notifications</h3>
+          <p className="section-description">
+            Choose which email notifications you'd like to receive from Tranch
+          </p>
+          
           <div className="settings-list">
-            <div className="setting-item">
-              <div className="setting-info">
-                <label>New Messages</label>
-                <p className="setting-description">
-                  Receive email notifications when you get new messages
-                </p>
-              </div>
-              <div className="setting-control">
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={notifications.email_messages}
-                    onChange={(e) => setNotifications({ ...notifications, email_messages: e.target.checked })}
-                  />
-                  <span className="slider"></span>
-                </label>
-              </div>
-            </div>
-
-            {user.role === 'borrower' && (
+            {/* Common Notifications */}
+            <div className="settings-group">
+              <h4>General Notifications</h4>
+              
               <div className="setting-item">
                 <div className="setting-info">
-                  <label>Access Requests</label>
+                  <label>Messages</label>
                   <p className="setting-description">
-                    Get notified when funders request access to your projects
+                    Receive email notifications when you get new messages
                   </p>
                 </div>
                 <div className="setting-control">
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={notifications.email_access_requests}
-                      onChange={(e) => setNotifications({ ...notifications, email_access_requests: e.target.checked })}
+                      checked={emailPreferences.email_messages}
+                      onChange={(e) => setEmailPreferences({ ...emailPreferences, email_messages: e.target.checked })}
                     />
                     <span className="slider"></span>
                   </label>
                 </div>
               </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Project Updates</label>
+                  <p className="setting-description">
+                    Updates about projects you're involved with
+                  </p>
+                </div>
+                <div className="setting-control">
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={emailPreferences.email_project_updates}
+                      onChange={(e) => setEmailPreferences({ ...emailPreferences, email_project_updates: e.target.checked })}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <label>Newsletter</label>
+                  <p className="setting-description">
+                    Monthly newsletter with platform updates and market insights
+                  </p>
+                </div>
+                <div className="setting-control">
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={emailPreferences.email_newsletter}
+                      onChange={(e) => setEmailPreferences({ ...emailPreferences, email_newsletter: e.target.checked })}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Borrower Notifications */}
+            {user.role === 'borrower' && (
+              <div className="settings-group">
+                <h4>Developer Notifications</h4>
+                
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Access Requests</label>
+                    <p className="setting-description">
+                      When funders request access to your projects
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_access_requests}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_access_requests: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Deal Engagement</label>
+                    <p className="setting-description">
+                      When funders engage to create a deal room
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_deal_engagement}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_deal_engagement: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Funding Proposals</label>
+                    <p className="setting-description">
+                      When funders submit proposals or request documents
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_proposals}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_proposals: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Project Published</label>
+                    <p className="setting-description">
+                      When your project is published on the platform
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_project_published}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_project_published: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
             )}
 
-            <div className="setting-item">
-              <div className="setting-info">
-                <label>Project Updates</label>
-                <p className="setting-description">
-                  Updates about projects you're involved with
-                </p>
-              </div>
-              <div className="setting-control">
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={notifications.email_project_updates}
-                    onChange={(e) => setNotifications({ ...notifications, email_project_updates: e.target.checked })}
-                  />
-                  <span className="slider"></span>
-                </label>
-              </div>
-            </div>
+            {/* Funder Notifications */}
+            {user.role === 'funder' && (
+              <div className="settings-group">
+                <h4>Investor Notifications</h4>
+                
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Access Approved</label>
+                    <p className="setting-description">
+                      When developers approve your access requests
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_access_approved}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_access_approved: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
 
-            <div className="setting-item">
-              <div className="setting-info">
-                <label>Newsletter</label>
-                <p className="setting-description">
-                  Receive our monthly newsletter with market insights
-                </p>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Proposal Responses</label>
+                    <p className="setting-description">
+                      When developers accept, reject, or counter your proposals
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_proposal_response}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_proposal_response: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Account Approved</label>
+                    <p className="setting-description">
+                      When your account is approved for platform access
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_account_approved}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_account_approved: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <label>Payment Success</label>
+                    <p className="setting-description">
+                      Confirmation when subscription payments are processed
+                    </p>
+                  </div>
+                  <div className="setting-control">
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={emailPreferences.email_payment_success}
+                        onChange={(e) => setEmailPreferences({ ...emailPreferences, email_payment_success: e.target.checked })}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div className="setting-control">
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={notifications.email_newsletter}
-                    onChange={(e) => setNotifications({ ...notifications, email_newsletter: e.target.checked })}
-                  />
-                  <span className="slider"></span>
-                </label>
-              </div>
-            </div>
+            )}
           </div>
 
-          <button 
-            onClick={handleSaveNotifications}
-            disabled={saving}
-            className="btn btn-primary"
-          >
-            {saving ? 'Saving...' : 'Save Preferences'}
-          </button>
+          <div className="settings-actions">
+            <button 
+              onClick={handleSaveNotifications}
+              disabled={saving}
+              className="btn btn-primary"
+            >
+              {saving ? 'Saving...' : 'Save Email Preferences'}
+            </button>
+          </div>
+        </div>
+
+        {/* Account Settings */}
+        <div className="settings-section">
+          <h3>Account Settings</h3>
+          <div className="settings-list">
+            <div className="setting-item">
+              <div className="setting-info">
+                <label>Change Password</label>
+                <p className="setting-description">
+                  Update your account password
+                </p>
+              </div>
+              <Link to="/profile" className="btn btn-outline">
+                Manage Account
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -8526,6 +8954,9 @@ const SettingsPage = () => {
 const UnpaidProjectsManager = ({ api, addNotification }) => {
   const [unpaidProjects, setUnpaidProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
     fetchUnpaidProjects();
@@ -8534,9 +8965,14 @@ const UnpaidProjectsManager = ({ api, addNotification }) => {
   const fetchUnpaidProjects = async () => {
     try {
       const response = await api.getUnpaidProjects();
-      setUnpaidProjects(response);
+      setUnpaidProjects(response || []);
     } catch (err) {
       console.error('Failed to fetch unpaid projects:', err);
+      addNotification({
+        type: 'error',
+        title: 'Load Failed',
+        message: 'Failed to fetch unpaid projects'
+      });
     } finally {
       setLoading(false);
     }
@@ -8600,108 +9036,216 @@ const UnpaidProjectsManager = ({ api, addNotification }) => {
   };
 
   const forcePublish = async (project) => {
-  const reason = prompt('Reason for force publishing:');
-  if (!reason) return;
+    const reason = prompt('Reason for force publishing:');
+    if (!reason) return;
 
-  try {
-    await api.forcePublishProject(project.id, reason, false);
-    addNotification({
-      type: 'success',
-      title: 'Project Force Published',
-      message: `${project.title} is now live`
-    });
-    await fetchUnpaidProjects(); // This should refresh the list
-    
-    // Force a hard refresh of the page data if needed
-    window.location.reload();
-  } catch (err) {
-    console.error('Force publish error:', err);
-    addNotification({
-      type: 'error',
-      title: 'Force Publish Failed',
-      message: err.message || 'Unknown error occurred'
-    });
-  }
-};
+    console.log('Force publishing project:', project.id, 'Reason:', reason);
+
+    try {
+      const response = await api.forcePublishProject(project.id, reason, false);
+      console.log('Force publish response:', response);
+      
+      addNotification({
+        type: 'success',
+        title: 'Project Force Published',
+        message: `${project.title} is now live`
+      });
+      
+      // Send email notification to borrower
+      await api.sendEmailNotification('project_published', project.borrower_id, {
+        project_title: project.title,
+        admin_action: true
+      });
+      
+      await fetchUnpaidProjects();
+    } catch (err) {
+      console.error('Force publish error:', err);
+      addNotification({
+        type: 'error',
+        title: 'Force Publish Failed',
+        message: err.message || 'Failed to force publish project'
+      });
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectReason.trim()) {
+      addNotification({
+        type: 'error',
+        title: 'Reason Required',
+        message: 'Please provide a reason for rejection'
+      });
+      return;
+    }
+
+    try {
+      await api.rejectProject(selectedProject.id, rejectReason);
+      
+      addNotification({
+        type: 'success',
+        title: 'Project Rejected',
+        message: `${selectedProject.title} has been moved back to draft status`
+      });
+      
+      // Send email notification to borrower
+      await api.sendEmailNotification('project_rejected', selectedProject.borrower_id, {
+        project_title: selectedProject.title,
+        reason: rejectReason
+      });
+      
+      setShowRejectModal(false);
+      setRejectReason('');
+      setSelectedProject(null);
+      await fetchUnpaidProjects();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Rejection Failed',
+        message: err.message || 'Failed to reject project'
+      });
+    }
+  };
 
   if (loading) return <div>Loading unpaid projects...</div>;
 
   return (
-    <div className="unpaid-projects-list">
-      {unpaidProjects.length === 0 ? (
-        <p>No unpaid projects found</p>
-      ) : (
-        <div className="projects-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Borrower</th>
-                <th>Amount</th>
-                <th>Created</th>
-                <th>Payment Info</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {unpaidProjects.map(project => (
-                <tr key={project.id}>
-                  <td>
-                    <strong>{project.title}</strong>
-                    <br />
-                    <small>{project.suburb}</small>
-                  </td>
-                  <td>
-                    {project.borrower_name}
-                    <br />
-                    <small>{project.borrower_email}</small>
-                  </td>
-                  <td>{formatCurrency(project.loan_amount)}</td>
-                  <td>{formatDate(project.created_at)}</td>
-                  <td>
-                    {project.stripe_payment_intent_id ? (
-                      <>
-                        <StatusBadge status={project.payment_status || 'pending'} />
-                        <br />
-                        <small>{project.payment_date ? formatDateTime(project.payment_date) : 'No date'}</small>
-                      </>
-                    ) : (
-                      <span className="text-muted">No payment</span>
-                    )}
-                  </td>
-                  <td>
-                    <div className="action-buttons">
-                      <button
-                        onClick={() => checkStripePayment(project.id)}
-                        className="btn btn-sm btn-warning"
-                        title="Check if payment exists in Stripe"
-                      >
-                        Check Stripe
-                      </button>
-                      <button
-                        onClick={() => forcePublish(project)}
-                        className="btn btn-sm btn-danger"
-                        title="Force publish without payment verification"
-                      >
-                        Force Publish
-                      </button>
-                      <Link
-                        to={`/project/${project.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-sm btn-outline"
-                      >
-                        View
-                      </Link>
-                    </div>
-                  </td>
+    <>
+      <div className="unpaid-projects-list">
+        {unpaidProjects.length === 0 ? (
+          <p>No unpaid projects found</p>
+        ) : (
+          <div className="projects-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Borrower</th>
+                  <th>Amount</th>
+                  <th>Created</th>
+                  <th>Payment Info</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {unpaidProjects.map(project => (
+                  <tr key={project.id}>
+                    <td>
+                      <strong>{project.title}</strong>
+                      <br />
+                      <small>{project.suburb}</small>
+                    </td>
+                    <td>
+                      {project.borrower_name}
+                      <br />
+                      <small>{project.borrower_email}</small>
+                    </td>
+                    <td>{formatCurrency(project.loan_amount)}</td>
+                    <td>{formatDate(project.created_at)}</td>
+                    <td>
+                      {project.stripe_payment_intent_id ? (
+                        <>
+                          <StatusBadge status={project.payment_status || 'pending'} />
+                          <br />
+                          <small>{project.payment_date ? formatDateTime(project.payment_date) : 'No date'}</small>
+                        </>
+                      ) : (
+                        <span className="text-muted">No payment</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="action-buttons">
+                        <button
+                          onClick={() => checkStripePayment(project.id)}
+                          className="btn btn-sm btn-warning"
+                          title="Check if payment exists in Stripe"
+                        >
+                          Check Stripe
+                        </button>
+                        <button
+                          onClick={() => forcePublish(project)}
+                          className="btn btn-sm btn-success"
+                          title="Force publish without payment verification"
+                        >
+                          Force Publish
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedProject(project);
+                            setShowRejectModal(true);
+                          }}
+                          className="btn btn-sm btn-danger"
+                          title="Reject and move back to draft"
+                        >
+                          Reject
+                        </button>
+                        <Link
+                          to={`/project/${project.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-outline"
+                        >
+                          View
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Reject Modal */}
+      <Modal
+        isOpen={showRejectModal}
+        onClose={() => {
+          setShowRejectModal(false);
+          setRejectReason('');
+          setSelectedProject(null);
+        }}
+        title="Reject Project"
+        size="medium"
+      >
+        <div className="reject-modal">
+          <p>
+            Rejecting "<strong>{selectedProject?.title}</strong>" will move it back to draft status 
+            and notify the borrower.
+          </p>
+          
+          <div className="form-group">
+            <label>Reason for Rejection *</label>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Please provide a clear reason for rejection..."
+              rows="4"
+              className="form-textarea"
+            />
+          </div>
+          
+          <div className="modal-actions">
+            <button 
+              onClick={() => {
+                setShowRejectModal(false);
+                setRejectReason('');
+                setSelectedProject(null);
+              }}
+              className="btn btn-outline"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleReject}
+              disabled={!rejectReason.trim()}
+              className="btn btn-danger"
+            >
+              Reject Project
+            </button>
+          </div>
         </div>
-      )}
-    </div>
+      </Modal>
+    </>
   );
 };
 
@@ -9506,6 +10050,155 @@ const DocumentPreviewModal = ({ document, onClose }) => {
         <button onClick={handleDownload} className="btn btn-primary">
           Download
         </button>
+      </div>
+    </Modal>
+  );
+};
+
+const ProjectPreviewModal = ({ project, isOpen, onClose, onRequestAccess }) => {
+  const [showAccessForm, setShowAccessForm] = useState(false);
+  const [accessMessage, setAccessMessage] = useState('');
+  const [requesting, setRequesting] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
+
+  if (!isOpen || !project) return null;
+
+  const handleRequestAccess = async () => {
+    setRequesting(true);
+    try {
+      await api.requestAccess(project.id, accessMessage.trim() || null);
+      
+      // Send email notification to borrower
+      await api.sendEmailNotification('access_request_received', project.borrower_id, {
+        project_title: project.title,
+        funder_name: 'A verified funder'
+      });
+      
+      addNotification({
+        type: 'success',
+        title: 'Access Request Sent',
+        message: 'Your request has been sent to the developer.'
+      });
+      
+      onClose();
+      if (onRequestAccess) onRequestAccess();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Request Failed',
+        message: err.message || 'Failed to send access request'
+      });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Project Preview" size="large">
+      <div className="project-preview-modal">
+        <div className="preview-header">
+          <h2>{project.title}</h2>
+          <div className="preview-location">
+            <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+            </svg>
+            <span>{project.suburb}</span>
+          </div>
+        </div>
+
+        <div className="preview-content">
+          <div className="preview-section">
+            <h3>Key Investment Metrics</h3>
+            <div className="metrics-grid">
+              <div className="metric-item">
+                <label>Loan Amount</label>
+                <span className="metric-value">{formatCurrency(project.loan_amount)}</span>
+              </div>
+              <div className="metric-item">
+                <label>Property Type</label>
+                <span className="metric-value">{project.property_type}</span>
+              </div>
+              <div className="metric-item">
+                <label>Development Stage</label>
+                <span className="metric-value">{project.development_stage}</span>
+              </div>
+              <div className="metric-item">
+                <label>Project Size</label>
+                <span className="metric-value">{project.project_size_sqm ? `${formatNumber(project.project_size_sqm)} sqm` : 'N/A'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="preview-section blurred-section">
+            <div className="blur-overlay">
+              <div className="blur-message">
+                <svg className="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0110 0v4"></path>
+                </svg>
+                <h4>Full Details Available After Access Approval</h4>
+                <p>Request access to view:</p>
+                <ul>
+                  <li>Complete financial projections</li>
+                  <li>Detailed project documentation</li>
+                  <li>Developer information</li>
+                  <li>Risk assessments</li>
+                  <li>Timeline and milestones</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="blurred-content">
+              <h3>Financial Structure</h3>
+              <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit...</p>
+              <div className="blurred-numbers">
+                <span>$X,XXX,XXX</span>
+                <span>XX.X%</span>
+                <span>XX months</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="preview-actions">
+          {!showAccessForm ? (
+            <button 
+              onClick={() => setShowAccessForm(true)}
+              className="btn btn-primary btn-block"
+            >
+              Request Full Access
+            </button>
+          ) : (
+            <div className="access-request-form">
+              <textarea
+                value={accessMessage}
+                onChange={(e) => setAccessMessage(e.target.value)}
+                placeholder="Introduce yourself and explain your interest in this project..."
+                className="form-textarea"
+                rows="4"
+              />
+              <div className="form-actions">
+                <button 
+                  onClick={() => {
+                    setShowAccessForm(false);
+                    setAccessMessage('');
+                  }}
+                  className="btn btn-outline"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRequestAccess}
+                  disabled={requesting}
+                  className="btn btn-primary"
+                >
+                  {requesting ? 'Sending...' : 'Send Request'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );
