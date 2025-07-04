@@ -77,12 +77,50 @@ const createApiClient = (getToken) => {
 
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
       
+      // First check if response is ok
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Network error' }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        // Try to get error message from response
+        let errorMessage = `HTTP ${response.status}`;
+        const contentType = response.headers.get('content-type');
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+            // If JSON parsing fails, use status text
+            errorMessage = response.statusText || errorMessage;
+          }
+        } else {
+          // Try to get text response for non-JSON errors
+          try {
+            const textError = await response.text();
+            if (textError && textError.length < 200) {
+              errorMessage = textError;
+            }
+          } catch (e) {
+            // Ignore text parsing errors
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      return await response.json();
+      // Handle empty responses (204 No Content, etc)
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return null;
+      }
+
+      // Try to parse JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      } else {
+        // Return text for non-JSON responses
+        const text = await response.text();
+        console.warn('Non-JSON response received:', text);
+        return { data: text };
+      }
     } catch (error) {
       console.error('API Error:', error);
       throw error;
@@ -8562,25 +8600,29 @@ const UnpaidProjectsManager = ({ api, addNotification }) => {
   };
 
   const forcePublish = async (project) => {
-    const reason = prompt('Reason for force publishing:');
-    if (!reason) return;
+  const reason = prompt('Reason for force publishing:');
+  if (!reason) return;
 
-    try {
-      await api.forcePublishProject(project.id, reason);
-      addNotification({
-        type: 'success',
-        title: 'Project Force Published',
-        message: `${project.title} is now live`
-      });
-      await fetchUnpaidProjects();
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Force Publish Failed',
-        message: err.message
-      });
-    }
-  };
+  try {
+    await api.forcePublishProject(project.id, reason, false);
+    addNotification({
+      type: 'success',
+      title: 'Project Force Published',
+      message: `${project.title} is now live`
+    });
+    await fetchUnpaidProjects(); // This should refresh the list
+    
+    // Force a hard refresh of the page data if needed
+    window.location.reload();
+  } catch (err) {
+    console.error('Force publish error:', err);
+    addNotification({
+      type: 'error',
+      title: 'Force Publish Failed',
+      message: err.message || 'Unknown error occurred'
+    });
+  }
+};
 
   if (loading) return <div>Loading unpaid projects...</div>;
 
