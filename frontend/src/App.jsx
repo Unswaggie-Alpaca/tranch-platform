@@ -314,7 +314,10 @@ const createApiClient = (getToken) => {
       method: 'PUT',
       body: JSON.stringify({ value }),
     }),
-
+revertToDraft: (projectId, reason) => request(`/admin/revert-to-draft/${projectId}`, {
+  method: 'POST',
+  body: JSON.stringify({ reason }),
+}),
     // Notification preferences
     getNotificationPreferences: () => request('/notifications/preferences'),
     updateNotificationPreferences: (preferences) => request('/notifications/preferences', {
@@ -2677,7 +2680,6 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
     try {
       const response = await api.createDeal(project.id, project.access_request_id);
       
-      // Send email notification to borrower
       await api.sendEmailNotification('deal_room_created', project.borrower_id, {
         project_title: project.title,
         funder_name: 'A verified funder'
@@ -2707,23 +2709,23 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
         </div>
 
         <div className="card-body">
-          <h3 className="project-name">{project.title}</h3>
+          <h3 className="project-name">{project.title || 'Untitled Project'}</h3>
           
           <div className="location-row">
             <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
             </svg>
-            <span>{project.suburb}</span>
+            <span>{project.suburb || 'Location not specified'}</span>
           </div>
 
           <div className="project-details">
             <div className="detail-row">
-              <label>LOAN AMOUNT</label>
+              <span className="detail-label">LOAN AMOUNT</span>
               <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
             </div>
             <div className="detail-row">
-              <label>TYPE</label>
-              <span className="detail-value">{project.property_type}</span>
+              <span className="detail-label">TYPE</span>
+              <span className="detail-value">{project.property_type || 'Not specified'}</span>
             </div>
           </div>
         </div>
@@ -3376,37 +3378,33 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const searchAddresses = async (query) => {
-    if (query.length < 3) {
-      setSuggestions([]);
-      return;
-    }
+ const searchAddresses = async (query) => {
+  if (query.length < 3) {
+    setSuggestions([]);
+    return;
+  }
 
-    setLoading(true);
-    try {
-      // Using Google Places Autocomplete API (you'll need to add your API key)
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:au&types=address&key=${import.meta.env.VITE_GOOGLE_PLACES_API_KEY}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setSuggestions(data.predictions || []);
-        setShowSuggestions(true);
-      }
-    } catch (err) {
-      console.error('Address search failed:', err);
-      // Fallback to mock suggestions for now
-      setSuggestions([
-        { description: `${query}, Brisbane QLD 4000`, place_id: '1' },
-        { description: `${query}, Sydney NSW 2000`, place_id: '2' },
-        { description: `${query}, Melbourne VIC 3000`, place_id: '3' }
-      ]);
-      setShowSuggestions(true);
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  try {
+    const response = await api.request('/geocode/autocomplete', {
+      method: 'POST',
+      body: JSON.stringify({ input: query })
+    });
+    
+    setSuggestions(response.predictions || []);
+    setShowSuggestions(true);
+  } catch (err) {
+    console.error('Address search failed:', err);
+    setSuggestions([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+  
+  setShowSuggestions(false);
+};
 
   const handleInputChange = (e) => {
     const newValue = e.target.value;
@@ -3415,16 +3413,14 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
   };
 
   const handleSelectSuggestion = async (suggestion) => {
-    const parts = suggestion.description.split(',');
-    const suburb = parts[1] ? parts[1].trim().split(' ')[0] : '';
-    
-    onSelect({
-      location: suggestion.description,
-      suburb: suburb
-    });
-    
-    setShowSuggestions(false);
-  };
+  // Extract suburb from the display name
+  const parts = suggestion.description.split(',');
+  const suburb = parts.length > 1 ? parts[1].trim() : '';
+  
+  onSelect({
+    location: suggestion.description,
+    suburb: suburb
+  });
 
   return (
     <div className="address-autocomplete" ref={suggestionsRef}>
@@ -9007,6 +9003,32 @@ const UnpaidProjectsManager = ({ api, addNotification }) => {
       });
     }
   };
+const revertToDraft = async (project) => {
+  const reason = prompt('Reason for reverting to draft:');
+  if (!reason) return;
+
+  try {
+    await api.request(`/admin/revert-to-draft/${project.id}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    });
+    
+    addNotification({
+      type: 'success',
+      title: 'Project Reverted',
+      message: `${project.title} has been reverted to draft status`
+    });
+    
+    await fetchUnpaidProjects();
+  } catch (err) {
+    addNotification({
+      type: 'error',
+      title: 'Revert Failed',
+      message: err.message || 'Failed to revert project'
+    });
+  }
+};
+
 
   const syncStripePayment = async (projectId) => {
     try {
@@ -9235,6 +9257,13 @@ const UnpaidProjectsManager = ({ api, addNotification }) => {
             >
               Cancel
             </button>
+            <button
+  onClick={() => revertToDraft(project)}
+  className="btn btn-sm btn-warning"
+  title="Revert to draft status"
+>
+  Revert to Draft
+</button>
             <button 
               onClick={handleReject}
               disabled={!rejectReason.trim()}
@@ -10055,6 +10084,8 @@ const DocumentPreviewModal = ({ document, onClose }) => {
   );
 };
 
+// Replace the entire ProjectPreviewModal component in App.jsx with this:
+
 const ProjectPreviewModal = ({ project, isOpen, onClose, onRequestAccess }) => {
   const [showAccessForm, setShowAccessForm] = useState(false);
   const [accessMessage, setAccessMessage] = useState('');
@@ -10069,7 +10100,6 @@ const ProjectPreviewModal = ({ project, isOpen, onClose, onRequestAccess }) => {
     try {
       await api.requestAccess(project.id, accessMessage.trim() || null);
       
-      // Send email notification to borrower
       await api.sendEmailNotification('access_request_received', project.borrower_id, {
         project_title: project.title,
         funder_name: 'A verified funder'
@@ -10095,86 +10125,127 @@ const ProjectPreviewModal = ({ project, isOpen, onClose, onRequestAccess }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Project Preview" size="large">
-      <div className="project-preview-modal">
-        <div className="preview-header">
-          <h2>{project.title}</h2>
-          <div className="preview-location">
-            <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
+    <Modal isOpen={isOpen} onClose={onClose} title={project.title} size="large">
+      <div className="project-preview-content">
+        {/* Header Section */}
+        <div className="preview-header-section">
+          <div className="location-badge">
+            <svg className="icon" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
             </svg>
-            <span>{project.suburb}</span>
+            {project.suburb || 'Location not specified'}
           </div>
+          <StatusBadge status={project.development_stage || 'Planning'} />
         </div>
 
-        <div className="preview-content">
-          <div className="preview-section">
-            <h3>Key Investment Metrics</h3>
-            <div className="metrics-grid">
-              <div className="metric-item">
-                <label>Loan Amount</label>
-                <span className="metric-value">{formatCurrency(project.loan_amount)}</span>
-              </div>
-              <div className="metric-item">
-                <label>Property Type</label>
-                <span className="metric-value">{project.property_type}</span>
-              </div>
-              <div className="metric-item">
-                <label>Development Stage</label>
-                <span className="metric-value">{project.development_stage}</span>
-              </div>
-              <div className="metric-item">
-                <label>Project Size</label>
-                <span className="metric-value">{project.project_size_sqm ? `${formatNumber(project.project_size_sqm)} sqm` : 'N/A'}</span>
+        {/* Key Metrics Grid */}
+        <div className="preview-metrics-section">
+          <h3 className="section-title">Key Investment Metrics</h3>
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <label>Loan Amount</label>
+              <div className="metric-value">{formatCurrency(project.loan_amount)}</div>
+            </div>
+            <div className="metric-card">
+              <label>Property Type</label>
+              <div className="metric-value">{project.property_type || 'Not specified'}</div>
+            </div>
+            <div className="metric-card">
+              <label>Development Stage</label>
+              <div className="metric-value">{project.development_stage || 'Planning'}</div>
+            </div>
+            <div className="metric-card">
+              <label>Project Size</label>
+              <div className="metric-value">
+                {project.project_size_sqm ? `${formatNumber(project.project_size_sqm)} sqm` : 'Not specified'}
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="preview-section blurred-section">
-            <div className="blur-overlay">
-              <div className="blur-message">
-                <svg className="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0110 0v4"></path>
+        {/* Locked Content Section */}
+        <div className="preview-locked-section">
+          <div className="locked-overlay">
+            <div className="lock-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0110 0v4"></path>
+              </svg>
+            </div>
+            <h3>Full Details Available After Access Approval</h3>
+            <p className="locked-description">
+              Request access to unlock comprehensive project information
+            </p>
+            <div className="locked-features">
+              <div className="feature-item">
+                <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                <h4>Full Details Available After Access Approval</h4>
-                <p>Request access to view:</p>
-                <ul>
-                  <li>Complete financial projections</li>
-                  <li>Detailed project documentation</li>
-                  <li>Developer information</li>
-                  <li>Risk assessments</li>
-                  <li>Timeline and milestones</li>
-                </ul>
+                Complete financial projections & feasibility analysis
+              </div>
+              <div className="feature-item">
+                <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Detailed project documentation & plans
+              </div>
+              <div className="feature-item">
+                <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Developer profile & track record
+              </div>
+              <div className="feature-item">
+                <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Risk assessments & mitigation strategies
+              </div>
+              <div className="feature-item">
+                <svg className="check-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Direct messaging with developer
               </div>
             </div>
-            
-            <div className="blurred-content">
-              <h3>Financial Structure</h3>
-              <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit...</p>
-              <div className="blurred-numbers">
-                <span>$X,XXX,XXX</span>
-                <span>XX.X%</span>
-                <span>XX months</span>
-              </div>
+          </div>
+
+          {/* Blurred background content */}
+          <div className="blurred-content">
+            <div className="blur-row">
+              <span className="blur-label">Total Project Cost</span>
+              <span className="blur-value">$██,███,███</span>
+            </div>
+            <div className="blur-row">
+              <span className="blur-label">Expected ROI</span>
+              <span className="blur-value">██.█%</span>
+            </div>
+            <div className="blur-row">
+              <span className="blur-label">Construction Partner</span>
+              <span className="blur-value">████████ Constructions</span>
             </div>
           </div>
         </div>
 
-        <div className="preview-actions">
+        {/* CTA Section */}
+        <div className="preview-cta-section">
           {!showAccessForm ? (
             <button 
               onClick={() => setShowAccessForm(true)}
-              className="btn btn-primary btn-block"
+              className="btn btn-primary btn-lg btn-block"
             >
               Request Full Access
             </button>
           ) : (
             <div className="access-request-form">
+              <h4>Send Access Request</h4>
+              <p className="form-description">
+                Introduce yourself and explain your interest in this project
+              </p>
               <textarea
                 value={accessMessage}
                 onChange={(e) => setAccessMessage(e.target.value)}
-                placeholder="Introduce yourself and explain your interest in this project..."
+                placeholder="Example: We are a private credit fund specializing in residential developments in Brisbane. This project aligns with our investment criteria..."
                 className="form-textarea"
                 rows="4"
               />
