@@ -990,7 +990,12 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
 };
 
 // Payment Form Component
-// Payment Form Component
+import React from 'react';
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { useApi } from './hooks/useApi';
+import { useNotifications } from './hooks/useNotifications';
+import { formatCurrency } from './utils';
+
 const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }) => {
   const api = useApi();
   const stripe = useStripe();
@@ -999,56 +1004,41 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!stripe || !elements) return;
-    
+
     setProcessing(true);
 
     try {
-      // Create payment intent
-      const { client_secret, payment_intent_id, status } = await api.createProjectPayment(projectId);
-      
-      // If already pending, just wait for webhook
+      // 1. Create (or check) payment intent
+      const { client_secret, status } = await api.createProjectPayment(projectId);
+
+      // 2. If already pending, close modal & let ProjectDetail’s useEffect poll
       if (status === 'pending') {
         addNotification({
           type: 'info',
           title: 'Payment Pending',
           message: 'Your payment is being processed. Please wait...'
         });
-        
-        // Start polling for payment status
-        pollPaymentStatus(projectId);
+        onSuccess();          // close modal & refresh details
+        setProcessing(false);
         return;
       }
-      
-      // Confirm payment with Stripe
+
+      // 3. Otherwise, confirm payment with Stripe
       const result = await stripe.confirmCardPayment(client_secret, {
-        payment_method: {
-          card: elements.getElement(CardElement),
-        }
+        payment_method: { card: elements.getElement(CardElement) }
       });
+      if (result.error) throw new Error(result.error.message);
 
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-
-      // Payment successful
+      // 4. On success, notify & refresh
       addNotification({
         type: 'success',
         title: 'Payment Successful',
         message: 'Processing your payment...'
       });
-      
-      // Just show success and let user refresh
-      setTimeout(() => {
-        addNotification({
-          type: 'info',
-          title: 'Payment Processing',
-          message: 'Your payment is being processed. Please refresh the page in a few moments to see your published project.'
-        });
-        setProcessing(false);
-      }, 3000);
-      
+      onSuccess();
+      setProcessing(false);
+
     } catch (err) {
       addNotification({
         type: 'error',
@@ -1059,33 +1049,29 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
     }
   };
 
-
   return (
     <form onSubmit={handleSubmit} className="payment-form">
       <div className="card-element-container">
-        <CardElement 
+        <CardElement
           options={{
             style: {
               base: {
                 fontSize: '16px',
                 color: '#424770',
-                '::placeholder': {
-                  color: '#aab7c4',
-                },
-              },
-            },
+                '::placeholder': { color: '#aab7c4' }
+              }
+            }
           }}
         />
       </div>
-      <button 
-        type="submit" 
+      <button
+        type="submit"
         disabled={!stripe || processing}
         className="btn btn-primary btn-block"
       >
         {processing ? (
           <>
-            <span className="spinner-small"></span>
-            Processing...
+            <span className="spinner-small" /> Processing...
           </>
         ) : (
           `Pay ${formatCurrency(amount)}`
