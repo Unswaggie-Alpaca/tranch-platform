@@ -2311,14 +2311,14 @@ const Dashboard = () => {
             />
           ) : (
             <div className="projects-grid-clean">
-              {projects.filter(p => p.access_status === 'approved' || p.deal_id).map((project) => (
-                <ProjectCardClean 
-                  key={project.id} 
-                  project={project}
-                  onProjectUpdate={handleProjectUpdate}
-                />
-              ))}
-            </div>
+  {projects.filter(p => p.access_status === 'approved' || p.deal_id).map((project) => (
+    <FunderProjectCard  // NOT ProjectCardClean!
+      key={project.id} 
+      project={project}
+      onProjectUpdate={handleProjectUpdate}
+    />
+  ))}
+</div>
           )}
         </div>
 
@@ -2336,14 +2336,14 @@ const Dashboard = () => {
             />
           ) : (
             <div className="projects-grid-clean">
-              {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).slice(0, 3).map((project) => (
-                <ProjectCardClean 
-                  key={project.id} 
-                  project={project}
-                  onProjectUpdate={handleProjectUpdate}
-                />
-              ))}
-            </div>
+  {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).slice(0, 3).map((project) => (
+    <FunderProjectCard  // NOT ProjectCardClean!
+      key={project.id} 
+      project={project}
+      onProjectUpdate={handleProjectUpdate}
+    />
+  ))}
+</div>
           )}
         </div>
       </div>
@@ -4896,13 +4896,39 @@ const ProjectDetail = () => {
   if (error) return <ErrorMessage message={error} onClose={() => navigate(-1)} />;
   if (!project) return <div>Project not found</div>;
 
-  // NOW define tabs - after we know documents is loaded
-  const tabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'financials', label: 'Financials' },
-    { id: 'documents', label: `Documents (${documents?.length || 0})` },
-    { id: 'timeline', label: 'Timeline & Milestones' }
-  ];
+
+  
+if (user.role === 'funder' && project.payment_status === 'paid') {
+  // Check if funder has access
+  if (!project.access_status || project.access_status === 'pending' || project.access_status === 'declined') {
+    return (
+      <div className="project-detail-page">
+        <div className="access-denied" style={{
+          textAlign: 'center',
+          padding: '60px 20px',
+          maxWidth: '600px',
+          margin: '0 auto'
+        }}>
+          <h2>Access Required</h2>
+          <p style={{ marginBottom: '30px', color: '#6b7280' }}>
+            You need to request access from the developer to view this project's full details.
+          </p>
+          <Link to="/projects" className="btn btn-primary">
+            Back to Projects
+          </Link>
+        </div>
+      </div>
+    );
+  }
+}
+
+// NOW define tabs - after we know documents is loaded
+const tabs = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'financials', label: 'Financials' },
+  { id: 'documents', label: `Documents (${documents?.length || 0})` },
+  { id: 'timeline', label: 'Timeline & Milestones' }
+];
 
   // Rest of component remains the same...
   return (
