@@ -3417,7 +3417,7 @@ const ProjectsPage = () => {
     );
   }
 
-  return (
+ return (
   <div className="projects-page">
     {/* Clean styled header like Dashboard */}
     <div className="dashboard-header-clean">
@@ -3428,53 +3428,63 @@ const ProjectsPage = () => {
           Browse curated property development projects with AI-powered insights
         </p>
       </div>
-      <div className="marketplace-actions">
-        <button onClick={exportResults} className="btn btn-outline">
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-          Export Results
-        </button>
-      </div>
+      <button onClick={exportResults} className="btn btn-outline">
+        Export Results
+      </button>
     </div>
 
     {error && <ErrorMessage message={error} onClose={() => setError('')} />}
 
     {/* Market Insights Section */}
-    <div className="market-insights">
-      <h3>Market Insights</h3>
-      <div className="insights-grid">
-        <div className="insight-card">
-          <div className="insight-value">{formatCurrency(projects.reduce((sum, p) => sum + p.loan_amount, 0))}</div>
-          <div className="insight-label">Total Capital Seeking</div>
+    <div className="stats-grid-clean" style={{ marginBottom: '40px' }}>
+      <div className="stat-card-clean">
+        <div className="stat-header-clean">
+          <span className="stat-label">TOTAL CAPITAL SEEKING</span>
         </div>
-        <div className="insight-card">
-          <div className="insight-value">{projects.length}</div>
-          <div className="insight-label">Active Opportunities</div>
+        <div className="stat-value">
+          {formatCurrency(projects.reduce((sum, p) => sum + p.loan_amount, 0))}
         </div>
-        <div className="insight-card">
-          <div className="insight-value">
-            {projects.filter(p => p.property_type === 'Residential').length > projects.filter(p => p.property_type === 'Commercial').length 
-              ? 'Residential' 
-              : 'Commercial'}
-          </div>
-          <div className="insight-label">Trending Asset Class</div>
+        <div className="stat-subtitle">Across all projects</div>
+      </div>
+      
+      <div className="stat-card-clean">
+        <div className="stat-header-clean">
+          <span className="stat-label">ACTIVE OPPORTUNITIES</span>
         </div>
-        <div className="insight-card">
-          <div className="insight-value">
-            {projects.length > 0 
-              ? Math.round(projects.reduce((sum, p) => sum + (p.expected_profit / p.total_project_cost * 100 || 0), 0) / projects.length) + '%'
-              : 'N/A'}
-          </div>
-          <div className="insight-label">Avg Expected Return</div>
+        <div className="stat-value">{projects.length}</div>
+        <div className="stat-subtitle">Available projects</div>
+      </div>
+      
+      <div className="stat-card-clean">
+        <div className="stat-header-clean">
+          <span className="stat-label">TRENDING ASSET CLASS</span>
         </div>
+        <div className="stat-value">
+          {projects.filter(p => p.property_type === 'Residential').length > 
+           projects.filter(p => p.property_type === 'Commercial').length 
+            ? 'Residential' 
+            : 'Commercial'}
+        </div>
+        <div className="stat-subtitle">Most active sector</div>
+      </div>
+      
+      <div className="stat-card-clean">
+        <div className="stat-header-clean">
+          <span className="stat-label">AVG EXPECTED RETURN</span>
+        </div>
+        <div className="stat-value">
+          {projects.length > 0 
+            ? Math.round(projects.reduce((sum, p) => sum + ((p.expected_profit / p.total_project_cost * 100) || 0), 0) / projects.length) + '%'
+            : 'N/A'}
+        </div>
+        <div className="stat-subtitle">Across all projects</div>
       </div>
     </div>
 
-    {/* Filters Section */}
-    <div className="filters-section">
-      <div className="filters-header">
-        <h3>Filter Projects</h3>
+    {/* Filters Section - using same styling as dashboard */}
+    <div className="portfolio-section-clean">
+      <div className="portfolio-header-clean">
+        <h2>Filter Projects</h2>
         <div className="filter-actions">
           {savedSearches.length > 0 && (
             <select 
@@ -3482,7 +3492,8 @@ const ProjectsPage = () => {
                 const search = savedSearches.find(s => s.id === parseInt(e.target.value));
                 if (search) applySavedSearch(search);
               }}
-              className="saved-search-select"
+              className="form-select"
+              style={{ marginRight: '12px' }}
             >
               <option value="">Load Saved Search...</option>
               {savedSearches.map(search => (
@@ -3492,11 +3503,12 @@ const ProjectsPage = () => {
           )}
           <button 
             onClick={() => setShowSaveSearchModal(true)} 
-            className="btn btn-sm btn-outline"
+            className="btn btn-outline"
+            style={{ marginRight: '12px' }}
           >
             Save Search
           </button>
-          <button onClick={clearFilters} className="btn btn-sm btn-outline">
+          <button onClick={clearFilters} className="btn btn-outline">
             Clear All
           </button>
         </div>
@@ -3528,7 +3540,7 @@ const ProjectsPage = () => {
               placeholder="Min"
               prefix="$"
             />
-            <span>to</span>
+            <span style={{ margin: '0 8px' }}>to</span>
             <NumberInput
               value={filters.maxLoan}
               onChange={(value) => setFilters({ ...filters, maxLoan: value })}
@@ -3593,39 +3605,45 @@ const ProjectsPage = () => {
         </div>
       </div>
 
-      <div className="filter-summary">
+      <div className="filter-summary" style={{ marginTop: '16px', color: '#64748b' }}>
         <span>Showing {filteredProjects.length} of {projects.length} opportunities</span>
         {Object.values(filters).filter(v => v && v !== 'created_at').length > 0 && (
-          <button onClick={clearFilters} className="clear-filters-link">
+          <button 
+            onClick={clearFilters} 
+            className="clear-filters-link"
+            style={{ marginLeft: '12px', color: '#667eea', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
             Clear filters
           </button>
         )}
       </div>
     </div>
 
-    {/* Projects Display */}
-    {filteredProjects.length === 0 ? (
-      <EmptyState 
-        icon="🔍"
-        title="No projects match your criteria"
-        message="Try adjusting your filters to see more opportunities"
-        action={
-          <button onClick={clearFilters} className="btn btn-primary">
-            Clear Filters
-          </button>
-        }
-      />
-    ) : (
-      <div className="projects-grid-clean">
-        {filteredProjects.map((project) => (
-          <FunderProjectCard 
-            key={project.id} 
-            project={project} 
-            onProjectUpdate={fetchProjects}
-          />
-        ))}
-      </div>
-    )}
+    {/* Projects Display - using portfolio section styling */}
+    <div className="portfolio-section-clean">
+      {filteredProjects.length === 0 ? (
+        <EmptyState 
+          icon="🔍"
+          title="No projects match your criteria"
+          message="Try adjusting your filters to see more opportunities"
+          action={
+            <button onClick={clearFilters} className="btn btn-primary">
+              Clear Filters
+            </button>
+          }
+        />
+      ) : (
+        <div className="projects-grid-clean">
+          {filteredProjects.map((project) => (
+            <FunderProjectCard 
+              key={project.id} 
+              project={project} 
+              onProjectUpdate={fetchProjects}
+            />
+          ))}
+        </div>
+      )}
+    </div>
 
     {/* Save Search Modal */}
     <Modal 
@@ -3653,13 +3671,15 @@ const ProjectsPage = () => {
             }
           }}
           className="btn btn-primary"
+          style={{ marginTop: '12px' }}
         >
           Save Search
         </button>
       </div>
     </Modal>
   </div>
-)};
+);
+};
 
 
 
