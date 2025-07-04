@@ -4622,31 +4622,43 @@ const ProjectDetail = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
 
-  // Auto-refresh if project is pending payment
-  useEffect(() => {
-    if (project?.payment_status === 'pending') {
-      const timer = setTimeout(() => {
-        fetchProjectDetails();
-      }, 5000); // Refresh every 5 seconds if pending
-      
-      return () => clearTimeout(timer);
+const fetchProjectDetails = async () => {
+  console.log('Fetching project details for ID:', id);
+  setLoading(true);
+  setError('');
+  
+  try {
+    console.log('Calling API for project:', id);
+    const projectData = await api.getProject(id);
+    console.log('Project data received:', projectData);
+    
+    if (!projectData) {
+      throw new Error('Project not found');
     }
-  }, [project?.payment_status]);
-
-  const fetchProjectDetails = async () => {
+    
+    setProject(projectData);
+    
+    // Only fetch documents if we have a valid project
     try {
-      const [projectData, docsData] = await Promise.all([
-        api.getProject(id),
-        api.getProjectDocuments(id)
-      ]);
-      setProject(projectData);
-      setDocuments(docsData || []); // Ensure documents is always an array
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      console.log('Fetching documents for project:', id);
+      const docsData = await api.getProjectDocuments(id);
+      console.log('Documents received:', docsData);
+      setDocuments(docsData || []);
+    } catch (docErr) {
+      console.error('Failed to fetch documents:', docErr);
+      setDocuments([]); // Set empty array on error
     }
-  };
+    
+  } catch (err) {
+    console.error('Failed to fetch project details:', err);
+    setError(err.message || 'Failed to load project');
+    setProject(null);
+    setDocuments([]);
+  } finally {
+    console.log('Setting loading to false in ProjectDetail');
+    setLoading(false);
+  }
+};
 
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false);
