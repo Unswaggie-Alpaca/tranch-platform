@@ -1006,14 +1006,14 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       // 1. Create (or check) payment intent
       const { client_secret, status } = await api.createProjectPayment(projectId);
 
-      // 2. If already pending, close modal & let ProjectDetail’s useEffect poll
+      // 2. If already pending, just notify and close
       if (status === 'pending') {
         addNotification({
           type: 'info',
           title: 'Payment Pending',
-          message: 'Your payment is being processed. Please wait...'
+          message: 'Your payment is being processed. Please refresh the page to check status.'
         });
-        onSuccess();          // close modal & refresh details
+        onSuccess();
         setProcessing(false);
         return;
       }
@@ -1024,11 +1024,11 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       });
       if (result.error) throw new Error(result.error.message);
 
-      // 4. On success, notify & refresh
+      // 4. On success, notify & close
       addNotification({
         type: 'success',
         title: 'Payment Successful',
-        message: 'Processing your payment...'
+        message: 'Your project is being published. Please refresh the page to see the updated status.'
       });
       onSuccess();
       setProcessing(false);
@@ -9300,11 +9300,12 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
         addNotification({
           type: 'info',
           title: 'Subscription Processing',
-          message: 'Your subscription payment is being processed. Please wait...'
+          message: 'Your subscription payment is being processed. Please refresh the page in a few moments to see your active subscription.'
         });
         
-        // Start polling for subscription status
-        pollSubscriptionStatus();
+        // Close modal and let user manually refresh
+        onSuccess();
+        setProcessing(false);
         return;
       }
       
@@ -9317,18 +9318,11 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
       addNotification({
         type: 'success',
         title: 'Payment Successful',
-        message: 'Processing your subscription activation...'
+        message: 'Your subscription has been activated. Please refresh the page if needed.'
       });
       
-      // Just show success and let user refresh
-      setTimeout(() => {
-        addNotification({
-          type: 'info',
-          title: 'Subscription Processing',
-          message: 'Your subscription is being activated. Please refresh the page in a few moments.'
-        });
-        setProcessing(false);
-      }, 3000);
+      onSuccess();
+      setProcessing(false);
       
     } catch (err) {
       addNotification({
@@ -9339,8 +9333,6 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
       setProcessing(false);
     }
   };
-
-
 
   return (
     <form onSubmit={handleSubmit}>
@@ -9381,7 +9373,6 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
     </form>
   );
 };
-
 // ===========================
 // DOCUMENT PREVIEW MODAL
 // ===========================
