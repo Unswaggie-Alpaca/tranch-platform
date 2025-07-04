@@ -2536,6 +2536,154 @@ app.get('/api/admin/view-as-user/:id', authenticateToken, requireRole(['admin'])
   );
 });
 
+// In server.js, add after the notification preferences table creation:
+
+// Get notification preferences
+app.get('/api/notifications/preferences', authenticateToken, (req, res) => {
+  db.get(
+    `SELECT * FROM notification_preferences WHERE user_id = ?`,
+    [req.user.id],
+    (err, preferences) => {
+      if (err) {
+        console.error('Preferences fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch preferences' });
+      }
+      
+      // Return default preferences if none exist
+      if (!preferences) {
+        const defaults = {
+          email_messages: true,
+          email_project_updates: true,
+          email_newsletter: false,
+          email_access_requests: true,
+          email_deal_engagement: true,
+          email_proposals: true,
+          email_document_requests: true,
+          email_project_published: true,
+          email_project_rejected: true,
+          email_access_approved: true,
+          email_proposal_response: true,
+          email_borrower_messages: true,
+          email_account_approved: true,
+          email_payment_success: true
+        };
+        return res.json(defaults);
+      }
+      
+      res.json(preferences);
+    }
+  );
+});
+
+// Update notification preferences
+app.put('/api/notifications/preferences', authenticateToken, (req, res) => {
+  const preferences = req.body;
+  
+  // Create the table if it doesn't exist
+  db.run(`CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id INTEGER PRIMARY KEY,
+    email_messages BOOLEAN DEFAULT 1,
+    email_project_updates BOOLEAN DEFAULT 1,
+    email_newsletter BOOLEAN DEFAULT 0,
+    email_access_requests BOOLEAN DEFAULT 1,
+    email_deal_engagement BOOLEAN DEFAULT 1,
+    email_proposals BOOLEAN DEFAULT 1,
+    email_document_requests BOOLEAN DEFAULT 1,
+    email_project_published BOOLEAN DEFAULT 1,
+    email_project_rejected BOOLEAN DEFAULT 1,
+    email_access_approved BOOLEAN DEFAULT 1,
+    email_proposal_response BOOLEAN DEFAULT 1,
+    email_borrower_messages BOOLEAN DEFAULT 1,
+    email_account_approved BOOLEAN DEFAULT 1,
+    email_payment_success BOOLEAN DEFAULT 1,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`, (err) => {
+    if (err && !err.message.includes('already exists')) {
+      console.error('Table creation error:', err);
+      return res.status(500).json({ error: 'Failed to create preferences table' });
+    }
+    
+    // Build dynamic update query
+    const fields = Object.keys(preferences).filter(key => key.startsWith('email_'));
+    const values = fields.map(field => preferences[field] ? 1 : 0);
+    const placeholders = fields.map(field => `${field} = ?`).join(', ');
+    
+    db.run(
+      `INSERT OR REPLACE INTO notification_preferences (user_id, ${fields.join(', ')}) 
+       VALUES (?, ${fields.map(() => '?').join(', ')})`,
+      [req.user.id, ...values],
+      function(err) {
+        if (err) {
+          console.error('Preferences update error:', err);
+          return res.status(500).json({ error: 'Failed to update preferences' });
+        }
+        res.json({ message: 'Preferences updated successfully' });
+      }
+    );
+  });
+});
+
+// Import email service
+const { sendEmail } = require('./email-service');
+
+// Send email notification endpoint
+app.post('/api/notifications/email', authenticateToken, async (req, res) => {
+  const { type, recipient_id, data } = req.body;
+  
+  try {
+    // Get recipient details
+    const recipient = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM users WHERE id = ?', [recipient_id], (err, user) => {
+        if (err) reject(err);
+        else resolve(user);
+      });
+    });
+    
+    if (!recipient) {
+      return res.status(404).json({ error: 'Recipient not found' });
+    }
+    
+    // Check notification preferences
+    const preferences = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM notification_preferences WHERE user_id = ?',
+        [recipient_id],
+        (err, prefs) => {
+          if (err) reject(err);
+          else resolve(prefs);
+        }
+      );
+    });
+    
+    // Map notification types to preference fields
+    const preferenceMap = {
+      'access_request_received': 'email_access_requests',
+      'deal_room_created': 'email_deal_engagement',
+      'project_published': 'email_project_published',
+      'project_rejected': 'email_project_rejected'
+    };
+    
+    const preferenceField = preferenceMap[type];
+    
+    // Check if user wants this type of email
+    if (preferences && preferenceField && !preferences[preferenceField]) {
+      return res.json({ message: 'User has opted out of this notification type' });
+    }
+    
+    // Send email
+    await sendEmail(type, recipient.email, {
+      ...data,
+      recipient_name: recipient.name
+    });
+    
+    res.json({ message: 'Email notification sent' });
+  } catch (error) {
+    console.error('Email notification error:', error);
+    res.status(500).json({ error: 'Failed to send email notification' });
+  }
+});
+
 // Send system message to any user
 app.post('/api/admin/send-system-message', authenticateToken, requireRole(['admin']), (req, res) => {
   const { user_id, message, type = 'system' } = req.body;
@@ -2739,6 +2887,100 @@ app.post('/api/deals', authenticateToken, (req, res) => {
   });
 });
 
+
+// Get user contact info
+app.get('/api/users/:id/contact', authenticateToken, async (req, res) => {
+  const userId = req.params.id;
+  
+  // Check if users have shared contact info through a deal
+  db.get(
+    `SELECT COUNT(*) as hasShared FROM deals 
+     WHERE ((borrower_id = ? AND funder_id = ?) OR (borrower_id = ? AND funder_id = ?))
+     AND status IN ('active', 'accepted', 'completed')`,
+    [req.user.id, userId, userId, req.user.id],
+    (err, result) => {
+      if (err || !result.hasShared) {
+        return res.status(403).json({ error: 'Contact info not shared' });
+      }
+      
+      db.get(
+        'SELECT name, email, phone, company_name, linkedin FROM users WHERE id = ?',
+        [userId],
+        (err, contact) => {
+          if (err || !contact) {
+            return res.status(404).json({ error: 'User not found' });
+          }
+          res.json(contact);
+        }
+      );
+    }
+  );
+});
+
+// Share contact info
+app.post('/api/users/share-contact', authenticateToken, (req, res) => {
+  const { user_id, target_user_id } = req.body;
+  
+  // Verify request is from the correct user
+  if (user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  // Log contact share (you might want to create a contact_shares table)
+  console.log(`User ${user_id} shared contact with ${target_user_id}`);
+  
+  res.json({ message: 'Contact info shared successfully' });
+});
+
+// Reject project and move back to draft
+app.post('/api/admin/reject-project/:id', authenticateToken, requireRole(['admin']), (req, res) => {
+  const projectId = req.params.id;
+  const { reason } = req.body;
+  
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: 'Reason is required' });
+  }
+  
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    
+    // Update project status back to draft
+    db.run(
+      `UPDATE projects SET 
+       payment_status = 'unpaid',
+       visible = 0,
+       submission_status = 'draft',
+       updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [projectId],
+      function(err) {
+        if (err) {
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Failed to update project' });
+        }
+        
+        // Log the admin action
+        db.run(
+          `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+           VALUES (?, 'reject_project', ?, 'project', ?)`,
+          [req.user.id, projectId, reason],
+          (err) => {
+            if (err) console.error('Failed to log override:', err);
+          }
+        );
+        
+        db.run('COMMIT');
+        
+        console.log(`ADMIN ACTION: Rejected project ${projectId}. Reason: ${reason}`);
+        
+        res.json({ 
+          message: 'Project rejected and moved to draft',
+          changes: this.changes 
+        });
+      }
+    );
+  });
+});
 // Add endpoint to get project documents for deal room
 // In server.js, replace the existing endpoint with this fixed version:
 
