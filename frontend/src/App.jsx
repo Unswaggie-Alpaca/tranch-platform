@@ -2214,7 +2214,8 @@ const Dashboard = () => {
         </>
       )}
 
-      {user.role === 'funder' && (
+ {/* Funder Dashboard */}
+{user.role === 'funder' && (
   <>
     {!user.approved && (
       <div className="warning-message">
@@ -2255,98 +2256,110 @@ const Dashboard = () => {
     )}
 
     {user.approved && user.subscription_status === 'active' && (
-      <div className="dashboard-content-wrapper">
-        {/* Stats Section */}
+      <>
+        {/* Quick Stats */}
         <div className="stats-grid-clean">
           <div className="stat-card-clean">
             <div className="stat-header-clean">
-              <span className="stat-label">YOUR PORTFOLIO</span>
-            </div>
-            <div className="stat-value">
-              {projects.filter(p => p.access_status === 'approved' || p.deal_id).length}
-            </div>
-            <a href="#" className="stat-link">Active Engagements</a>
-          </div>
-
-          <div className="stat-card-clean featured">
-            <div className="stat-header-clean">
-              <span className="stat-label">DEAL ROOMS</span>
+              <span className="stat-label">ACTIVE DEALS</span>
+              <div className="stat-indicator green"></div>
             </div>
             <div className="stat-value">
               {projects.filter(p => p.deal_id).length}
             </div>
-            <div className="stat-subtitle">Active Negotiations</div>
+            <Link to="/portfolio" className="stat-link">
+              View Portfolio
+            </Link>
+          </div>
+
+          <div className="stat-card-clean featured">
+            <div className="stat-header-clean">
+              <span className="stat-label">IN DUE DILIGENCE</span>
+              <span className="dollar-sign">📊</span>
+            </div>
+            <div className="stat-value">
+              {projects.filter(p => p.access_status === 'approved' && !p.deal_id).length}
+            </div>
+            <div className="stat-subtitle">Projects under review</div>
           </div>
 
           <div className="stat-card-clean">
             <div className="stat-header-clean">
-              <span className="stat-label">NEW OPPORTUNITIES</span>
+              <span className="stat-label">PENDING REQUESTS</span>
+              <div className="stat-badge">{projects.filter(p => p.access_status === 'pending').length}</div>
             </div>
             <div className="stat-value">
-              {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).length}
+              {projects.filter(p => p.access_status === 'pending').length}
             </div>
-            <a href="/projects" className="stat-link">Browse Projects</a>
+            <Link to="/messages" className="stat-link">
+              View Messages
+            </Link>
           </div>
         </div>
 
-        {/* Active Engagements Section */}
+        {/* Active Deals Section */}
         <div className="portfolio-section-clean">
           <div className="portfolio-header-clean">
-            <h2>Your Active Engagements</h2>
-            <Link to="/projects" className="btn btn-outline">
-              Browse All Projects →
-            </Link>
+            <h2>Your Active Deals</h2>
+            <div className="filter-pills">
+              <span className="filter-pill active">All</span>
+            </div>
           </div>
 
           {projects.filter(p => p.access_status === 'approved' || p.deal_id).length === 0 ? (
             <EmptyState 
               icon="📂"
-              title="No active engagements yet"
-              message="Browse available projects to start building your portfolio"
+              title="No active deals yet"
+              message="Browse the marketplace to find investment opportunities"
               action={
                 <Link to="/projects" className="btn btn-primary">
-                  Browse Projects
+                  Browse Marketplace
                 </Link>
               }
             />
           ) : (
             <div className="projects-grid-clean">
-  {projects.filter(p => p.access_status === 'approved' || p.deal_id).map((project) => (
-    <FunderProjectCard  // NOT ProjectCardClean!
-      key={project.id} 
-      project={project}
-      onProjectUpdate={handleProjectUpdate}
-    />
-  ))}
-</div>
+              {projects.filter(p => p.access_status === 'approved' || p.deal_id).map((project) => (
+                <FunderProjectCard 
+                  key={project.id} 
+                  project={project}
+                  onProjectUpdate={handleProjectUpdate}
+                />
+              ))}
+            </div>
           )}
         </div>
 
-        {/* New Opportunities Section */}
+        {/* Recommended Projects Section */}
         <div className="portfolio-section-clean">
           <div className="portfolio-header-clean">
-            <h2>New Opportunities</h2>
+            <h2>Recommended for You</h2>
+            <Link to="/projects" className="btn btn-outline">
+              View All in Marketplace →
+            </Link>
           </div>
 
           {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).length === 0 ? (
             <EmptyState 
-              icon=""
-              title="No new projects available"
-              message="Check back soon for new investment opportunities"
+              icon="🔍"
+              title="No recommendations available"
+              message="Check the marketplace for new opportunities"
             />
           ) : (
             <div className="projects-grid-clean">
-  {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).slice(0, 3).map((project) => (
-    <FunderProjectCard  // NOT ProjectCardClean!
-      key={project.id} 
-      project={project}
-      onProjectUpdate={handleProjectUpdate}
-    />
-  ))}
-</div>
+              {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id)
+                .slice(0, 3)
+                .map((project) => (
+                  <FunderProjectCard 
+                    key={project.id} 
+                    project={project}
+                    onProjectUpdate={handleProjectUpdate}
+                  />
+              ))}
+            </div>
           )}
         </div>
-      </div>
+      </>
     )}
   </>
 )}
@@ -2807,6 +2820,165 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
     </>
   );
 };
+
+const MarketplaceProjectCard = ({ project, onProjectUpdate }) => {
+  const api = useApi();
+  const navigate = useNavigate();
+  const { addNotification } = useNotifications();
+  const [showAccessForm, setShowAccessForm] = useState(false);
+  const [accessMessage, setAccessMessage] = useState('');
+  const [requesting, setRequesting] = useState(false);
+
+  const handleRequestAccess = async () => {
+    setRequesting(true);
+    try {
+      await api.requestAccess(project.id, accessMessage.trim() || null);
+      
+      await api.sendEmailNotification('access_request_received', project.borrower_id, {
+        project_title: project.title,
+        funder_name: 'A verified funder'
+      });
+      
+      addNotification({
+        type: 'success',
+        title: 'Access Request Sent',
+        message: 'Your request has been sent to the developer.'
+      });
+      
+      setShowAccessForm(false);
+      setAccessMessage('');
+      if (onProjectUpdate) onProjectUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Request Failed',
+        message: err.message || 'Failed to send access request'
+      });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const getRiskIndicator = () => {
+    const risks = [
+      project.market_risk_rating,
+      project.construction_risk_rating,
+      project.location_risk_rating
+    ].filter(r => r);
+    
+    if (risks.length === 0) return null;
+    
+    const avgRisk = risks.reduce((sum, risk) => {
+      if (risk === 'low') return sum + 1;
+      if (risk === 'medium') return sum + 2;
+      if (risk === 'high') return sum + 3;
+      return sum;
+    }, 0) / risks.length;
+    
+    if (avgRisk <= 1.5) return { level: 'low', color: '#10b981' };
+    if (avgRisk <= 2.5) return { level: 'medium', color: '#f59e0b' };
+    return { level: 'high', color: '#ef4444' };
+  };
+
+  const risk = getRiskIndicator();
+
+  return (
+    <div className="marketplace-card">
+      <div className="card-header-clean">
+        <span className="status-badge-clean opportunity">OPPORTUNITY</span>
+        {risk && (
+          <span className="risk-indicator" style={{ color: risk.color }}>
+            {risk.level.toUpperCase()} RISK
+          </span>
+        )}
+      </div>
+
+      <h3 className="project-title-clean">{project.title || 'Untitled Project'}</h3>
+      
+      <div className="location-row-clean">
+        <svg viewBox="0 0 16 16" fill="none" className="location-icon-clean">
+          <path d="M8 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="currentColor"/>
+          <path fillRule="evenodd" clipRule="evenodd" d="M8 14s4-4.15 4-7a4 4 0 10-8 0c0 2.85 4 7 4 7z" fill="currentColor"/>
+        </svg>
+        <span>{project.suburb || 'Location TBD'}</span>
+      </div>
+
+      <div className="project-info-grid">
+        <div className="info-block">
+          <span className="info-label">LOAN AMOUNT</span>
+          <span className="info-value">{formatCurrency(project.loan_amount)}</span>
+        </div>
+        <div className="info-block">
+          <span className="info-label">TYPE</span>
+          <span className="info-value">{project.property_type || 'Not specified'}</span>
+        </div>
+      </div>
+
+      {/* Quick Metrics */}
+      <div className="marketplace-metrics">
+        {project.lvr && (
+          <div className="metric-pill">
+            <span className="metric-label">LVR</span>
+            <span className="metric-value">{project.lvr.toFixed(1)}%</span>
+          </div>
+        )}
+        {project.expected_profit && project.total_project_cost && (
+          <div className="metric-pill">
+            <span className="metric-label">ROI</span>
+            <span className="metric-value">
+              {((project.expected_profit / project.total_project_cost) * 100).toFixed(1)}%
+            </span>
+          </div>
+        )}
+        {project.development_stage && (
+          <div className="metric-pill">
+            <span className="metric-label">Stage</span>
+            <span className="metric-value">{project.development_stage}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="card-actions-clean">
+        {!showAccessForm ? (
+          <button 
+            onClick={() => setShowAccessForm(true)}
+            className="btn-primary-clean full-width"
+          >
+            Request Access
+          </button>
+        ) : (
+          <div className="access-form-inline">
+            <textarea
+              value={accessMessage}
+              onChange={(e) => setAccessMessage(e.target.value)}
+              placeholder="Introduce yourself (optional)..."
+              className="access-message-input"
+              rows="2"
+            />
+            <div className="access-form-actions">
+              <button 
+                onClick={() => {
+                  setShowAccessForm(false);
+                  setAccessMessage('');
+                }}
+                className="btn-text-clean"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleRequestAccess}
+                disabled={requesting}
+                className="btn-primary-clean"
+              >
+                {requesting ? 'Sending...' : 'Send Request'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 // ===========================
 // PROJECT CARD COMPONENT
 // ===========================
@@ -3142,23 +3314,31 @@ const ProjectCard = ({ project, userRole, onProjectUpdate }) => {
 const ProjectsPage = () => {
   const api = useApi();
   const { user } = useApp();
+  const { addNotification } = useNotifications();
   const [projects, setProjects] = useState([]);
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [viewMode, setViewMode] = useState('grid'); // grid or map
+  const [savedSearches, setSavedSearches] = useState([]);
+  const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
   const [filters, setFilters] = useState({
     propertyType: '',
     minLoan: '',
     maxLoan: '',
     suburb: '',
     developmentStage: '',
-    sortBy: 'created_at'
+    sortBy: 'created_at',
+    riskProfile: '',
+    minReturn: '',
+    dealSize: ''
   });
 
   const debouncedFilters = useDebounce(filters, 300);
 
   useEffect(() => {
     fetchProjects();
+    loadSavedSearches();
   }, []);
 
   useEffect(() => {
@@ -3168,12 +3348,46 @@ const ProjectsPage = () => {
   const fetchProjects = async () => {
     try {
       const data = await api.getProjects();
-      setProjects(data);
+      // Only show published projects that user doesn't already have access to
+      const marketplaceProjects = data.filter(p => 
+        p.payment_status === 'paid' && 
+        (!p.access_status || p.access_status === 'declined')
+      );
+      setProjects(marketplaceProjects);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadSavedSearches = () => {
+    const saved = localStorage.getItem('saved_searches');
+    if (saved) {
+      setSavedSearches(JSON.parse(saved));
+    }
+  };
+
+  const saveCurrentSearch = (name) => {
+    const newSearch = {
+      id: Date.now(),
+      name,
+      filters: { ...filters },
+      created_at: new Date()
+    };
+    const updated = [...savedSearches, newSearch];
+    setSavedSearches(updated);
+    localStorage.setItem('saved_searches', JSON.stringify(updated));
+    setShowSaveSearchModal(false);
+    addNotification({
+      type: 'success',
+      title: 'Search Saved',
+      message: 'Your search criteria has been saved'
+    });
+  };
+
+  const applySavedSearch = (search) => {
+    setFilters(search.filters);
   };
 
   const applyFilters = () => {
@@ -3201,6 +3415,16 @@ const ProjectsPage = () => {
       filtered = filtered.filter(p => p.development_stage === filters.developmentStage);
     }
 
+    if (filters.riskProfile) {
+      filtered = filtered.filter(p => {
+        const avgRisk = (p.market_risk_rating + p.construction_risk_rating + p.location_risk_rating) / 3;
+        if (filters.riskProfile === 'low') return avgRisk <= 1.5;
+        if (filters.riskProfile === 'medium') return avgRisk > 1.5 && avgRisk <= 2.5;
+        if (filters.riskProfile === 'high') return avgRisk > 2.5;
+        return true;
+      });
+    }
+
     // Sorting
     filtered.sort((a, b) => {
       switch (filters.sortBy) {
@@ -3208,6 +3432,8 @@ const ProjectsPage = () => {
           return a.loan_amount - b.loan_amount;
         case 'loan_amount_desc':
           return b.loan_amount - a.loan_amount;
+        case 'return_potential':
+          return (b.expected_profit / b.total_project_cost || 0) - (a.expected_profit / a.total_project_cost || 0);
         case 'created_at':
         default:
           return new Date(b.created_at) - new Date(a.created_at);
@@ -3224,7 +3450,30 @@ const ProjectsPage = () => {
       maxLoan: '',
       suburb: '',
       developmentStage: '',
-      sortBy: 'created_at'
+      sortBy: 'created_at',
+      riskProfile: '',
+      minReturn: '',
+      dealSize: ''
+    });
+  };
+
+  const exportResults = () => {
+    const data = filteredProjects.map(p => ({
+      'Project': p.title,
+      'Location': p.suburb,
+      'Loan Amount': p.loan_amount,
+      'Property Type': p.property_type,
+      'Stage': p.development_stage,
+      'LVR': p.lvr ? `${p.lvr}%` : 'N/A',
+      'Created': formatDate(p.created_at)
+    }));
+    
+    downloadCSV(data, `marketplace_export_${new Date().toISOString().split('T')[0]}.csv`);
+    
+    addNotification({
+      type: 'success',
+      title: 'Export Complete',
+      message: 'Marketplace data exported successfully'
     });
   };
 
@@ -3232,10 +3481,10 @@ const ProjectsPage = () => {
 
   if (!user.approved) {
     return (
-      <div className="projects-page">
+      <div className="marketplace-page">
         <div className="warning-message">
           <h3>Account Pending Approval</h3>
-          <p>Your account is currently under review. You'll be able to access projects once approved.</p>
+          <p>Your account is currently under review. You'll be able to access the marketplace once approved.</p>
         </div>
       </div>
     );
@@ -3243,10 +3492,10 @@ const ProjectsPage = () => {
 
   if (user.subscription_status !== 'active') {
     return (
-      <div className="projects-page">
+      <div className="marketplace-page">
         <div className="subscription-required">
           <h2>Subscription Required</h2>
-          <p>You need an active subscription to browse projects.</p>
+          <p>You need an active subscription to access the marketplace.</p>
           <Link to="/dashboard" className="btn btn-primary">
             Subscribe Now
           </Link>
@@ -3256,16 +3505,76 @@ const ProjectsPage = () => {
   }
 
   return (
-    <div className="projects-page">
-      <div className="page-header">
-        <h1>Investment Opportunities</h1>
-        <p>Browse and filter active property development projects</p>
+    <div className="marketplace-page">
+      <div className="marketplace-header">
+        <div className="header-content">
+          <h1>Investment Marketplace</h1>
+          <p>Discover and analyze property development opportunities</p>
+        </div>
+        <div className="header-actions">
+          <div className="view-toggle">
+            <button 
+              className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              Grid
+            </button>
+            <button 
+              className={`toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
+              onClick={() => setViewMode('map')}
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+              Map
+            </button>
+          </div>
+          <button onClick={exportResults} className="btn btn-outline">
+            Export Results
+          </button>
+        </div>
       </div>
 
       {error && <ErrorMessage message={error} onClose={() => setError('')} />}
 
-      <div className="filters-section">
-        <h3>Filter Projects</h3>
+      {/* Advanced Filters */}
+      <div className="marketplace-filters">
+        <div className="filters-header">
+          <h3>Filter Projects</h3>
+          <div className="filter-actions">
+            <button 
+              onClick={() => setShowSaveSearchModal(true)} 
+              className="btn btn-sm btn-outline"
+            >
+              Save Search
+            </button>
+            <button onClick={clearFilters} className="btn btn-sm btn-outline">
+              Clear All
+            </button>
+          </div>
+        </div>
+
+        {/* Saved Searches */}
+        {savedSearches.length > 0 && (
+          <div className="saved-searches">
+            <label>Saved Searches</label>
+            <div className="saved-search-pills">
+              {savedSearches.map(search => (
+                <button
+                  key={search.id}
+                  onClick={() => applySavedSearch(search)}
+                  className="saved-search-pill"
+                >
+                  {search.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
         <div className="filters-grid">
           <div className="filter-group">
             <label>Property Type</label>
@@ -3284,33 +3593,32 @@ const ProjectsPage = () => {
           </div>
 
           <div className="filter-group">
-            <label>Min Loan Amount</label>
-            <NumberInput
-              value={filters.minLoan}
-              onChange={(value) => setFilters({ ...filters, minLoan: value })}
-              placeholder="Min amount"
-              prefix="$"
-            />
+            <label>Deal Size Range</label>
+            <div className="range-inputs">
+              <NumberInput
+                value={filters.minLoan}
+                onChange={(value) => setFilters({ ...filters, minLoan: value })}
+                placeholder="Min"
+                prefix="$"
+              />
+              <span>to</span>
+              <NumberInput
+                value={filters.maxLoan}
+                onChange={(value) => setFilters({ ...filters, maxLoan: value })}
+                placeholder="Max"
+                prefix="$"
+              />
+            </div>
           </div>
 
           <div className="filter-group">
-            <label>Max Loan Amount</label>
-            <NumberInput
-              value={filters.maxLoan}
-              onChange={(value) => setFilters({ ...filters, maxLoan: value })}
-              placeholder="Max amount"
-              prefix="$"
-            />
-          </div>
-
-          <div className="filter-group">
-            <label>Suburb</label>
+            <label>Location</label>
             <input
               type="text"
               value={filters.suburb}
               onChange={(e) => setFilters({ ...filters, suburb: e.target.value })}
               className="form-input"
-              placeholder="Search suburb"
+              placeholder="Search suburb or city"
             />
           </div>
 
@@ -3330,6 +3638,20 @@ const ProjectsPage = () => {
           </div>
 
           <div className="filter-group">
+            <label>Risk Profile</label>
+            <select
+              value={filters.riskProfile}
+              onChange={(e) => setFilters({ ...filters, riskProfile: e.target.value })}
+              className="form-select"
+            >
+              <option value="">All Risk Levels</option>
+              <option value="low">Low Risk</option>
+              <option value="medium">Medium Risk</option>
+              <option value="high">High Risk</option>
+            </select>
+          </div>
+
+          <div className="filter-group">
             <label>Sort By</label>
             <select
               value={filters.sortBy}
@@ -3339,45 +3661,90 @@ const ProjectsPage = () => {
               <option value="created_at">Newest First</option>
               <option value="loan_amount_desc">Loan Amount (High to Low)</option>
               <option value="loan_amount_asc">Loan Amount (Low to High)</option>
+              <option value="return_potential">Return Potential</option>
             </select>
           </div>
-
-          <button onClick={clearFilters} className="btn btn-outline">
-            Clear Filters
-          </button>
         </div>
 
         <div className="filter-summary">
-          Showing {filteredProjects.length} of {projects.length} projects
+          <span>Showing {filteredProjects.length} of {projects.length} opportunities</span>
+          {Object.values(filters).filter(v => v && v !== 'created_at').length > 0 && (
+            <button onClick={clearFilters} className="clear-filters-link">
+              Clear filters
+            </button>
+          )}
         </div>
       </div>
 
-      {filteredProjects.length === 0 ? (
-        <EmptyState 
-          icon="🔍"
-          title="No projects match your criteria"
-          message="Try adjusting your filters to see more projects"
-          action={
-            <button onClick={clearFilters} className="btn btn-primary">
-              Clear Filters
-            </button>
-          }
-        />
+      {/* Projects Display */}
+      {viewMode === 'grid' ? (
+        filteredProjects.length === 0 ? (
+          <EmptyState 
+            icon="🔍"
+            title="No projects match your criteria"
+            message="Try adjusting your filters to see more opportunities"
+            action={
+              <button onClick={clearFilters} className="btn btn-primary">
+                Clear Filters
+              </button>
+            }
+          />
+        ) : (
+          <div className="projects-grid-clean marketplace-grid">
+            {filteredProjects.map((project) => (
+              <MarketplaceProjectCard 
+                key={project.id} 
+                project={project} 
+                onProjectUpdate={fetchProjects}
+              />
+            ))}
+          </div>
+        )
       ) : (
-        <div className="projects-grid">
-          {filteredProjects.map((project) => (
-            <ProjectCard 
-              key={project.id} 
-              project={project} 
-              userRole={user.role}
-              onProjectUpdate={fetchProjects}
-            />
-          ))}
+        <div className="marketplace-map">
+          <div className="map-placeholder">
+            <h3>Map View Coming Soon</h3>
+            <p>Interactive map showing project locations</p>
+          </div>
         </div>
       )}
+
+      {/* Save Search Modal */}
+      <Modal 
+        isOpen={showSaveSearchModal} 
+        onClose={() => setShowSaveSearchModal(false)}
+        title="Save Search"
+        size="small"
+      >
+        <div className="save-search-form">
+          <input
+            type="text"
+            placeholder="Name your search..."
+            className="form-input"
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && e.target.value) {
+                saveCurrentSearch(e.target.value);
+              }
+            }}
+          />
+          <button 
+            onClick={(e) => {
+              const input = e.target.previousSibling;
+              if (input.value) {
+                saveCurrentSearch(input.value);
+              }
+            }}
+            className="btn btn-primary"
+          >
+            Save Search
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };
+
+
 
 
 const AddressAutocomplete = ({ value, onChange, onSelect }) => {
