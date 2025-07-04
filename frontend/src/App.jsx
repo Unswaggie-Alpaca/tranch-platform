@@ -4623,7 +4623,11 @@ const ProjectDetail = () => {
   const [previewDocument, setPreviewDocument] = useState(null);
 
   useEffect(() => {
+    let mounted = true;
+    
     const fetchProjectDetails = async () => {
+      if (!id) return;
+      
       console.log('Fetching project details for ID:', id);
       setLoading(true);
       setError('');
@@ -4632,6 +4636,8 @@ const ProjectDetail = () => {
         console.log('Calling API for project:', id);
         const projectData = await api.getProject(id);
         console.log('Project data received:', projectData);
+        
+        if (!mounted) return;
         
         if (!projectData) {
           throw new Error('Project not found');
@@ -4644,27 +4650,37 @@ const ProjectDetail = () => {
           console.log('Fetching documents for project:', id);
           const docsData = await api.getProjectDocuments(id);
           console.log('Documents received:', docsData);
-          setDocuments(docsData || []);
+          if (mounted) {
+            setDocuments(docsData || []);
+          }
         } catch (docErr) {
           console.error('Failed to fetch documents:', docErr);
-          setDocuments([]); // Set empty array on error
+          if (mounted) {
+            setDocuments([]);
+          }
         }
         
       } catch (err) {
         console.error('Failed to fetch project details:', err);
-        setError(err.message || 'Failed to load project');
-        setProject(null);
-        setDocuments([]);
+        if (mounted) {
+          setError(err.message || 'Failed to load project');
+          setProject(null);
+          setDocuments([]);
+        }
       } finally {
-        console.log('Setting loading to false in ProjectDetail');
-        setLoading(false);
+        if (mounted) {
+          console.log('Setting loading to false in ProjectDetail');
+          setLoading(false);
+        }
       }
     };
 
-    if (id) {
-      fetchProjectDetails();
-    }
-  }, [id, api]);
+    fetchProjectDetails();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [id]); // REMOVED api from dependencies
 
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false);
@@ -4673,28 +4689,26 @@ const ProjectDetail = () => {
       title: 'Payment Successful',
       message: 'Your project is now published and visible to funders.'
     });
+    
     // Re-fetch project details
-    const fetchProjectDetails = async () => {
-      setLoading(true);
-      try {
-        const projectData = await api.getProject(id);
-        if (projectData) {
-          setProject(projectData);
-          try {
-            const docsData = await api.getProjectDocuments(id);
-            setDocuments(docsData || []);
-          } catch (docErr) {
-            console.error('Failed to fetch documents:', docErr);
-            setDocuments([]);
-          }
+    setLoading(true);
+    try {
+      const projectData = await api.getProject(id);
+      if (projectData) {
+        setProject(projectData);
+        try {
+          const docsData = await api.getProjectDocuments(id);
+          setDocuments(docsData || []);
+        } catch (docErr) {
+          console.error('Failed to fetch documents:', docErr);
+          setDocuments([]);
         }
-      } catch (err) {
-        console.error('Failed to refresh project:', err);
-      } finally {
-        setLoading(false);
       }
-    };
-    await fetchProjectDetails();
+    } catch (err) {
+      console.error('Failed to refresh project:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDocumentPreview = async (doc) => {
@@ -4728,10 +4742,11 @@ const ProjectDetail = () => {
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'financials', label: 'Financials' },
-    { id: 'documents', label: `Documents (${documents?.length || 0})` }, // Safe access with fallback
+    { id: 'documents', label: `Documents (${documents?.length || 0})` },
     { id: 'timeline', label: 'Timeline & Milestones' }
   ];
 
+  // Rest of component remains the same...
   return (
     <div className="project-detail-page">
       {/* Breadcrumb Navigation */}
