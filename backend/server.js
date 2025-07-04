@@ -104,21 +104,25 @@ const authenticateToken = async (req, res, next) => {
           try {
             const clerkUser = await clerkClient.users.getUser(clerkUserId);
             
-            // Better error handling for email
-            if (!clerkUser.emailAddresses || clerkUser.emailAddresses.length === 0) {
-              console.error('No email found for Clerk user:', clerkUserId);
-              return res.status(400).json({ error: 'No email address found' });
+            // Safer email extraction
+            let email = null;
+            let name = 'User';
+            
+            if (clerkUser.emailAddresses && Array.isArray(clerkUser.emailAddresses) && clerkUser.emailAddresses.length > 0) {
+              const primaryEmail = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId);
+              email = primaryEmail ? primaryEmail.emailAddress : clerkUser.emailAddresses[0].emailAddress;
             }
             
-            const email = clerkUser.emailAddresses[0]?.emailAddress;
             if (!email) {
-              console.error('Email is null for Clerk user:', clerkUserId);
-              return res.status(400).json({ error: 'Invalid email address' });
+              console.error('No email found for Clerk user:', clerkUserId);
+              return res.status(400).json({ error: 'No email address found for user' });
             }
             
-            const name = clerkUser.firstName ? 
-              `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : 
-              email.split('@')[0] || 'User';
+            if (clerkUser.firstName || clerkUser.lastName) {
+              name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim();
+            } else {
+              name = email.split('@')[0];
+            }
             
             // Check if email already exists
             db.get('SELECT id FROM users WHERE email = ?', [email], (emailErr, existingUser) => {
@@ -130,8 +134,8 @@ const authenticateToken = async (req, res, next) => {
               if (existingUser) {
                 // Update existing user with clerk_user_id
                 db.run(
-                  'UPDATE users SET clerk_user_id = ? WHERE email = ?',
-                  [clerkUserId, email],
+                  'UPDATE users SET clerk_user_id = ?, name = ? WHERE email = ?',
+                  [clerkUserId, name, email],
                   function(updateErr) {
                     if (updateErr) {
                       console.error('User update error:', updateErr);
@@ -158,12 +162,6 @@ const authenticateToken = async (req, res, next) => {
                   function(createErr) {
                     if (createErr) {
                       console.error('User creation error:', createErr);
-                      console.error('Error details:', {
-                        clerkUserId,
-                        name,
-                        email,
-                        error: createErr.message
-                      });
                       return res.status(500).json({ error: `Failed to create user: ${createErr.message}` });
                     }
                     
@@ -183,7 +181,6 @@ const authenticateToken = async (req, res, next) => {
             });
           } catch (syncError) {
             console.error('User sync error:', syncError);
-            console.error('Sync error details:', syncError.message);
             return res.status(500).json({ error: `Failed to sync user: ${syncError.message}` });
           }
         } else {
@@ -319,21 +316,23 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
   }
 
   console.log('Stripe webhook received:', event.type);
-console.log('Stripe webhook received:', event.type);
 
-  // Wrap your database updates in a retry mechanism
-  const retryDbOperation = async (operation, maxRetries = 3) => {
-    for (let i = 0; i < maxRetries; i++) {
+  // Database operation with retry
+  const executeDbOperation = async (operation) => {
+    let lastError;
+    for (let i = 0; i < 3; i++) {
       try {
         return await operation();
       } catch (err) {
-        if (err.code === 'SQLITE_BUSY' && i < maxRetries - 1) {
+        lastError = err;
+        if (err.code === 'SQLITE_BUSY' && i < 2) {
           await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
           continue;
         }
         throw err;
       }
     }
+    throw lastError;
   };
 
   try {
@@ -346,38 +345,40 @@ console.log('Stripe webhook received:', event.type);
         if (paymentIntent.metadata.payment_type === 'project_listing') {
           const projectId = paymentIntent.metadata.project_id;
           
-          // Update project status
-          await new Promise((resolve, reject) => {
-            db.run(
-              'UPDATE projects SET payment_status = ?, visible = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-              ['paid', projectId],
-              function(err) {
-                if (err) {
-                  console.error('Failed to update project:', err);
-                  reject(err);
-                } else {
-                  console.log('Project updated successfully. Project ID:', projectId, 'Rows changed:', this.changes);
-                  resolve();
-                }
-              }
-            );
-          });
-          
-          // Update payment status
-          await new Promise((resolve, reject) => {
-            db.run(
-              'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
-              ['completed', paymentIntent.id],
-              function(err) {
-                if (err) {
-                  console.error('Failed to update payment:', err);
-                  reject(err);
-                } else {
-                  console.log('Payment updated successfully. Rows changed:', this.changes);
-                  resolve();
-                }
-              }
-            );
+          await executeDbOperation(async () => {
+            return new Promise((resolve, reject) => {
+              db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                
+                db.run(
+                  'UPDATE projects SET payment_status = ?, visible = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                  ['paid', projectId],
+                  function(err) {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      reject(err);
+                      return;
+                    }
+                    
+                    db.run(
+                      'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
+                      ['completed', paymentIntent.id],
+                      function(err2) {
+                        if (err2) {
+                          db.run('ROLLBACK');
+                          reject(err2);
+                          return;
+                        }
+                        
+                        db.run('COMMIT');
+                        console.log('Transaction committed successfully');
+                        resolve();
+                      }
+                    );
+                  }
+                );
+              });
+            });
           });
         }
         break;
@@ -385,20 +386,39 @@ console.log('Stripe webhook received:', event.type);
       case 'payment_intent.payment_failed':
         const failedIntent = event.data.object;
         if (failedIntent.metadata.payment_type === 'project_listing') {
-          await new Promise((resolve, reject) => {
-            db.run(
-              'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
-              ['failed', failedIntent.id],
-              (err) => err ? reject(err) : resolve()
-            );
-          });
-          
-          await new Promise((resolve, reject) => {
-            db.run(
-              'UPDATE projects SET payment_status = ? WHERE id = ?',
-              ['unpaid', failedIntent.metadata.project_id],
-              (err) => err ? reject(err) : resolve()
-            );
+          await executeDbOperation(async () => {
+            return new Promise((resolve, reject) => {
+              db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                
+                db.run(
+                  'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
+                  ['failed', failedIntent.id],
+                  (err) => {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      reject(err);
+                      return;
+                    }
+                    
+                    db.run(
+                      'UPDATE projects SET payment_status = ? WHERE id = ?',
+                      ['unpaid', failedIntent.metadata.project_id],
+                      (err2) => {
+                        if (err2) {
+                          db.run('ROLLBACK');
+                          reject(err2);
+                          return;
+                        }
+                        
+                        db.run('COMMIT');
+                        resolve();
+                      }
+                    );
+                  }
+                );
+              });
+            });
           });
         }
         break;
@@ -406,37 +426,71 @@ console.log('Stripe webhook received:', event.type);
       case 'invoice.payment_succeeded':
         const invoice = event.data.object;
         if (invoice.subscription) {
-          await new Promise((resolve, reject) => {
+          await executeDbOperation(async () => {
+            return new Promise((resolve, reject) => {
+              db.get(
+                'SELECT * FROM users WHERE stripe_customer_id = ?', 
+                [invoice.customer], 
+                (err, user) => {
+                  if (err) {
+                    reject(err);
+                  } else if (user) {
+                    db.serialize(() => {
+                      db.run('BEGIN TRANSACTION');
+                      
+                      db.run(
+                        'UPDATE users SET subscription_status = ?, approved = 1, verification_status = ? WHERE id = ?', 
+                        ['active', 'verified', user.id],
+                        (updateErr) => {
+                          if (updateErr) {
+                            db.run('ROLLBACK');
+                            reject(updateErr);
+                            return;
+                          }
+                          
+                          db.run(
+                            'UPDATE payments SET status = ? WHERE user_id = ? AND payment_type = ? AND status = ?',
+                            ['completed', user.id, 'subscription', 'pending'],
+                            (paymentErr) => {
+                              if (paymentErr) {
+                                db.run('ROLLBACK');
+                                reject(paymentErr);
+                                return;
+                              }
+                              
+                              db.run('COMMIT');
+                              console.log('User subscription activated:', user.id);
+                              resolve();
+                            }
+                          );
+                        }
+                      );
+                    });
+                  } else {
+                    resolve();
+                  }
+                }
+              );
+            });
+          });
+        }
+        break;
+
+      case 'customer.subscription.deleted':
+        const subscription = event.data.object;
+        await executeDbOperation(async () => {
+          return new Promise((resolve, reject) => {
             db.get(
               'SELECT * FROM users WHERE stripe_customer_id = ?', 
-              [invoice.customer], 
+              [subscription.customer], 
               (err, user) => {
-                if (err) {
-                  reject(err);
-                } else if (user) {
-                  // Update user subscription status
+                if (user) {
                   db.run(
-                    'UPDATE users SET subscription_status = ?, approved = 1, verification_status = ? WHERE id = ?', 
-                    ['active', 'verified', user.id],
-                    (updateErr) => {
-                      if (updateErr) {
-                        console.error('Failed to update user subscription:', updateErr);
-                        reject(updateErr);
-                      } else {
-                        console.log('User subscription activated:', user.id);
-                        
-                        // Update payment record
-                        db.run(
-                          'UPDATE payments SET status = ? WHERE user_id = ? AND payment_type = ? AND status = ?',
-                          ['completed', user.id, 'subscription', 'pending'],
-                          (paymentErr) => {
-                            if (paymentErr) {
-                              console.error('Failed to update payment:', paymentErr);
-                            }
-                            resolve();
-                          }
-                        );
-                      }
+                    'UPDATE users SET subscription_status = ? WHERE id = ?', 
+                    ['cancelled', user.id],
+                    (err2) => {
+                      if (err2) reject(err2);
+                      else resolve();
                     }
                   );
                 } else {
@@ -445,23 +499,7 @@ console.log('Stripe webhook received:', event.type);
               }
             );
           });
-        }
-        break;
-
-      case 'customer.subscription.deleted':
-        const subscription = event.data.object;
-        db.get(
-          'SELECT * FROM users WHERE stripe_customer_id = ?', 
-          [subscription.customer], 
-          (err, user) => {
-            if (user) {
-              db.run(
-                'UPDATE users SET subscription_status = ? WHERE id = ?', 
-                ['cancelled', user.id]
-              );
-            }
-          }
-        );
+        });
         break;
 
       default:
@@ -471,7 +509,7 @@ console.log('Stripe webhook received:', event.type);
     res.json({received: true});
   } catch (error) {
     console.error('Webhook processing error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    res.status(500).json({ error: 'Webhook processing failed', details: error.message });
   }
 });
 
@@ -486,16 +524,35 @@ app.use(express.json({ limit: '50mb' }));
 app.get('/uploads/:filename', authenticateToken, async (req, res) => {
   const filename = req.params.filename;
   
-  // Security check for path traversal
-  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+  // Security check for path traversal - BEFORE any path operations
+  if (!filename || 
+      filename.includes('..') || 
+      filename.includes('/') || 
+      filename.includes('\\') ||
+      filename.includes('\0') ||
+      filename.length > 255) {
     return res.status(400).send('Invalid filename');
   }
   
+  // Validate filename format
+  const validFilenameRegex = /^[a-zA-Z0-9_\-\.]+$/;
+  if (!validFilenameRegex.test(filename)) {
+    return res.status(400).send('Invalid filename format');
+  }
+  
   const filepath = path.join(uploadsDir, filename);
+  
+  // Ensure the resolved path is still within uploadsDir
+  const normalizedPath = path.normalize(filepath);
+  const normalizedUploadsDir = path.normalize(uploadsDir);
+  
+  if (!normalizedPath.startsWith(normalizedUploadsDir)) {
+    return res.status(400).send('Invalid file path');
+  }
 
   console.log('Requested file:', filename);
-  console.log('Full path:', filepath);
-  console.log('File exists:', fs.existsSync(filepath));
+  console.log('Full path:', normalizedPath);
+  console.log('File exists:', fs.existsSync(normalizedPath));
   
   // Check if user has access to this file
   db.get(
@@ -505,7 +562,12 @@ app.get('/uploads/:filename', authenticateToken, async (req, res) => {
      WHERE d.file_path LIKE ?`,
     [`%${filename}`],
     (err, document) => {
-      if (err || !document) {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).send('Database error');
+      }
+      
+      if (!document) {
         return res.status(404).send('Not found');
       }
       
@@ -523,14 +585,14 @@ app.get('/uploads/:filename', authenticateToken, async (req, res) => {
             if (!access) {
               return res.status(403).send('Forbidden');
             }
-            res.sendFile(filepath);
+            res.sendFile(normalizedPath);
           }
         );
       } else if (req.user.role === 'admin') {
         // Admins can access all files
-        res.sendFile(filepath);
+        res.sendFile(normalizedPath);
       } else {
-        res.sendFile(filepath);
+        res.sendFile(normalizedPath);
       }
     }
   );
@@ -680,6 +742,13 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
     FOREIGN KEY (user_id) REFERENCES users (id),
     FOREIGN KEY (project_id) REFERENCES projects (id)
   )`);
+
+  // Add payment intents table for storing client secrets
+db.run(`CREATE TABLE IF NOT EXISTS payment_intents (
+  payment_intent_id TEXT PRIMARY KEY,
+  client_secret TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
   // AI chat tables
   db.run(`CREATE TABLE IF NOT EXISTS ai_chat_sessions (
@@ -887,60 +956,6 @@ db.get("PRAGMA table_info(users)", (err, rows) => {
   }
 });
 
-// Webhook endpoint must be before body parsing middleware
-app.post('/api/webhooks/clerk', 
-  express.raw({ type: 'application/json' }), 
-  async (req, res) => {
-    const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
-    
-    if (!webhookSecret) {
-      console.error('CLERK_WEBHOOK_SECRET not set');
-      return res.status(500).json({ error: 'Webhook secret not configured' });
-    }
-
-    // Verify webhook signature
-    const svix = require('svix');
-    const webhook = new svix.Webhook(webhookSecret);
-    
-    const headers = {
-      'svix-id': req.headers['svix-id'],
-      'svix-timestamp': req.headers['svix-timestamp'],
-      'svix-signature': req.headers['svix-signature'],
-    };
-
-    let evt;
-    try {
-      evt = webhook.verify(req.body, headers);
-    } catch (err) {
-      console.error('Webhook verification failed:', err);
-      return res.status(400).json({ error: 'Webhook verification failed' });
-    }
-
-    // Handle webhook events
-    const { type, data } = evt;
-    
-    try {
-      switch (type) {
-        case 'user.created':
-        case 'user.updated':
-          await syncClerkUser(data);
-          break;
-          
-        case 'user.deleted':
-          await deleteClerkUser(data.id);
-          break;
-          
-        default:
-          console.log(`Unhandled webhook event: ${type}`);
-      }
-      
-      res.status(200).json({ received: true });
-    } catch (error) {
-      console.error('Webhook processing error:', error);
-      res.status(500).json({ error: 'Webhook processing failed' });
-    }
-  }
-);
 
 // Body parsing middleware (after webhooks)
 app.use(express.json({ limit: '50mb' }));
@@ -1838,7 +1853,6 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
 // ================================
 
 // Create project payment
-// Create project payment
 app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
   try {
     const { project_id } = req.body;
@@ -1847,11 +1861,12 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
     // Check if project already has a pending or completed payment
     const existingPayment = await new Promise((resolve, reject) => {
       db.get(
-        `SELECT * FROM payments 
-         WHERE project_id = ? 
-         AND payment_type = 'project_listing'
-         AND status IN ('pending', 'completed')
-         ORDER BY created_at DESC LIMIT 1`,
+        `SELECT p.*, pi.client_secret FROM payments p
+         LEFT JOIN payment_intents pi ON p.stripe_payment_intent_id = pi.payment_intent_id
+         WHERE p.project_id = ? 
+         AND p.payment_type = 'project_listing'
+         AND p.status IN ('pending', 'completed')
+         ORDER BY p.created_at DESC LIMIT 1`,
         [project_id],
         (err, row) => {
           if (err) reject(err);
@@ -1864,13 +1879,15 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       if (existingPayment.status === 'completed') {
         return res.status(400).json({ error: 'Project already paid for' });
       }
-      // Return existing pending payment
-      return res.json({
-        client_secret: existingPayment.stripe_payment_intent_id, // This should be stored properly
-        payment_intent_id: existingPayment.stripe_payment_intent_id,
-        amount: existingPayment.amount,
-        status: 'pending'
-      });
+      // Return existing pending payment with stored client secret
+      if (existingPayment.client_secret) {
+        return res.json({
+          client_secret: existingPayment.client_secret,
+          payment_intent_id: existingPayment.stripe_payment_intent_id,
+          amount: existingPayment.amount,
+          status: 'pending'
+        });
+      }
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -1894,6 +1911,32 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
         function(err) {
           if (err) reject(err);
           else resolve(this.lastID);
+        }
+      );
+    });
+
+    // Store client secret separately
+    await new Promise((resolve, reject) => {
+      db.run(
+        `CREATE TABLE IF NOT EXISTS payment_intents (
+          payment_intent_id TEXT PRIMARY KEY,
+          client_secret TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        (err) => {
+          if (err && !err.message.includes('already exists')) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT OR REPLACE INTO payment_intents (payment_intent_id, client_secret) VALUES (?, ?)',
+        [paymentIntent.id, paymentIntent.client_secret],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
         }
       );
     });
@@ -2006,14 +2049,42 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       }
     });
 
-    // Create payment record with pending status
+    // Create payment record with pending status - store subscription ID separately
     await new Promise((resolve, reject) => {
       db.run(
         'INSERT INTO payments (user_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?)',
-        [req.user.id, subscription.id, 29900, 'subscription', 'pending'],
+        [req.user.id, subscription.latest_invoice.payment_intent.id, 29900, 'subscription', 'pending'],
         function(err) {
           if (err) reject(err);
           else resolve(this.lastID);
+        }
+      );
+    });
+
+    // Store subscription ID in a separate table
+    await new Promise((resolve, reject) => {
+      db.run(
+        `CREATE TABLE IF NOT EXISTS user_subscriptions (
+          user_id INTEGER PRIMARY KEY,
+          stripe_subscription_id TEXT NOT NULL,
+          stripe_customer_id TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users (id)
+        )`,
+        (err) => {
+          if (err && !err.message.includes('already exists')) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT OR REPLACE INTO user_subscriptions (user_id, stripe_subscription_id, stripe_customer_id) VALUES (?, ?, ?)',
+        [req.user.id, subscription.id, customerId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
         }
       );
     });
@@ -2575,7 +2646,9 @@ app.post('/api/deals', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  try {
+  db.serialize(() => {
+    db.run('BEGIN EXCLUSIVE TRANSACTION');
+    
     // Verify the access request is approved
     db.get(
       `SELECT ar.*, p.borrower_id, p.title as project_title
@@ -2588,10 +2661,12 @@ app.post('/api/deals', authenticateToken, (req, res) => {
       (err, accessRequest) => {
         if (err) {
           console.error('Access request lookup error:', err);
+          db.run('ROLLBACK');
           return res.status(500).json({ error: 'Database error' });
         }
 
         if (!accessRequest) {
+          db.run('ROLLBACK');
           return res.status(404).json({ error: 'Access request not found or not approved' });
         }
 
@@ -2602,10 +2677,12 @@ app.post('/api/deals', authenticateToken, (req, res) => {
           (err, existingDeal) => {
             if (err) {
               console.error('Deal lookup error:', err);
+              db.run('ROLLBACK');
               return res.status(500).json({ error: 'Database error' });
             }
 
             if (existingDeal) {
+              db.run('COMMIT');
               return res.json({ deal_id: existingDeal.id });
             }
 
@@ -2617,29 +2694,49 @@ app.post('/api/deals', authenticateToken, (req, res) => {
               function(err) {
                 if (err) {
                   console.error('Deal creation error:', err);
-                  return res.status(500).json({ error: 'Failed to create deal' });
+                  db.run('ROLLBACK');
+                  
+                  // Check if it's a unique constraint violation
+                  if (err.code === 'SQLITE_CONSTRAINT') {
+                    // Another request created the deal, try to fetch it
+                    db.get(
+                      'SELECT id FROM deals WHERE project_id = ? AND funder_id = ? AND status = "active"',
+                      [project_id, accessRequest.funder_id],
+                      (fetchErr, newDeal) => {
+                        if (newDeal) {
+                          return res.json({ deal_id: newDeal.id });
+                        }
+                        return res.status(500).json({ error: 'Failed to create deal' });
+                      }
+                    );
+                  } else {
+                    return res.status(500).json({ error: 'Failed to create deal' });
+                  }
+                } else {
+                  const dealId = this.lastID;
+                  
+                  // Send notification to borrower
+                  db.run(
+                    'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
+                    [accessRequest.borrower_id, 'deal_created', `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, dealId],
+                    (notifErr) => {
+                      if (notifErr) console.error('Notification error:', notifErr);
+                    }
+                  );
+                  
+                  db.run('COMMIT');
+                  res.status(201).json({ 
+                    message: 'Deal created successfully',
+                    deal_id: dealId 
+                  });
                 }
-
-                // Send notification to borrower
-                db.run(
-                  'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
-                  [accessRequest.borrower_id, 'deal_created', `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, this.lastID]
-                );
-
-                res.status(201).json({ 
-                  message: 'Deal created successfully',
-                  deal_id: this.lastID 
-                });
               }
             );
           }
         );
       }
     );
-  } catch (err) {
-    console.error('Deal creation error:', err);
-    res.status(500).json({ error: 'Failed to create deal' });
-  }
+  });
 });
 
 // Add endpoint to get project documents for deal room
