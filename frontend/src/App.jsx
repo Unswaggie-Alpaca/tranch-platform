@@ -990,12 +990,6 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
 };
 
 // Payment Form Component
-import React from 'react';
-import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { useApi } from './hooks/useApi';
-import { useNotifications } from './hooks/useNotifications';
-import { formatCurrency } from './utils';
-
 const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }) => {
   const api = useApi();
   const stripe = useStripe();
