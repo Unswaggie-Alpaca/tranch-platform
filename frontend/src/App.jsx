@@ -2214,7 +2214,6 @@ const Dashboard = () => {
         </>
       )}
 
-      {/* Funder Dashboard */}
       {user.role === 'funder' && (
   <>
     {!user.approved && (
@@ -2256,27 +2255,43 @@ const Dashboard = () => {
     )}
 
     {user.approved && user.subscription_status === 'active' && (
-      <>
-        <div className="funder-stats">
-          <div className="stat-card">
-            <h3>Your Portfolio</h3>
-            <div className="stat-value">{projects.filter(p => p.access_status === 'approved' || p.deal_id).length}</div>
-            <div className="stat-label">Active Engagements</div>
+      <div className="dashboard-content-wrapper">
+        {/* Stats Section */}
+        <div className="stats-grid-clean">
+          <div className="stat-card-clean">
+            <div className="stat-header-clean">
+              <span className="stat-label">YOUR PORTFOLIO</span>
+            </div>
+            <div className="stat-value">
+              {projects.filter(p => p.access_status === 'approved' || p.deal_id).length}
+            </div>
+            <a href="#" className="stat-link">Active Engagements</a>
           </div>
-          <div className="stat-card">
-            <h3>Deal Rooms</h3>
-            <div className="stat-value">{projects.filter(p => p.deal_id).length}</div>
-            <div className="stat-label">Active Negotiations</div>
+
+          <div className="stat-card-clean featured">
+            <div className="stat-header-clean">
+              <span className="stat-label">DEAL ROOMS</span>
+            </div>
+            <div className="stat-value">
+              {projects.filter(p => p.deal_id).length}
+            </div>
+            <div className="stat-subtitle">Active Negotiations</div>
           </div>
-          <div className="stat-card">
-            <h3>New Opportunities</h3>
-            <div className="stat-value">{projects.filter(p => !p.access_status).length}</div>
-            <div className="stat-label">Available Projects</div>
+
+          <div className="stat-card-clean">
+            <div className="stat-header-clean">
+              <span className="stat-label">NEW OPPORTUNITIES</span>
+            </div>
+            <div className="stat-value">
+              {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).length}
+            </div>
+            <a href="/projects" className="stat-link">Browse Projects</a>
           </div>
         </div>
 
-        <div className="projects-section">
-          <div className="section-header">
+        {/* Active Engagements Section */}
+        <div className="portfolio-section-clean">
+          <div className="portfolio-header-clean">
             <h2>Your Active Engagements</h2>
             <Link to="/projects" className="btn btn-outline">
               Browse All Projects →
@@ -2297,7 +2312,7 @@ const Dashboard = () => {
           ) : (
             <div className="projects-grid-clean">
               {projects.filter(p => p.access_status === 'approved' || p.deal_id).map((project) => (
-                <FunderProjectCard 
+                <ProjectCardClean 
                   key={project.id} 
                   project={project}
                   onProjectUpdate={handleProjectUpdate}
@@ -2307,12 +2322,13 @@ const Dashboard = () => {
           )}
         </div>
 
-        <div className="projects-section">
-          <div className="section-header">
+        {/* New Opportunities Section */}
+        <div className="portfolio-section-clean">
+          <div className="portfolio-header-clean">
             <h2>New Opportunities</h2>
           </div>
 
-          {projects.filter(p => !p.access_status && !p.deal_id).length === 0 ? (
+          {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).length === 0 ? (
             <EmptyState 
               icon=""
               title="No new projects available"
@@ -2320,8 +2336,8 @@ const Dashboard = () => {
             />
           ) : (
             <div className="projects-grid-clean">
-              {projects.filter(p => !p.access_status && !p.deal_id).slice(0, 3).map((project) => (
-                <FunderProjectCard 
+              {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).slice(0, 3).map((project) => (
+                <ProjectCardClean 
                   key={project.id} 
                   project={project}
                   onProjectUpdate={handleProjectUpdate}
@@ -2330,7 +2346,7 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-      </>
+      </div>
     )}
   </>
 )}
@@ -2670,6 +2686,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
 };
 
 // Funder Project Card Component
+
 const FunderProjectCard = ({ project, onProjectUpdate }) => {
   const api = useApi();
   const navigate = useNavigate();
@@ -2703,45 +2720,47 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
 
   return (
     <>
-      <div className="project-card-v2 funder">
-        <div className="card-header">
-          <span className="status-badge-v2 opportunity">OPPORTUNITY</span>
+      <div className="project-card-clean">
+        {/* Status Badge */}
+        <div className="card-header-clean">
+          <span className="status-badge-clean opportunity">OPPORTUNITY</span>
         </div>
 
-        <div className="card-body">
-          <h3 className="project-name">{project.title || 'Untitled Project'}</h3>
-          
-          <div className="location-row">
-            <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-            </svg>
-            <span>{project.suburb || 'Location not specified'}</span>
-          </div>
+        {/* Project Info */}
+        <h3 className="project-title-clean">{project.title || 'Untitled Project'}</h3>
+        
+        <div className="location-row-clean">
+          <svg viewBox="0 0 16 16" fill="none" className="location-icon-clean">
+            <path d="M8 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="currentColor"/>
+            <path fillRule="evenodd" clipRule="evenodd" d="M8 14s4-4.15 4-7a4 4 0 10-8 0c0 2.85 4 7 4 7z" fill="currentColor"/>
+          </svg>
+          <span>{project.suburb || 'Location TBD'}</span>
+        </div>
 
-          <div className="project-details">
-            <div className="detail-row">
-              <span className="detail-label">LOAN AMOUNT</span>
-              <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">TYPE</span>
-              <span className="detail-value">{project.property_type || 'Not specified'}</span>
-            </div>
+        <div className="project-info-grid">
+          <div className="info-block">
+            <span className="info-label">LOAN AMOUNT</span>
+            <span className="info-value">{formatCurrency(project.loan_amount)}</span>
+          </div>
+          <div className="info-block">
+            <span className="info-label">TYPE</span>
+            <span className="info-value">{project.property_type || 'Not specified'}</span>
           </div>
         </div>
 
-        <div className="card-footer">
+        {/* Actions */}
+        <div className="card-actions-clean">
           {project.access_status === 'approved' && !project.deal_id ? (
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn-text-clean"
               >
                 View Details
               </button>
               <button 
                 onClick={handleEngage}
-                className="btn-primary-small"
+                className="btn-primary-clean"
               >
                 Engage
               </button>
@@ -2750,13 +2769,13 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn-text-clean"
               >
                 View Details
               </button>
               <button 
                 onClick={() => navigate(`/project/${project.id}/deal/${project.deal_id}`)}
-                className="btn-primary-small"
+                className="btn-primary-clean"
               >
                 Deal Room
               </button>
@@ -2764,14 +2783,14 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
           ) : project.access_status === 'pending' ? (
             <button 
               disabled
-              className="btn-primary-small full-width"
+              className="btn-primary-clean full-width disabled"
             >
               ⏳ Request Pending
             </button>
           ) : (
             <button 
               onClick={() => setShowPreview(true)}
-              className="btn-primary-small full-width"
+              className="btn-primary-clean full-width"
             >
               View Preview
             </button>
