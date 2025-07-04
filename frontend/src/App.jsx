@@ -4622,43 +4622,49 @@ const ProjectDetail = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
 
-const fetchProjectDetails = async () => {
-  console.log('Fetching project details for ID:', id);
-  setLoading(true);
-  setError('');
-  
-  try {
-    console.log('Calling API for project:', id);
-    const projectData = await api.getProject(id);
-    console.log('Project data received:', projectData);
-    
-    if (!projectData) {
-      throw new Error('Project not found');
+  useEffect(() => {
+    const fetchProjectDetails = async () => {
+      console.log('Fetching project details for ID:', id);
+      setLoading(true);
+      setError('');
+      
+      try {
+        console.log('Calling API for project:', id);
+        const projectData = await api.getProject(id);
+        console.log('Project data received:', projectData);
+        
+        if (!projectData) {
+          throw new Error('Project not found');
+        }
+        
+        setProject(projectData);
+        
+        // Only fetch documents if we have a valid project
+        try {
+          console.log('Fetching documents for project:', id);
+          const docsData = await api.getProjectDocuments(id);
+          console.log('Documents received:', docsData);
+          setDocuments(docsData || []);
+        } catch (docErr) {
+          console.error('Failed to fetch documents:', docErr);
+          setDocuments([]); // Set empty array on error
+        }
+        
+      } catch (err) {
+        console.error('Failed to fetch project details:', err);
+        setError(err.message || 'Failed to load project');
+        setProject(null);
+        setDocuments([]);
+      } finally {
+        console.log('Setting loading to false in ProjectDetail');
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchProjectDetails();
     }
-    
-    setProject(projectData);
-    
-    // Only fetch documents if we have a valid project
-    try {
-      console.log('Fetching documents for project:', id);
-      const docsData = await api.getProjectDocuments(id);
-      console.log('Documents received:', docsData);
-      setDocuments(docsData || []);
-    } catch (docErr) {
-      console.error('Failed to fetch documents:', docErr);
-      setDocuments([]); // Set empty array on error
-    }
-    
-  } catch (err) {
-    console.error('Failed to fetch project details:', err);
-    setError(err.message || 'Failed to load project');
-    setProject(null);
-    setDocuments([]);
-  } finally {
-    console.log('Setting loading to false in ProjectDetail');
-    setLoading(false);
-  }
-};
+  }, [id, api]);
 
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false);
@@ -4667,6 +4673,27 @@ const fetchProjectDetails = async () => {
       title: 'Payment Successful',
       message: 'Your project is now published and visible to funders.'
     });
+    // Re-fetch project details
+    const fetchProjectDetails = async () => {
+      setLoading(true);
+      try {
+        const projectData = await api.getProject(id);
+        if (projectData) {
+          setProject(projectData);
+          try {
+            const docsData = await api.getProjectDocuments(id);
+            setDocuments(docsData || []);
+          } catch (docErr) {
+            console.error('Failed to fetch documents:', docErr);
+            setDocuments([]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to refresh project:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
     await fetchProjectDetails();
   };
 
