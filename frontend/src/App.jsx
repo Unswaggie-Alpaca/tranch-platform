@@ -2331,34 +2331,34 @@ const Dashboard = () => {
         </div>
 
         {/* Recommended Projects Section */}
-        <div className="portfolio-section-clean">
-          <div className="portfolio-header-clean">
-            <h2>Recommended for You</h2>
-            <Link to="/projects" className="btn btn-outline">
-              View All in Marketplace →
-            </Link>
-          </div>
+<div className="portfolio-section-clean">
+  <div className="portfolio-header-clean">
+    <h2>Recommended for You</h2>
+    <Link to="/projects" className="btn btn-outline">
+      View All in Marketplace →
+    </Link>
+  </div>
 
-          {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).length === 0 ? (
-            <EmptyState 
-              icon="🔍"
-              title="No recommendations available"
-              message="Check the marketplace for new opportunities"
-            />
-          ) : (
-            <div className="projects-grid-clean">
-              {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id)
-                .slice(0, 3)
-                .map((project) => (
-                  <FunderProjectCard 
-                    key={project.id} 
-                    project={project}
-                    onProjectUpdate={handleProjectUpdate}
-                  />
-              ))}
-            </div>
-          )}
-        </div>
+  {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id).length === 0 ? (
+    <EmptyState 
+      icon="🔍"
+      title="No recommendations available"
+      message="Check the marketplace for new opportunities"
+    />
+  ) : (
+    <div className="projects-grid-clean">
+      {projects.filter(p => p.payment_status === 'paid' && !p.access_status && !p.deal_id)
+        .slice(0, 3)
+        .map((project) => (
+          <MarketplaceProjectCard 
+            key={project.id} 
+            project={project}
+            onProjectUpdate={handleProjectUpdate}
+          />
+      ))}
+    </div>
+  )}
+</div>
       </>
     )}
   </>
@@ -2828,6 +2828,7 @@ const MarketplaceProjectCard = ({ project, onProjectUpdate }) => {
   const [showAccessForm, setShowAccessForm] = useState(false);
   const [accessMessage, setAccessMessage] = useState('');
   const [requesting, setRequesting] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleRequestAccess = async () => {
     setRequesting(true);
@@ -2868,117 +2869,132 @@ const MarketplaceProjectCard = ({ project, onProjectUpdate }) => {
     
     if (risks.length === 0) return null;
     
-    const avgRisk = risks.reduce((sum, risk) => {
-      if (risk === 'low') return sum + 1;
-      if (risk === 'medium') return sum + 2;
-      if (risk === 'high') return sum + 3;
-      return sum;
-    }, 0) / risks.length;
+    const riskMap = { 'low': 1, 'medium': 2, 'high': 3 };
+    const avgRisk = risks.reduce((sum, risk) => sum + (riskMap[risk] || 2), 0) / risks.length;
     
-    if (avgRisk <= 1.5) return { level: 'low', color: '#10b981' };
-    if (avgRisk <= 2.5) return { level: 'medium', color: '#f59e0b' };
-    return { level: 'high', color: '#ef4444' };
+    if (avgRisk <= 1.5) return { level: 'LOW RISK', color: '#10b981' };
+    if (avgRisk <= 2.5) return { level: 'MEDIUM RISK', color: '#f59e0b' };
+    return { level: 'HIGH RISK', color: '#ef4444' };
   };
 
   const risk = getRiskIndicator();
 
   return (
-    <div className="marketplace-card">
-      <div className="card-header-clean">
-        <span className="status-badge-clean opportunity">OPPORTUNITY</span>
-        {risk && (
-          <span className="risk-indicator" style={{ color: risk.color }}>
-            {risk.level.toUpperCase()} RISK
-          </span>
-        )}
-      </div>
-
-      <h3 className="project-title-clean">{project.title || 'Untitled Project'}</h3>
-      
-      <div className="location-row-clean">
-        <svg viewBox="0 0 16 16" fill="none" className="location-icon-clean">
-          <path d="M8 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="currentColor"/>
-          <path fillRule="evenodd" clipRule="evenodd" d="M8 14s4-4.15 4-7a4 4 0 10-8 0c0 2.85 4 7 4 7z" fill="currentColor"/>
-        </svg>
-        <span>{project.suburb || 'Location TBD'}</span>
-      </div>
-
-      <div className="project-info-grid">
-        <div className="info-block">
-          <span className="info-label">LOAN AMOUNT</span>
-          <span className="info-value">{formatCurrency(project.loan_amount)}</span>
-        </div>
-        <div className="info-block">
-          <span className="info-label">TYPE</span>
-          <span className="info-value">{project.property_type || 'Not specified'}</span>
-        </div>
-      </div>
-
-      {/* Quick Metrics */}
-      <div className="marketplace-metrics">
-        {project.lvr && (
-          <div className="metric-pill">
-            <span className="metric-label">LVR</span>
-            <span className="metric-value">{project.lvr.toFixed(1)}%</span>
-          </div>
-        )}
-        {project.expected_profit && project.total_project_cost && (
-          <div className="metric-pill">
-            <span className="metric-label">ROI</span>
-            <span className="metric-value">
-              {((project.expected_profit / project.total_project_cost) * 100).toFixed(1)}%
+    <>
+      <div className="project-card">
+        <div className="project-card-header">
+          <StatusBadge status="OPPORTUNITY" />
+          {risk && (
+            <span className="risk-badge" style={{ color: risk.color, fontSize: '12px', fontWeight: '600' }}>
+              {risk.level}
             </span>
+          )}
+        </div>
+        
+        <h3 className="project-title">{project.title || 'Untitled Project'}</h3>
+        
+        <div className="project-location">
+          <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+          </svg>
+          <span>{project.suburb || 'Location not specified'}</span>
+        </div>
+        
+        <div className="project-info">
+          <div className="info-item">
+            <span className="label">LOAN AMOUNT</span>
+            <span className="value">{formatCurrency(project.loan_amount)}</span>
           </div>
-        )}
-        {project.development_stage && (
-          <div className="metric-pill">
-            <span className="metric-label">Stage</span>
-            <span className="metric-value">{project.development_stage}</span>
+          <div className="info-item">
+            <span className="label">TYPE</span>
+            <span className="value">{project.property_type || 'Not specified'}</span>
           </div>
-        )}
+        </div>
+
+        {/* Metrics Pills */}
+        <div className="project-metrics">
+          {project.lvr && (
+            <div className="metric-pill">
+              <span className="metric-label">LVR</span>
+              <span className="metric-value">{project.lvr.toFixed(1)}%</span>
+            </div>
+          )}
+          {project.expected_profit && project.total_project_cost && (
+            <div className="metric-pill">
+              <span className="metric-label">ROI</span>
+              <span className="metric-value">
+                {((project.expected_profit / project.total_project_cost) * 100).toFixed(1)}%
+              </span>
+            </div>
+          )}
+          {project.development_stage && (
+            <div className="metric-pill">
+              <span className="metric-label">Stage</span>
+              <span className="metric-value">{project.development_stage}</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="project-actions">
+          {!showAccessForm ? (
+            <>
+              <button 
+                onClick={() => setShowPreview(true)}
+                className="btn btn-outline"
+              >
+                View Preview
+              </button>
+              <button 
+                onClick={() => setShowAccessForm(true)}
+                className="btn btn-primary"
+              >
+                Request Full Access
+              </button>
+            </>
+          ) : (
+            <div className="access-request-inline">
+              <textarea
+                value={accessMessage}
+                onChange={(e) => setAccessMessage(e.target.value)}
+                placeholder="Introduce yourself and your interest..."
+                className="message-textarea"
+                rows="3"
+                maxLength="500"
+              />
+              <div className="character-count">{accessMessage.length}/500</div>
+              <div className="message-actions">
+                <button 
+                  onClick={() => {
+                    setShowAccessForm(false);
+                    setAccessMessage('');
+                  }}
+                  className="btn btn-sm btn-outline"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRequestAccess}
+                  disabled={requesting}
+                  className="btn btn-sm btn-primary"
+                >
+                  {requesting ? 'Sending...' : 'Send Request'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="card-actions-clean">
-        {!showAccessForm ? (
-          <button 
-            onClick={() => setShowAccessForm(true)}
-            className="btn-primary-clean full-width"
-          >
-            Request Access
-          </button>
-        ) : (
-          <div className="access-form-inline">
-            <textarea
-              value={accessMessage}
-              onChange={(e) => setAccessMessage(e.target.value)}
-              placeholder="Introduce yourself (optional)..."
-              className="access-message-input"
-              rows="2"
-            />
-            <div className="access-form-actions">
-              <button 
-                onClick={() => {
-                  setShowAccessForm(false);
-                  setAccessMessage('');
-                }}
-                className="btn-text-clean"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleRequestAccess}
-                disabled={requesting}
-                className="btn-primary-clean"
-              >
-                {requesting ? 'Sending...' : 'Send Request'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      <ProjectPreviewModal
+        project={project}
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        onRequestAccess={onProjectUpdate}
+      />
+    </>
   );
 };
+
 // ===========================
 // PROJECT CARD COMPONENT
 // ===========================
@@ -3505,245 +3521,248 @@ const ProjectsPage = () => {
   }
 
   return (
-    <div className="marketplace-page">
-      <div className="marketplace-header">
-        <div className="header-content">
-          <h1>Investment Marketplace</h1>
-          <p>Discover and analyze property development opportunities</p>
+  <div className="projects-page">
+    {/* Clean styled header like Dashboard */}
+    <div className="dashboard-header-clean">
+      <div className="header-content-clean">
+        <h1 className="greeting">Investment Marketplace</h1>
+        <h1 className="username">Discover Opportunities</h1>
+        <p className="tagline">
+          Browse curated property development projects with AI-powered insights
+        </p>
+      </div>
+      <div className="marketplace-actions">
+        <button onClick={exportResults} className="btn btn-outline">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+          Export Results
+        </button>
+      </div>
+    </div>
+
+    {error && <ErrorMessage message={error} onClose={() => setError('')} />}
+
+    {/* Market Insights Section */}
+    <div className="market-insights">
+      <h3>Market Insights</h3>
+      <div className="insights-grid">
+        <div className="insight-card">
+          <div className="insight-value">{formatCurrency(projects.reduce((sum, p) => sum + p.loan_amount, 0))}</div>
+          <div className="insight-label">Total Capital Seeking</div>
         </div>
-        <div className="header-actions">
-          <div className="view-toggle">
-            <button 
-              className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor">
-                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
-              Grid
-            </button>
-            <button 
-              className={`toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
-              onClick={() => setViewMode('map')}
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-              </svg>
-              Map
-            </button>
+        <div className="insight-card">
+          <div className="insight-value">{projects.length}</div>
+          <div className="insight-label">Active Opportunities</div>
+        </div>
+        <div className="insight-card">
+          <div className="insight-value">
+            {projects.filter(p => p.property_type === 'Residential').length > projects.filter(p => p.property_type === 'Commercial').length 
+              ? 'Residential' 
+              : 'Commercial'}
           </div>
-          <button onClick={exportResults} className="btn btn-outline">
-            Export Results
-          </button>
+          <div className="insight-label">Trending Asset Class</div>
+        </div>
+        <div className="insight-card">
+          <div className="insight-value">
+            {projects.length > 0 
+              ? Math.round(projects.reduce((sum, p) => sum + (p.expected_profit / p.total_project_cost * 100 || 0), 0) / projects.length) + '%'
+              : 'N/A'}
+          </div>
+          <div className="insight-label">Avg Expected Return</div>
         </div>
       </div>
+    </div>
 
-      {error && <ErrorMessage message={error} onClose={() => setError('')} />}
-
-      {/* Advanced Filters */}
-      <div className="marketplace-filters">
-        <div className="filters-header">
-          <h3>Filter Projects</h3>
-          <div className="filter-actions">
-            <button 
-              onClick={() => setShowSaveSearchModal(true)} 
-              className="btn btn-sm btn-outline"
+    {/* Filters Section */}
+    <div className="filters-section">
+      <div className="filters-header">
+        <h3>Filter Projects</h3>
+        <div className="filter-actions">
+          {savedSearches.length > 0 && (
+            <select 
+              onChange={(e) => {
+                const search = savedSearches.find(s => s.id === parseInt(e.target.value));
+                if (search) applySavedSearch(search);
+              }}
+              className="saved-search-select"
             >
-              Save Search
-            </button>
-            <button onClick={clearFilters} className="btn btn-sm btn-outline">
-              Clear All
-            </button>
-          </div>
-        </div>
-
-        {/* Saved Searches */}
-        {savedSearches.length > 0 && (
-          <div className="saved-searches">
-            <label>Saved Searches</label>
-            <div className="saved-search-pills">
+              <option value="">Load Saved Search...</option>
               {savedSearches.map(search => (
-                <button
-                  key={search.id}
-                  onClick={() => applySavedSearch(search)}
-                  className="saved-search-pill"
-                >
-                  {search.name}
-                </button>
+                <option key={search.id} value={search.id}>{search.name}</option>
               ))}
-            </div>
-          </div>
-        )}
-        
-        <div className="filters-grid">
-          <div className="filter-group">
-            <label>Property Type</label>
-            <select
-              value={filters.propertyType}
-              onChange={(e) => setFilters({ ...filters, propertyType: e.target.value })}
-              className="form-select"
-            >
-              <option value="">All Types</option>
-              <option value="Residential">Residential</option>
-              <option value="Commercial">Commercial</option>
-              <option value="Mixed Use">Mixed Use</option>
-              <option value="Industrial">Industrial</option>
-              <option value="Retail">Retail</option>
             </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Deal Size Range</label>
-            <div className="range-inputs">
-              <NumberInput
-                value={filters.minLoan}
-                onChange={(value) => setFilters({ ...filters, minLoan: value })}
-                placeholder="Min"
-                prefix="$"
-              />
-              <span>to</span>
-              <NumberInput
-                value={filters.maxLoan}
-                onChange={(value) => setFilters({ ...filters, maxLoan: value })}
-                placeholder="Max"
-                prefix="$"
-              />
-            </div>
-          </div>
-
-          <div className="filter-group">
-            <label>Location</label>
-            <input
-              type="text"
-              value={filters.suburb}
-              onChange={(e) => setFilters({ ...filters, suburb: e.target.value })}
-              className="form-input"
-              placeholder="Search suburb or city"
-            />
-          </div>
-
-          <div className="filter-group">
-            <label>Development Stage</label>
-            <select
-              value={filters.developmentStage}
-              onChange={(e) => setFilters({ ...filters, developmentStage: e.target.value })}
-              className="form-select"
-            >
-              <option value="">All Stages</option>
-              <option value="Planning">Planning</option>
-              <option value="Pre-Construction">Pre-Construction</option>
-              <option value="Construction">Construction</option>
-              <option value="Near Completion">Near Completion</option>
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Risk Profile</label>
-            <select
-              value={filters.riskProfile}
-              onChange={(e) => setFilters({ ...filters, riskProfile: e.target.value })}
-              className="form-select"
-            >
-              <option value="">All Risk Levels</option>
-              <option value="low">Low Risk</option>
-              <option value="medium">Medium Risk</option>
-              <option value="high">High Risk</option>
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Sort By</label>
-            <select
-              value={filters.sortBy}
-              onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
-              className="form-select"
-            >
-              <option value="created_at">Newest First</option>
-              <option value="loan_amount_desc">Loan Amount (High to Low)</option>
-              <option value="loan_amount_asc">Loan Amount (Low to High)</option>
-              <option value="return_potential">Return Potential</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="filter-summary">
-          <span>Showing {filteredProjects.length} of {projects.length} opportunities</span>
-          {Object.values(filters).filter(v => v && v !== 'created_at').length > 0 && (
-            <button onClick={clearFilters} className="clear-filters-link">
-              Clear filters
-            </button>
           )}
-        </div>
-      </div>
-
-      {/* Projects Display */}
-      {viewMode === 'grid' ? (
-        filteredProjects.length === 0 ? (
-          <EmptyState 
-            icon="🔍"
-            title="No projects match your criteria"
-            message="Try adjusting your filters to see more opportunities"
-            action={
-              <button onClick={clearFilters} className="btn btn-primary">
-                Clear Filters
-              </button>
-            }
-          />
-        ) : (
-          <div className="projects-grid-clean marketplace-grid">
-            {filteredProjects.map((project) => (
-              <MarketplaceProjectCard 
-                key={project.id} 
-                project={project} 
-                onProjectUpdate={fetchProjects}
-              />
-            ))}
-          </div>
-        )
-      ) : (
-        <div className="marketplace-map">
-          <div className="map-placeholder">
-            <h3>Map View Coming Soon</h3>
-            <p>Interactive map showing project locations</p>
-          </div>
-        </div>
-      )}
-
-      {/* Save Search Modal */}
-      <Modal 
-        isOpen={showSaveSearchModal} 
-        onClose={() => setShowSaveSearchModal(false)}
-        title="Save Search"
-        size="small"
-      >
-        <div className="save-search-form">
-          <input
-            type="text"
-            placeholder="Name your search..."
-            className="form-input"
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && e.target.value) {
-                saveCurrentSearch(e.target.value);
-              }
-            }}
-          />
           <button 
-            onClick={(e) => {
-              const input = e.target.previousSibling;
-              if (input.value) {
-                saveCurrentSearch(input.value);
-              }
-            }}
-            className="btn btn-primary"
+            onClick={() => setShowSaveSearchModal(true)} 
+            className="btn btn-sm btn-outline"
           >
             Save Search
           </button>
+          <button onClick={clearFilters} className="btn btn-sm btn-outline">
+            Clear All
+          </button>
         </div>
-      </Modal>
-    </div>
-  );
-};
+      </div>
+      
+      <div className="filters-grid">
+        <div className="filter-group">
+          <label>Property Type</label>
+          <select
+            value={filters.propertyType}
+            onChange={(e) => setFilters({ ...filters, propertyType: e.target.value })}
+            className="form-select"
+          >
+            <option value="">All Types</option>
+            <option value="Residential">Residential</option>
+            <option value="Commercial">Commercial</option>
+            <option value="Mixed Use">Mixed Use</option>
+            <option value="Industrial">Industrial</option>
+            <option value="Retail">Retail</option>
+          </select>
+        </div>
 
+        <div className="filter-group">
+          <label>Deal Size Range</label>
+          <div className="range-inputs">
+            <NumberInput
+              value={filters.minLoan}
+              onChange={(value) => setFilters({ ...filters, minLoan: value })}
+              placeholder="Min"
+              prefix="$"
+            />
+            <span>to</span>
+            <NumberInput
+              value={filters.maxLoan}
+              onChange={(value) => setFilters({ ...filters, maxLoan: value })}
+              placeholder="Max"
+              prefix="$"
+            />
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <label>Location</label>
+          <input
+            type="text"
+            value={filters.suburb}
+            onChange={(e) => setFilters({ ...filters, suburb: e.target.value })}
+            className="form-input"
+            placeholder="Search suburb or city"
+          />
+        </div>
+
+        <div className="filter-group">
+          <label>Development Stage</label>
+          <select
+            value={filters.developmentStage}
+            onChange={(e) => setFilters({ ...filters, developmentStage: e.target.value })}
+            className="form-select"
+          >
+            <option value="">All Stages</option>
+            <option value="Planning">Planning</option>
+            <option value="Pre-Construction">Pre-Construction</option>
+            <option value="Construction">Construction</option>
+            <option value="Near Completion">Near Completion</option>
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Risk Profile</label>
+          <select
+            value={filters.riskProfile}
+            onChange={(e) => setFilters({ ...filters, riskProfile: e.target.value })}
+            className="form-select"
+          >
+            <option value="">All Risk Levels</option>
+            <option value="low">Low Risk</option>
+            <option value="medium">Medium Risk</option>
+            <option value="high">High Risk</option>
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Sort By</label>
+          <select
+            value={filters.sortBy}
+            onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
+            className="form-select"
+          >
+            <option value="created_at">Newest First</option>
+            <option value="loan_amount_desc">Loan Amount (High to Low)</option>
+            <option value="loan_amount_asc">Loan Amount (Low to High)</option>
+            <option value="return_potential">Return Potential</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="filter-summary">
+        <span>Showing {filteredProjects.length} of {projects.length} opportunities</span>
+        {Object.values(filters).filter(v => v && v !== 'created_at').length > 0 && (
+          <button onClick={clearFilters} className="clear-filters-link">
+            Clear filters
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Projects Display */}
+    {filteredProjects.length === 0 ? (
+      <EmptyState 
+        icon="🔍"
+        title="No projects match your criteria"
+        message="Try adjusting your filters to see more opportunities"
+        action={
+          <button onClick={clearFilters} className="btn btn-primary">
+            Clear Filters
+          </button>
+        }
+      />
+    ) : (
+      <div className="projects-grid">
+        {filteredProjects.map((project) => (
+          <MarketplaceProjectCard 
+            key={project.id} 
+            project={project} 
+            onProjectUpdate={fetchProjects}
+          />
+        ))}
+      </div>
+    )}
+
+    {/* Save Search Modal */}
+    <Modal 
+      isOpen={showSaveSearchModal} 
+      onClose={() => setShowSaveSearchModal(false)}
+      title="Save Search"
+      size="small"
+    >
+      <div className="save-search-form">
+        <input
+          type="text"
+          placeholder="Name your search..."
+          className="form-input"
+          onKeyPress={(e) => {
+            if (e.key === 'Enter' && e.target.value) {
+              saveCurrentSearch(e.target.value);
+            }
+          }}
+        />
+        <button 
+          onClick={(e) => {
+            const input = e.target.previousSibling;
+            if (input.value) {
+              saveCurrentSearch(input.value);
+            }
+          }}
+          className="btn btn-primary"
+        >
+          Save Search
+        </button>
+      </div>
+    </Modal>
+  </div>
+)};
 
 
 
