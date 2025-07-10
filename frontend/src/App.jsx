@@ -3683,7 +3683,7 @@ const ProjectsPage = () => {
 
 
 
-const AddressAutocomplete = ({ value, onChange, onSelect }) => {
+const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -4108,6 +4108,7 @@ const CreateProject = () => {
       </Tooltip>
     </label>
     <AddressAutocomplete
+      api={api}
       value={formData.location}
       onChange={(value) => setFormData({ ...formData, location: value })}
       onSelect={(addressData) => setFormData({ 
@@ -4346,23 +4347,6 @@ const CreateProject = () => {
             </div>
 
             <div className="form-row">
-              <div className="form-group">
-  <label htmlFor="expected_profit">
-    Expected Profit (AUD)
-    <Tooltip content="Projected profit after all costs">
-      <span className="help-icon">?</span>
-    </Tooltip>
-  </label>
-  <NumberInput
-    id="expected_profit"
-    value={formData.expected_profit}
-    onChange={(value) => setFormData({ ...formData, expected_profit: value })}
-    placeholder="2,500,000"
-    prefix="$"
-    min={0}
-  />
-</div>
-
               <div className="form-group">
                 <label htmlFor="expected_profit">
                   Expected Profit (AUD)
