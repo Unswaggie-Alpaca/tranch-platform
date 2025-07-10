@@ -117,6 +117,69 @@ const emailTemplates = {
         </div>
       </div>
     `
+  }),
+  
+  admin_subscription_review: (data) => ({
+    subject: `New Subscription Pending Review: ${data.user_name}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #f59e0b; color: white; padding: 2rem; text-align: center;">
+          <h1>New Subscription Pending Review</h1>
+        </div>
+        <div style="padding: 2rem; background: white;">
+          <p>A new funder subscription requires your review and approval:</p>
+          <div style="background: #f3f4f6; padding: 1.5rem; border-radius: 4px; margin: 1rem 0;">
+            <p><strong>Funder:</strong> ${data.user_name}</p>
+            <p><strong>Email:</strong> ${data.user_email}</p>
+            <p><strong>Company:</strong> ${data.company_name}</p>
+            <p><strong>User ID:</strong> ${data.user_id}</p>
+          </div>
+          <p>The funder has successfully completed payment. Please review their profile and verify payment status in Stripe before approving.</p>
+          <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Review in Admin Panel</a>
+        </div>
+      </div>
+    `
+  }),
+  
+  subscription_approved: (data) => ({
+    subject: `Your Funder Subscription is Active!`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; text-align: center;">
+          <h1>Subscription Approved!</h1>
+        </div>
+        <div style="padding: 2rem; background: white;">
+          <p>Great news! Your funder subscription has been approved and is now active.</p>
+          <p>You now have full access to:</p>
+          <ul style="margin: 1rem 0;">
+            <li>View all project details</li>
+            <li>Connect with borrowers</li>
+            <li>Access deal rooms</li>
+            <li>Download documents</li>
+          </ul>
+          <a href="${process.env.FRONTEND_URL}/dashboard" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Start Exploring Projects</a>
+        </div>
+      </div>
+    `
+  }),
+  
+  subscription_denied: (data) => ({
+    subject: `Subscription Review: Action Required`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #dc2626; color: white; padding: 2rem; text-align: center;">
+          <h1>Subscription Needs Attention</h1>
+        </div>
+        <div style="padding: 2rem; background: white;">
+          <p>Your subscription application needs additional information.</p>
+          <div style="background: #fef3c7; padding: 1rem; border-radius: 4px; margin: 1rem 0;">
+            <strong>Reason:</strong> ${data.reason}
+          </div>
+          <p>Please update your profile with the requested information and contact support.</p>
+          <a href="${process.env.FRONTEND_URL}/profile" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Update Profile</a>
+        </div>
+      </div>
+    `
   })
 };
 

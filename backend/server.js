@@ -472,8 +472,8 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
                       db.run('BEGIN TRANSACTION');
                       
                       db.run(
-                        'UPDATE users SET subscription_status = ?, approved = 1, verification_status = ? WHERE id = ?', 
-                        ['active', 'verified', user.id],
+                        'UPDATE users SET subscription_status = ?, approved = 0 WHERE id = ?', 
+                        ['payment_pending', user.id],
                         (updateErr) => {
                           if (updateErr) {
                             db.run('ROLLBACK');
@@ -492,7 +492,26 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
                               }
                               
                               db.run('COMMIT');
-                              console.log('User subscription activated:', user.id);
+                              console.log('User subscription payment received:', user.id);
+                              
+                              // Send admin notification for subscription review
+                              db.all(
+                                'SELECT email FROM users WHERE role = ?',
+                                ['admin'],
+                                (err, admins) => {
+                                  if (!err && admins && user) {
+                                    admins.forEach(admin => {
+                                      sendEmail('admin_subscription_review', admin.email, {
+                                        user_name: user.name,
+                                        user_email: user.email,
+                                        user_id: user.id,
+                                        company_name: user.company_name || 'Not specified'
+                                      });
+                                    });
+                                  }
+                                }
+                              );
+                              
                               resolve();
                             }
                           );
@@ -1972,7 +1991,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
             client_secret: paymentIntent.client_secret,
             payment_intent_id: paymentIntent.id,
             amount: existingPayment.amount,
-            status: 'pending'
+            status: 'payment_pending'
           });
         } catch (stripeError) {
           console.error('Failed to retrieve payment intent:', stripeError);
@@ -2012,11 +2031,11 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
     });
 
 
-    // Update project to pending payment status
+    // Update project to payment_pending status (locks publish button)
     await new Promise((resolve, reject) => {
       db.run(
         'UPDATE projects SET payment_status = ?, stripe_payment_intent_id = ? WHERE id = ?',
-        ['pending', paymentIntent.id, project_id],
+        ['payment_pending', paymentIntent.id, project_id],
         (err) => {
           if (err) reject(err);
           else resolve();
@@ -2035,7 +2054,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       client_secret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
       amount: amount,
-      status: 'pending'
+      status: 'payment_pending'
     });
   } catch (error) {
     console.error('Payment creation error:', error);
@@ -2182,11 +2201,11 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       );
     });
 
-    // Update user subscription status to pending
+    // Update user subscription status to payment_pending (requires admin approval)
     await new Promise((resolve, reject) => {
       db.run(
-        'UPDATE users SET subscription_status = ? WHERE id = ?',
-        ['pending', req.user.id],
+        'UPDATE users SET subscription_status = ?, approved = 0 WHERE id = ?',
+        ['payment_pending', req.user.id],
         (err) => {
           if (err) reject(err);
           else resolve();
@@ -3047,6 +3066,295 @@ app.get('/api/admin/projects', authenticateToken, requireRole(['admin']), (req, 
     }
     res.json(projects);
   });
+});
+
+// Universal project status control for admin
+app.post('/api/admin/update-project-status/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  const { payment_status, visible, reason } = req.body;
+  
+  try {
+    // Validate inputs
+    const validPaymentStatuses = ['unpaid', 'payment_pending', 'paid'];
+    if (!validPaymentStatuses.includes(payment_status)) {
+      return res.status(400).json({ error: 'Invalid payment status' });
+    }
+    
+    if (typeof visible !== 'boolean') {
+      return res.status(400).json({ error: 'Visible must be boolean' });
+    }
+    
+    // Get current project state
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM projects WHERE id = ?',
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Update project status
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE projects SET 
+         payment_status = ?,
+         visible = ?,
+         submission_status = CASE 
+           WHEN ? = 'paid' AND ? = 0 THEN 'rejected'
+           WHEN ? = 'unpaid' THEN 'draft'
+           ELSE submission_status
+         END,
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [payment_status, visible ? 1 : 0, payment_status, visible ? 1 : 0, payment_status, projectId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'status_change', ?, 'project', ?)`,
+        [req.user.id, projectId, reason || `Changed to ${payment_status}/${visible ? 'visible' : 'hidden'}`],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    res.json({ 
+      message: 'Project status updated',
+      payment_status,
+      visible,
+      success: true
+    });
+  } catch (err) {
+    console.error('Update project status error:', err);
+    res.status(500).json({ error: 'Failed to update project status: ' + err.message });
+  }
+});
+
+// Approve funder subscription after payment verification
+app.post('/api/admin/approve-subscription/:userId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    // Get user details
+    const user = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM users WHERE id = ? AND role = 'funder' AND subscription_status = 'payment_pending'`,
+        [userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found or not in payment_pending state' });
+    }
+    
+    // Update user to active subscription
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE users SET 
+         subscription_status = 'active',
+         approved = 1,
+         verification_status = 'verified',
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'approve_subscription', ?, 'user', 'Approved after payment verification')`,
+        [req.user.id, userId],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Send email notification to funder
+    sendEmail('subscription_approved', user.email, {
+      user_name: user.name
+    });
+    
+    res.json({ 
+      message: 'Subscription approved and activated',
+      success: true
+    });
+  } catch (err) {
+    console.error('Approve subscription error:', err);
+    res.status(500).json({ error: 'Failed to approve subscription: ' + err.message });
+  }
+});
+
+// Deny subscription with reason
+app.post('/api/admin/deny-subscription/:userId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { userId } = req.params;
+  const { reason } = req.body;
+  
+  if (!reason) {
+    return res.status(400).json({ error: 'Denial reason is required' });
+  }
+  
+  try {
+    // Get user details
+    const user = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM users WHERE id = ? AND role = 'funder'`,
+        [userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Update user - keep payment record but don't activate
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE users SET 
+         subscription_status = 'inactive',
+         approved = 0,
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'deny_subscription', ?, 'user', ?)`,
+        [req.user.id, userId, reason],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Send email notification to funder
+    sendEmail('subscription_denied', user.email, {
+      user_name: user.name,
+      reason: reason
+    });
+    
+    res.json({ 
+      message: 'Subscription denied with reason',
+      success: true
+    });
+  } catch (err) {
+    console.error('Deny subscription error:', err);
+    res.status(500).json({ error: 'Failed to deny subscription: ' + err.message });
+  }
+});
+
+// Mark subscription as payment failed
+app.post('/api/admin/subscription-failed/:userId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { userId } = req.params;
+  
+  try {
+    // Get user details
+    const user = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT * FROM users WHERE id = ? AND role = 'funder'`,
+        [userId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Update user to inactive
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE users SET 
+         subscription_status = 'inactive',
+         approved = 0,
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [userId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Update payment record if exists
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE payments SET status = 'failed' 
+         WHERE user_id = ? AND payment_type = 'subscription' AND status = 'completed'
+         ORDER BY created_at DESC LIMIT 1`,
+        [userId],
+        (err) => {
+          if (err) console.error('Failed to update payment:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'subscription_payment_failed', ?, 'user', 'Payment verification failed')`,
+        [req.user.id, userId],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    res.json({ 
+      message: 'Subscription marked as payment failed',
+      success: true
+    });
+  } catch (err) {
+    console.error('Subscription payment failed error:', err);
+    res.status(500).json({ error: 'Failed to mark subscription as failed: ' + err.message });
+  }
 });
 
 // Force complete a deal
