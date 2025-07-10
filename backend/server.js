@@ -304,7 +304,7 @@ app.post('/api/webhooks/clerk',
 // ----
 // Place this *before* any `app.use(express.json())` or other body parsers!
 // ----
-app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req, res) => {
+app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'application/json; charset=utf-8']}), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
 
