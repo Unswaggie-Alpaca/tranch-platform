@@ -2636,6 +2636,25 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
               </span>
             </div>
           </div>
+
+          {project.last_rejection_reason && project.payment_status === 'unpaid' && (
+            <div className="rejection-notice">
+              <div className="rejection-header">
+                <svg className="rejection-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <span className="rejection-label">Admin Feedback</span>
+              </div>
+              <div className="rejection-reason">
+                {project.last_rejection_reason}
+              </div>
+              {project.rejection_date && (
+                <div className="rejection-date">
+                  Received: {new Date(project.rejection_date).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="card-footer">
@@ -3700,28 +3719,48 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
- const searchAddresses = async (query) => {
-  if (query.length < 3) {
-    setSuggestions([]);
-    return;
-  }
+  const searchAddresses = async (query) => {
+    if (query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
 
-  setLoading(true);
-  try {
-    const response = await api.request('/geocode/autocomplete', {
-      method: 'POST',
-      body: JSON.stringify({ input: query })
-    });
-    
-    setSuggestions(response.predictions || []);
-    setShowSuggestions(true);
-  } catch (err) {
-    console.error('Address search failed:', err);
-    setSuggestions([]);
-  } finally {
-    setLoading(false);
-  }
-};
+    setLoading(true);
+    try {
+      // Check if we have Google Maps API key
+      const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      
+      if (googleApiKey) {
+        // Use Google Places API
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:au&key=${googleApiKey}`
+        );
+        const data = await response.json();
+        
+        if (data.predictions) {
+          setSuggestions(data.predictions.map(p => ({
+            place_id: p.place_id,
+            description: p.description
+          })));
+          setShowSuggestions(true);
+        }
+      } else {
+        // Fallback to backend endpoint
+        const response = await api.request('/geocode/autocomplete', {
+          method: 'POST',
+          body: JSON.stringify({ input: query })
+        });
+        
+        setSuggestions(response.predictions || []);
+        setShowSuggestions(true);
+      }
+    } catch (err) {
+      console.error('Address search failed:', err);
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleInputChange = (e) => {
     const newValue = e.target.value;
@@ -4414,8 +4453,14 @@ const CreateProject = () => {
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="project_size_sqm">
-                  Project Size (sqm)
-                  <Tooltip content="Total site area in square meters">
+                  {formData.property_type === 'Industrial' ? 'Warehouse Size' : 'Project Size'} (sqm)
+                  <Tooltip content={
+                    formData.property_type === 'Industrial' 
+                      ? "Total warehouse/industrial space in square meters"
+                      : formData.property_type === 'Commercial'
+                      ? "Total leasable area in square meters"
+                      : "Total site area in square meters"
+                  }>
                     <span className="help-icon">?</span>
                   </Tooltip>
                 </label>
@@ -4423,50 +4468,96 @@ const CreateProject = () => {
                   id="project_size_sqm"
                   value={formData.project_size_sqm}
                   onChange={(value) => setFormData({ ...formData, project_size_sqm: value })}
-                  placeholder="5,000"
+                  placeholder={formData.property_type === 'Industrial' ? "10,000" : "5,000"}
                   suffix="sqm"
                   min={0}
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="number_of_units">
-                  Number of Units
-                  <Tooltip content="Total number of apartments/units in the development">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="number_of_units"
-                  value={formData.number_of_units}
-                  onChange={(value) => setFormData({ ...formData, number_of_units: value })}
-                  placeholder="50"
-                  min={0}
-                />
-              </div>
+              {formData.property_type === 'Residential' || formData.property_type === 'Mixed Use' ? (
+                <div className="form-group">
+                  <label htmlFor="number_of_units">
+                    Number of Units
+                    <Tooltip content="Total number of apartments/units in the development">
+                      <span className="help-icon">?</span>
+                    </Tooltip>
+                  </label>
+                  <NumberInput
+                    id="number_of_units"
+                    value={formData.number_of_units}
+                    onChange={(value) => setFormData({ ...formData, number_of_units: value })}
+                    placeholder="50"
+                    min={0}
+                  />
+                </div>
+              ) : formData.property_type === 'Commercial' ? (
+                <div className="form-group">
+                  <label htmlFor="number_of_units">
+                    Number of Tenancies
+                    <Tooltip content="Expected number of commercial tenants">
+                      <span className="help-icon">?</span>
+                    </Tooltip>
+                  </label>
+                  <NumberInput
+                    id="number_of_units"
+                    value={formData.number_of_units}
+                    onChange={(value) => setFormData({ ...formData, number_of_units: value })}
+                    placeholder="10"
+                    min={0}
+                  />
+                </div>
+              ) : formData.property_type === 'Industrial' ? (
+                <div className="form-group">
+                  <label htmlFor="number_of_units">
+                    Loading Docks
+                    <Tooltip content="Number of loading docks/bays">
+                      <span className="help-icon">?</span>
+                    </Tooltip>
+                  </label>
+                  <NumberInput
+                    id="number_of_units"
+                    value={formData.number_of_units}
+                    onChange={(value) => setFormData({ ...formData, number_of_units: value })}
+                    placeholder="5"
+                    min={0}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="number_of_levels">
-                  Number of Levels
-                  <Tooltip content="Total floors/levels in the development">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <NumberInput
-                  id="number_of_levels"
-                  value={formData.number_of_levels}
-                  onChange={(value) => setFormData({ ...formData, number_of_levels: value })}
-                  placeholder="10"
-                  min={0}
-                />
-              </div>
+              {formData.property_type !== 'Industrial' && (
+                <div className="form-group">
+                  <label htmlFor="number_of_levels">
+                    Number of Levels
+                    <Tooltip content={
+                      formData.property_type === 'Commercial' 
+                        ? "Total floors in the commercial building"
+                        : "Total floors/levels in the development"
+                    }>
+                      <span className="help-icon">?</span>
+                    </Tooltip>
+                  </label>
+                  <NumberInput
+                    id="number_of_levels"
+                    value={formData.number_of_levels}
+                    onChange={(value) => setFormData({ ...formData, number_of_levels: value })}
+                    placeholder={formData.property_type === 'Commercial' ? "5" : "10"}
+                    min={0}
+                  />
+                </div>
+              )}
 
               <div className="form-group">
                 <label htmlFor="car_spaces">
-                  Car Spaces
-                  <Tooltip content="Total parking spaces in the development">
+                  {formData.property_type === 'Industrial' ? 'Truck Parking Bays' : 'Car Spaces'}
+                  <Tooltip content={
+                    formData.property_type === 'Industrial'
+                      ? "Number of truck/heavy vehicle parking bays"
+                      : formData.property_type === 'Commercial'
+                      ? "Total parking spaces for tenants and visitors"
+                      : "Total parking spaces in the development"
+                  }>
                     <span className="help-icon">?</span>
                   </Tooltip>
                 </label>
@@ -4474,7 +4565,7 @@ const CreateProject = () => {
                   id="car_spaces"
                   value={formData.car_spaces}
                   onChange={(value) => setFormData({ ...formData, car_spaces: value })}
-                  placeholder="75"
+                  placeholder={formData.property_type === 'Industrial' ? "20" : "75"}
                   min={0}
                 />
               </div>
@@ -5333,15 +5424,21 @@ const tabs = [
                  <span>{project.project_size_sqm ? `${formatNumber(project.project_size_sqm)} sqm` : 'N/A'}</span>
                </div>
                <div className="detail-item">
-                 <label>Number of Units</label>
+                 <label>
+                   {project.property_type === 'Commercial' ? 'Number of Tenancies' : 
+                    project.property_type === 'Industrial' ? 'Loading Docks' : 
+                    'Number of Units'}
+                 </label>
                  <span>{project.number_of_units ? formatNumber(project.number_of_units) : 'N/A'}</span>
                </div>
+               {project.property_type !== 'Industrial' && (
+                 <div className="detail-item">
+                   <label>Levels</label>
+                   <span>{project.number_of_levels || 'N/A'}</span>
+                 </div>
+               )}
                <div className="detail-item">
-                 <label>Levels</label>
-                 <span>{project.number_of_levels || 'N/A'}</span>
-               </div>
-               <div className="detail-item">
-                 <label>Car Spaces</label>
+                 <label>{project.property_type === 'Industrial' ? 'Truck Parking Bays' : 'Car Spaces'}</label>
                  <span>{project.car_spaces || 'N/A'}</span>
                </div>
              </div>
