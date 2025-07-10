@@ -390,6 +390,24 @@ revertToDraft: (projectId, reason) => request(`/admin/revert-to-draft/${projectI
     markPaymentFailed: (projectId) => request(`/admin/payment-failed/${projectId}`, {
       method: 'POST',
     }),
+    
+    // Universal project status control
+    updateProjectStatus: (projectId, data) => request(`/admin/update-project-status/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    
+    // Subscription management endpoints
+    approveSubscription: (userId) => request(`/admin/approve-subscription/${userId}`, {
+      method: 'POST',
+    }),
+    denySubscription: (userId, reason) => request(`/admin/deny-subscription/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+    markSubscriptionFailed: (userId) => request(`/admin/subscription-failed/${userId}`, {
+      method: 'POST',
+    }),
   };
 };
 
@@ -1052,11 +1070,11 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       const { client_secret, status } = await api.createProjectPayment(projectId);
 
       // 2. If already pending, just notify and close
-      if (status === 'pending') {
+      if (status === 'payment_pending') {
         addNotification({
           type: 'info',
-          title: 'Payment Pending',
-          message: 'Your payment is being processed. Please refresh the page to check status.'
+          title: 'Payment Processing',
+          message: 'Your payment is being processed and will be reviewed by our team. You will be notified once approved.'
         });
         onSuccess();
         setProcessing(false);
@@ -1073,7 +1091,7 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       addNotification({
         type: 'success',
         title: 'Payment Successful',
-        message: 'Your project is being published. Please refresh the page to see the updated status.'
+        message: 'Your payment has been received. Your project is now under admin review and will be published once approved.'
       });
       onSuccess();
       setProcessing(false);
@@ -5281,13 +5299,9 @@ const ProjectDetail = () => {
 
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false);
-    addNotification({
-      type: 'success',
-      title: 'Payment Successful',
-      message: 'Your project is now published and visible to funders.'
-    });
+    // Message is already shown by PaymentModal component
     
-    // Re-fetch project details
+    // Re-fetch project details to show updated status
     setLoading(true);
     try {
       const projectData = await api.getProject(id);
@@ -5405,6 +5419,37 @@ const tabs = [
                  </button>
                </>
              )}
+             {user.role === 'borrower' && project.payment_status === 'payment_pending' && (
+               <button 
+                 disabled
+                 className="btn btn-primary disabled"
+               >
+                 Under Admin Review
+               </button>
+             )}
+             {user.role === 'borrower' && project.payment_status === 'paid' && !project.visible && (
+               <>
+                 <button 
+                   onClick={() => navigate(`/project/${project.id}/edit`)}
+                   className="btn btn-outline"
+                 >
+                   Edit Project
+                 </button>
+                 <button 
+                   onClick={() => {
+                     addNotification({
+                       type: 'info',
+                       title: 'Submit for Re-review',
+                       message: 'Please address the admin feedback and save your changes to submit for re-review.'
+                     });
+                     navigate(`/project/${project.id}/edit`);
+                   }}
+                   className="btn btn-primary"
+                 >
+                   Submit for Re-review
+                 </button>
+               </>
+             )}
              {user.role === 'admin' && isAdminReview && (
                <button 
                  onClick={() => {
@@ -5427,7 +5472,12 @@ const tabs = [
              </svg>
              <span>{project.location}</span>
            </div>
-           <StatusBadge status={project.payment_status === 'paid' ? 'Published' : 'Draft'} />
+           <StatusBadge status={
+             project.payment_status === 'paid' && project.visible ? 'Published' : 
+             project.payment_status === 'payment_pending' ? 'Under Review' :
+             project.payment_status === 'paid' && !project.visible ? 'Rejected' :
+             'Draft'
+           } />
            {project.documents_complete && <StatusBadge status="Docs Complete" />}
          </div>
        </div>
@@ -10092,6 +10142,11 @@ const AdminPanel = () => {
     }
   };
 
+  // Count pending subscriptions
+  const pendingSubscriptions = users.filter(u => 
+    u.role === 'funder' && u.subscription_status === 'payment_pending'
+  );
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { 
@@ -10100,6 +10155,11 @@ const AdminPanel = () => {
       notification: pendingProjects.length > 0
     },
     { id: 'users', label: `Users (${users.length})` },
+    { 
+      id: 'subscriptions', 
+      label: `Subscriptions${pendingSubscriptions.length > 0 ? ` (${pendingSubscriptions.length} pending)` : ''}`,
+      notification: pendingSubscriptions.length > 0
+    },
     { id: 'funders', label: 'Funders' },
     { id: 'godmode', label: '🔴 God Mode' },
     { id: 'analytics', label: 'Analytics' },
@@ -10338,6 +10398,157 @@ const AdminPanel = () => {
                             Approve
                           </button>
                         )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Subscriptions Tab */}
+        {activeTab === 'subscriptions' && (
+          <div className="admin-subscriptions">
+            <div className="subscriptions-header">
+              <h3>Subscription Management</h3>
+              <div className="filter-buttons">
+                <button 
+                  onClick={() => fetchData()} 
+                  className="btn btn-sm btn-outline"
+                >
+                  All Subscriptions
+                </button>
+                <button 
+                  onClick={() => {
+                    // Filter to show only pending
+                  }} 
+                  className="btn btn-sm btn-warning"
+                >
+                  Pending Review ({pendingSubscriptions.length})
+                </button>
+              </div>
+            </div>
+
+            {pendingSubscriptions.length > 0 && (
+              <div className="alert alert-warning" style={{ margin: '1rem 0' }}>
+                <strong>⚠️ {pendingSubscriptions.length} subscriptions pending review!</strong>
+                <p>These funders have completed payment and are waiting for admin approval.</p>
+              </div>
+            )}
+
+            <div className="subscriptions-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Funder</th>
+                    <th>Company</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Payment</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.filter(u => u.role === 'funder').map(funder => (
+                    <tr key={funder.id} className={funder.subscription_status === 'payment_pending' ? 'highlight-row' : ''}>
+                      <td>{funder.name}</td>
+                      <td>{funder.company_name || 'Not specified'}</td>
+                      <td>{funder.email}</td>
+                      <td>
+                        <StatusBadge 
+                          status={
+                            funder.subscription_status === 'active' && funder.approved ? 'Active' :
+                            funder.subscription_status === 'payment_pending' ? 'Pending Review' :
+                            'Inactive'
+                          } 
+                        />
+                      </td>
+                      <td>
+                        <StatusBadge status={funder.subscription_status} />
+                      </td>
+                      <td>{formatDate(funder.created_at)}</td>
+                      <td>
+                        <div className="action-buttons">
+                          {funder.subscription_status === 'payment_pending' && (
+                            <>
+                              <button 
+                                onClick={async () => {
+                                  try {
+                                    await api.approveSubscription(funder.id);
+                                    addNotification({
+                                      type: 'success',
+                                      title: 'Subscription Approved',
+                                      message: 'Funder subscription activated'
+                                    });
+                                    fetchData();
+                                  } catch (err) {
+                                    addNotification({
+                                      type: 'error',
+                                      title: 'Approval Failed',
+                                      message: err.message
+                                    });
+                                  }
+                                }}
+                                className="btn btn-sm btn-success"
+                              >
+                                Approve
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  const reason = prompt('Reason for denial:');
+                                  if (reason) {
+                                    api.denySubscription(funder.id, reason).then(() => {
+                                      addNotification({
+                                        type: 'success',
+                                        title: 'Subscription Denied',
+                                        message: 'Funder has been notified'
+                                      });
+                                      fetchData();
+                                    });
+                                  }
+                                }}
+                                className="btn btn-sm btn-warning"
+                              >
+                                Deny
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  if (window.confirm('Mark this subscription payment as failed?')) {
+                                    try {
+                                      await api.markSubscriptionFailed(funder.id);
+                                      addNotification({
+                                        type: 'success',
+                                        title: 'Marked as Failed',
+                                        message: 'Subscription payment marked as failed'
+                                      });
+                                      fetchData();
+                                    } catch (err) {
+                                      addNotification({
+                                        type: 'error',
+                                        title: 'Failed',
+                                        message: err.message
+                                      });
+                                    }
+                                  }
+                                }}
+                                className="btn btn-sm btn-danger"
+                              >
+                                Payment Failed
+                              </button>
+                            </>
+                          )}
+                          <button 
+                            onClick={() => {
+                              setSelectedUser(funder);
+                              setShowUserModal(true);
+                            }}
+                            className="btn btn-sm btn-outline"
+                          >
+                            View Details
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
