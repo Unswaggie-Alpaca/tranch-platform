@@ -3919,12 +3919,8 @@ const CreateProject = () => {
           }
         }
         
-        if (formData.land_value && formData.loan_amount) {
-          const lvr = (formData.loan_amount / formData.land_value) * 100;
-          if (lvr > 80) {
-            errors.land_value = 'LVR exceeds 80% - adjust loan amount or land value';
-          }
-        }
+        // LVR calculation for display only - no limit enforced
+        // Let lenders decide what LVR they're comfortable with
         break;
         
       case 3:
@@ -4372,7 +4368,7 @@ const CreateProject = () => {
                 <div className="metric-item">
                   <label>LVR (Loan to Value Ratio)</label>
                   <div className="metric-value">{calculateLVR() || 'N/A'}%</div>
-                  <Tooltip content="Loan amount as percentage of land value. Most lenders require LVR under 80%">
+                  <Tooltip content="Loan amount as percentage of land value. Each lender has their own LVR requirements">
                     <span className="help-icon">?</span>
                   </Tooltip>
                 </div>
@@ -5056,6 +5052,7 @@ const ProjectDetail = () => {
   const { id } = useParams();
   const { user } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
   const { addNotification } = useNotifications();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -5064,6 +5061,10 @@ const ProjectDetail = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [previewDocument, setPreviewDocument] = useState(null);
+  
+  // Check if this is an admin review
+  const searchParams = new URLSearchParams(location.search);
+  const isAdminReview = searchParams.get('admin_review') === 'true';
 
   useEffect(() => {
     let mounted = true;
@@ -5250,6 +5251,18 @@ const tabs = [
                    Pay to Publish ($499)
                  </button>
                </>
+             )}
+             {user.role === 'admin' && isAdminReview && (
+               <button 
+                 onClick={() => {
+                   window.close();
+                   // Fallback if window.close doesn't work
+                   navigate('/admin');
+                 }}
+                 className="btn btn-outline"
+               >
+                 ← Return to Admin Panel
+               </button>
              )}
            </div>
          </div>
@@ -9458,6 +9471,61 @@ const revertToDraft = async (project) => {
     }
   };
 
+  const pushBackToDraft = async (project) => {
+    const reason = prompt('Reason for pushing back to draft (payment pending -> draft):');
+    if (!reason) return;
+
+    try {
+      await api.request(`/admin/revert-to-draft/${project.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: `Payment pending to draft: ${reason}` })
+      });
+      
+      addNotification({
+        type: 'success',
+        title: 'Project Pushed to Draft',
+        message: 'Project has been pushed back to draft status (pre-payment state)'
+      });
+      
+      await fetchUnpaidProjects();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Action Failed',
+        message: err.message || 'Failed to push project to draft'
+      });
+    }
+  };
+
+  const confirmPaymentAndPublish = async (project) => {
+    const reason = prompt('Reason for confirming payment and publishing:');
+    if (!reason) return;
+
+    try {
+      await api.request(`/admin/confirm-payment/${project.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          paymentIntentId: project.stripe_payment_intent_id,
+          reason: reason 
+        })
+      });
+      
+      addNotification({
+        type: 'success',
+        title: 'Payment Confirmed & Published',
+        message: 'Project payment has been confirmed and project is now published'
+      });
+      
+      await fetchUnpaidProjects();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Action Failed',
+        message: err.message || 'Failed to confirm payment'
+      });
+    }
+  };
+
   if (loading) return <div>Loading unpaid projects...</div>;
 
   return (
@@ -9506,16 +9574,34 @@ const revertToDraft = async (project) => {
                     </td>
                     <td>
                       <div className="action-buttons">
+                        {project.payment_status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => pushBackToDraft(project)}
+                              className="btn btn-sm btn-warning"
+                              title="Push back to draft (pre-payment state)"
+                            >
+                              → Draft
+                            </button>
+                            <button
+                              onClick={() => confirmPaymentAndPublish(project)}
+                              className="btn btn-sm btn-success"
+                              title="Confirm payment and publish"
+                            >
+                              → Published
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => checkStripePayment(project.id)}
-                          className="btn btn-sm btn-warning"
+                          className="btn btn-sm btn-info"
                           title="Check if payment exists in Stripe"
                         >
                           Check Stripe
                         </button>
                         <button
                           onClick={() => forcePublish(project)}
-                          className="btn btn-sm btn-success"
+                          className="btn btn-sm btn-primary"
                           title="Force publish without payment verification"
                         >
                           Force Publish
@@ -9531,12 +9617,13 @@ const revertToDraft = async (project) => {
                           Reject
                         </button>
                         <Link
-                          to={`/project/${project.id}`}
+                          to={`/project/${project.id}?admin_review=true`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="btn btn-sm btn-outline"
+                          title="Review project details"
                         >
-                          View
+                          Review
                         </Link>
                       </div>
                     </td>
@@ -9566,14 +9653,15 @@ const revertToDraft = async (project) => {
           </p>
           
           <div className="form-group">
-            <label>Reason for Rejection *</label>
+            <label>Feedback for Borrower *</label>
             <textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Please provide a clear reason for rejection..."
-              rows="4"
+              placeholder="Please provide detailed feedback for the borrower. Be specific about what needs to be fixed or improved before resubmission.&#10;&#10;Examples:&#10;- Missing financial projections for Year 2&#10;- LVR calculation appears incorrect&#10;- Please upload the valuation report&#10;- Development timeline needs more detail"
+              rows="6"
               className="form-textarea"
             />
+            <small className="text-muted">This feedback will be sent to the borrower via email and shown in their dashboard.</small>
           </div>
           
           <div className="modal-actions">
@@ -9587,19 +9675,12 @@ const revertToDraft = async (project) => {
             >
               Cancel
             </button>
-            <button
-  onClick={() => revertToDraft(project)}
-  className="btn btn-sm btn-warning"
-  title="Revert to draft status"
->
-  Revert to Draft
-</button>
             <button 
               onClick={handleReject}
               disabled={!rejectReason.trim()}
               className="btn btn-danger"
             >
-              Reject Project
+              Send Feedback & Return to Draft
             </button>
           </div>
         </div>
