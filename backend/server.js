@@ -305,6 +305,10 @@ app.post('/api/webhooks/clerk',
 // Place this *before* any `app.use(express.json())` or other body parsers!
 // ----
 app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'application/json; charset=utf-8']}), async (req, res) => {
+  console.log('=== Stripe Webhook Received ===');
+  console.log('Headers:', req.headers);
+  console.log('Webhook Secret Set:', !!process.env.STRIPE_WEBHOOK_SECRET);
+  
   const sig = req.headers['stripe-signature'];
   let event;
 
@@ -352,8 +356,8 @@ app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'applic
                 
                 // Update project to payment_pending state (NOT visible)
                 db.run(
-                  'UPDATE projects SET payment_status = ?, visible = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                  ['payment_pending', projectId],
+                  'UPDATE projects SET payment_status = ?, visible = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND payment_status != ?',
+                  ['payment_pending', projectId, 'payment_pending'],
                   function(err) {
                     if (err) {
                       db.run('ROLLBACK');
@@ -1024,8 +1028,6 @@ db.run(`ALTER TABLE projects ADD COLUMN rejection_date DATETIME`, (err) => {
   }
 });
 
-// Body parsing middleware (after webhooks)
-app.use(express.json({ limit: '50mb' }));
 
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
@@ -2031,11 +2033,11 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
     });
 
 
-    // Update project to payment_pending status (locks publish button)
+    // Store the payment intent ID but keep status as unpaid until webhook confirms
     await new Promise((resolve, reject) => {
       db.run(
-        'UPDATE projects SET payment_status = ?, stripe_payment_intent_id = ? WHERE id = ?',
-        ['payment_pending', paymentIntent.id, project_id],
+        'UPDATE projects SET stripe_payment_intent_id = ? WHERE id = ?',
+        [paymentIntent.id, project_id],
         (err) => {
           if (err) reject(err);
           else resolve();
@@ -2931,6 +2933,64 @@ app.post('/api/admin/deny-project/:projectId', authenticateToken, requireRole(['
   } catch (err) {
     console.error('Deny project error:', err);
     res.status(500).json({ error: 'Failed to deny project: ' + err.message });
+  }
+});
+
+// Confirm payment status
+app.post('/api/payments/confirm-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
+  try {
+    const { payment_intent_id, project_id } = req.body;
+    
+    if (!payment_intent_id || !project_id) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Verify project belongs to user
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM projects WHERE id = ? AND borrower_id = ?',
+        [project_id, req.user.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Check payment intent status with Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+    
+    if (paymentIntent.status === 'succeeded') {
+      // Payment succeeded but webhook might have failed
+      // Manually update the project status
+      await new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE projects SET payment_status = ?, visible = 0 WHERE id = ?',
+          ['payment_pending', project_id],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
+      
+      res.json({ 
+        status: 'succeeded',
+        message: 'Payment confirmed, pending admin review'
+      });
+    } else {
+      res.json({ 
+        status: paymentIntent.status,
+        message: 'Payment not yet confirmed'
+      });
+    }
+  } catch (error) {
+    console.error('Payment confirmation error:', error);
+    res.status(500).json({ error: 'Failed to confirm payment' });
   }
 });
 
