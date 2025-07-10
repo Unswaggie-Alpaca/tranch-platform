@@ -172,6 +172,12 @@ const createApiClient = (getToken) => {
     }),
     getRequiredDocuments: () => request('/required-documents'),
     
+// In createApiClient, add this method:
+updateProjectStatus: (projectId, data) => request(`/admin/update-project-status/${projectId}`, {
+  method: 'POST',
+  body: JSON.stringify(data),
+}),
+
     // Document download
     async downloadDocument(filePath) {
       const token = await getToken();
@@ -373,8 +379,14 @@ revertToDraft: (projectId, reason) => request(`/admin/revert-to-draft/${projectI
     syncStripePayment: (projectId) => request(`/admin/sync-stripe-payment/${projectId}`, {
       method: 'POST',
     }),
-    getOverrideHistory: () => request('/admin/override-history'),
+    getOverrideHistory: () => request('/admin/override-history'),getOverrideHistory: () => request('/admin/override-history'),
     
+    // Universal project status control
+    updateProjectStatus: (projectId, data) => request(`/admin/update-project-status/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
     // New admin project management endpoints
     getAdminProjects: (params) => {
       const queryString = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -1053,6 +1065,7 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
 };
 
 // Payment Form Component
+// In PaymentForm component, update the payment success handling:
 const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }) => {
   const api = useApi();
   const stripe = useStripe();
@@ -1066,7 +1079,7 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
     setProcessing(true);
 
     try {
-      // 1. Create (or check) payment intent
+      // 1. Create payment intent
       const { client_secret, status } = await api.createProjectPayment(projectId);
 
       // 2. If already pending, just notify and close
@@ -1074,25 +1087,33 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
         addNotification({
           type: 'info',
           title: 'Payment Processing',
-          message: 'Your payment is being processed and will be reviewed by our team. You will be notified once approved.'
+          message: 'Your payment is being processed and will be reviewed by our team.'
         });
         onSuccess();
         setProcessing(false);
         return;
       }
 
-      // 3. Otherwise, confirm payment with Stripe
+      // 3. Confirm payment with Stripe
       const result = await stripe.confirmCardPayment(client_secret, {
         payment_method: { card: elements.getElement(CardElement) }
       });
+      
       if (result.error) throw new Error(result.error.message);
 
-      // 4. On success, notify & close
+      // 4. Payment successful - project should now be in payment_pending status
       addNotification({
         type: 'success',
         title: 'Payment Successful',
-        message: 'Your payment has been received. Your project is now under admin review and will be published once approved.'
+        message: 'Your payment has been received. Your project is now under admin review.'
       });
+      
+      // Send email notification to admin
+      await api.sendEmailNotification('new_project_review', 'admin', {
+        project_title: project.title,
+        borrower_name: user.name
+      });
+      
       onSuccess();
       setProcessing(false);
 
@@ -1109,17 +1130,15 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
   return (
     <form onSubmit={handleSubmit} className="payment-form">
       <div className="card-element-container">
-        <CardElement
-          options={{
-            style: {
-              base: {
-                fontSize: '16px',
-                color: '#424770',
-                '::placeholder': { color: '#aab7c4' }
-              }
+        <CardElement options={{
+          style: {
+            base: {
+              fontSize: '16px',
+              color: '#424770',
+              '::placeholder': { color: '#aab7c4' }
             }
-          }}
-        />
+          }
+        }} />
       </div>
       <button
         type="submit"
@@ -2739,28 +2758,50 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                 Under Admin Review
               </button>
             </>
-          ) : project.payment_status === 'paid' && !project.visible ? (
-            <>
-              <button 
-                onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
-              >
-                Edit Project
-              </button>
-              <button 
-                onClick={() => {
-                  addNotification({
-                    type: 'info',
-                    title: 'Submit for Re-review',
-                    message: 'Please address the admin feedback and click "Submit for Review" on the project page.'
-                  });
-                  navigate(`/project/${project.id}`);
-                }}
-                className="btn-primary-small"
-              >
-                Submit for Re-review
-              </button>
-            </>
+          ) : project.payment_status === 'paid' && !project.visible && (
+              <>
+                <button 
+                  onClick={() => navigate(`/project/${project.id}/edit`)}
+                  className="btn btn-outline"
+                >
+                  Edit Project
+                </button>
+                <button 
+                  onClick={async () => {
+                    try {
+                      await api.updateProjectStatus(project.id, {
+                        status: 'payment_pending',
+                        submission_status: 'pending_review',
+                        reason: 'Resubmitted after addressing feedback'
+                      });
+                      
+                      // Notify admin
+                      await api.sendEmailNotification('project_resubmitted', 'admin', {
+                        project_title: project.title,
+                        borrower_name: user.name
+                      });
+                      
+                      addNotification({
+                        type: 'success',
+                        title: 'Resubmitted for Review',
+                        message: 'Your project has been resubmitted and will be reviewed by our team.'
+                      });
+                      
+                      if (onProjectUpdate) onProjectUpdate();
+                    } catch (err) {
+                      addNotification({
+                        type: 'error',
+                        title: 'Resubmission Failed',
+                        message: err.message
+                      });
+                    }
+                  }}
+                  className="btn btn-primary-small"
+                >
+                  Submit for Re-review
+                </button>
+              </>
+          )}
           ) : (
             <>
               <button 
@@ -2778,7 +2819,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                 Publish
               </button>
             </>
-          )}
+          
         </div>
       </div>
 
@@ -3787,6 +3828,7 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const suggestionsRef = useRef(null);
+  const searchTimeout = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -3807,31 +3849,13 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
 
     setLoading(true);
     try {
-      // Check if we have Google Maps API key
-      const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+      const response = await api.request('/geocode/autocomplete', {
+        method: 'POST',
+        body: JSON.stringify({ input: query })
+      });
       
-      if (googleApiKey) {
-        // Use Google Places API
-        const response = await fetch(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:au&key=${googleApiKey}`
-        );
-        const data = await response.json();
-        
-        if (data.predictions) {
-          setSuggestions(data.predictions.map(p => ({
-            place_id: p.place_id,
-            description: p.description
-          })));
-          setShowSuggestions(true);
-        }
-      } else {
-        // Fallback to backend endpoint
-        const response = await api.request('/geocode/autocomplete', {
-          method: 'POST',
-          body: JSON.stringify({ input: query })
-        });
-        
-        setSuggestions(response.predictions || []);
+      if (response.predictions) {
+        setSuggestions(response.predictions);
         setShowSuggestions(true);
       }
     } catch (err) {
@@ -3845,20 +3869,36 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   const handleInputChange = (e) => {
     const newValue = e.target.value;
     onChange(newValue);
-    searchAddresses(newValue);
+    
+    // Debounce the search
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+    }
+    
+    searchTimeout.current = setTimeout(() => {
+      searchAddresses(newValue);
+    }, 300);
   };
 
-  const handleSelectSuggestion = async (suggestion) => {
-    // Extract suburb from the display name
+  const handleSelectSuggestion = (suggestion) => {
+    // Parse the address to extract suburb
     const parts = suggestion.description.split(',');
-    const suburb = parts.length > 1 ? parts[1].trim() : '';
+    let suburb = '';
+    
+    // Australian address format typically: Street, Suburb State Postcode, Country
+    if (parts.length >= 2) {
+      // Get the second part and clean it
+      suburb = parts[1].trim().split(' ')[0]; // Takes first word which is usually suburb
+    }
     
     onSelect({
       location: suggestion.description,
-      suburb: suburb
+      suburb: suburb,
+      place_id: suggestion.place_id
     });
     
     setShowSuggestions(false);
+    setSuggestions([]);
   };
 
   return (
@@ -3869,12 +3909,17 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
         onChange={handleInputChange}
         className="form-input"
         placeholder="Start typing address..."
-        onFocus={() => value.length >= 3 && setShowSuggestions(true)}
+        onFocus={() => value.length >= 3 && suggestions.length > 0 && setShowSuggestions(true)}
       />
+      
+      {loading && (
+        <div className="address-loading">
+          <span className="spinner-small"></span> Searching...
+        </div>
+      )}
       
       {showSuggestions && suggestions.length > 0 && (
         <div className="address-suggestions">
-          {loading && <div className="suggestion-loading">Searching...</div>}
           {suggestions.map((suggestion) => (
             <div
               key={suggestion.place_id}
@@ -9968,7 +10013,40 @@ const AdminPanel = () => {
   const [overrideType, setOverrideType] = useState('');
   const [overrideTarget, setOverrideTarget] = useState(null);
   const [overrideReason, setOverrideReason] = useState('');
-  const [denialReason, setDenialReason] = useState('');
+const [denialReason, setDenialReason] = useState('');
+  const [paymentNotReceived, setPaymentNotReceived] = useState(false);
+
+  const handleProjectStateChange = async (projectId, newStatus) => {
+    const reason = prompt(`Reason for changing to ${newStatus}:`);
+    if (!reason) return;
+
+    try {
+      const statusData = {
+        status: newStatus,
+        reason: reason,
+        payment_status: newStatus === 'draft' ? 'unpaid' : 
+                        newStatus === 'payment_pending' ? 'payment_pending' : 
+                        'paid',
+        visible: newStatus === 'published'
+      };
+
+      await api.updateProjectStatus(projectId, statusData);
+      
+      addNotification({
+        type: 'success',
+        title: 'Status Updated',
+        message: `Project status changed to ${newStatus}`
+      });
+      
+      fetchProjects();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Update Failed',
+        message: err.message
+      });
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -10331,8 +10409,28 @@ const AdminPanel = () => {
                           >
                             View
                           </a>
+                          
+                          {/* Universal State Control */}
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleProjectStateChange(project.id, e.target.value);
+                                e.target.value = ''; // Reset dropdown
+                              }
+                            }}
+                            className="btn btn-sm btn-outline"
+                            defaultValue=""
+                          >
+                            <option value="">Change Status...</option>
+                            <option value="draft">→ Draft (Unpaid)</option>
+                            <option value="payment_pending">→ Payment Pending</option>
+                            <option value="paid_unpublished">→ Paid (Not Published)</option>
+                            <option value="published">→ Published (Live)</option>
+                            <option value="rejected">→ Rejected</option>
+                          </select>
                         </div>
                       </td>
+                      
                     </tr>
                   ))}
                 </tbody>
@@ -10829,6 +10927,7 @@ const AdminPanel = () => {
           setShowReviewModal(false);
           setSelectedProject(null);
           setDenialReason('');
+          setPaymentNotReceived(false);
         }}
         title="Review Project for Approval"
         size="large"
@@ -10932,7 +11031,19 @@ const AdminPanel = () => {
                     className="form-textarea"
                     style={{ marginBottom: '1rem' }}
                   />
-                  <button 
+                  
+                  {/* Payment checkbox */}
+                  <label className="checkbox-label" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={paymentNotReceived}
+                      onChange={(e) => setPaymentNotReceived(e.target.checked)}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span>Payment not received (return to unpaid draft)</span>
+                  </label>
+                  
+                  <button
                     onClick={async () => {
                       if (!denialReason.trim()) {
                         addNotification({
@@ -10942,13 +11053,41 @@ const AdminPanel = () => {
                         });
                         return;
                       }
+                      
                       try {
-                        await api.denyProject(selectedProject.id, denialReason);
+                        if (paymentNotReceived) {
+                          // Return to unpaid draft
+                          await api.updateProjectStatus(selectedProject.id, {
+                            status: 'draft',
+                            payment_status: 'unpaid',
+                            visible: false,
+                            reason: denialReason,
+                            payment_not_received: true
+                          });
+                        } else {
+                          // Keep as paid but not published
+                          await api.updateProjectStatus(selectedProject.id, {
+                            status: 'rejected',
+                            payment_status: 'paid',
+                            visible: false,
+                            reason: denialReason,
+                            submission_status: 'rejected'
+                          });
+                        }
+                        
+                        // Send email to borrower
+                        await api.sendEmailNotification('project_rejected', selectedProject.borrower_id, {
+                          project_title: selectedProject.title,
+                          reason: denialReason,
+                          payment_status: paymentNotReceived ? 'returned_to_draft' : 'paid_but_rejected'
+                        });
+                        
                         addNotification({
                           type: 'success',
                           title: 'Project Denied',
                           message: 'Borrower has been notified'
                         });
+                        
                         setShowReviewModal(false);
                         setPendingProjects(prev => prev.filter(p => p.id !== selectedProject.id));
                         fetchProjects();
