@@ -374,6 +374,22 @@ revertToDraft: (projectId, reason) => request(`/admin/revert-to-draft/${projectI
       method: 'POST',
     }),
     getOverrideHistory: () => request('/admin/override-history'),
+    
+    // New admin project management endpoints
+    getAdminProjects: (params) => {
+      const queryString = params ? '?' + new URLSearchParams(params).toString() : '';
+      return request(`/admin/projects${queryString}`);
+    },
+    approveProject: (projectId) => request(`/admin/approve-project/${projectId}`, {
+      method: 'POST',
+    }),
+    denyProject: (projectId, reason) => request(`/admin/deny-project/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+    markPaymentFailed: (projectId) => request(`/admin/payment-failed/${projectId}`, {
+      method: 'POST',
+    }),
   };
 };
 
@@ -2446,8 +2462,8 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
       <div className="project-card-clean">
         {/* Status Badge */}
         <div className="card-header-clean">
-          <span className={`status-badge-clean ${project.payment_status === 'paid' ? 'live' : project.payment_status === 'pending' ? 'pending' : 'draft'}`}>
-            {project.payment_status === 'paid' ? 'LIVE' : project.payment_status === 'pending' ? 'PAYMENT PENDING' : 'DRAFT'}
+          <span className={`status-badge-clean ${project.payment_status === 'paid' ? 'live' : project.payment_status === 'payment_pending' ? 'pending' : 'draft'}`}>
+            {project.payment_status === 'paid' ? 'LIVE' : project.payment_status === 'payment_pending' ? 'UNDER REVIEW' : 'DRAFT'}
           </span>
           {project.deal_count > 0 && (
             <span className="deal-count">{project.deal_count} active deal{project.deal_count > 1 ? 's' : ''}</span>
@@ -2502,7 +2518,7 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
                 </button>
               )}
             </>
-          ) : project.payment_status === 'pending' ? (
+          ) : project.payment_status === 'payment_pending' ? (
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
@@ -2514,7 +2530,7 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
                 disabled
                 className="btn-outline-clean disabled"
               >
-                Payment Processing...
+                Under Admin Review
               </button>
             </>
           ) : (
@@ -2582,8 +2598,12 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
   };
 
   const getStatusBadge = () => {
-    if (project.payment_status === 'paid') {
+    if (project.payment_status === 'paid' && project.visible) {
       return <span className="status-badge-v2 live">LIVE</span>;
+    } else if (project.payment_status === 'payment_pending') {
+      return <span className="status-badge-v2 pending">UNDER REVIEW</span>;
+    } else if (project.payment_status === 'paid' && !project.visible) {
+      return <span className="status-badge-v2 rejected">REJECTED</span>;
     }
     return <span className="status-badge-v2 draft">DRAFT</span>;
   };
@@ -2637,7 +2657,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             </div>
           </div>
 
-          {project.last_rejection_reason && project.payment_status === 'unpaid' && (
+          {project.last_rejection_reason && (project.payment_status === 'unpaid' || (project.payment_status === 'paid' && !project.visible)) && (
             <div className="rejection-notice">
               <div className="rejection-header">
                 <svg className="rejection-icon" viewBox="0 0 20 20" fill="currentColor">
@@ -2653,12 +2673,17 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                   Received: {new Date(project.rejection_date).toLocaleDateString()}
                 </div>
               )}
+              {project.payment_status === 'paid' && (
+                <div className="rejection-note">
+                  Note: You have already paid for this project. Please address the feedback and submit for re-review.
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <div className="card-footer">
-          {project.payment_status === 'paid' ? (
+          {project.payment_status === 'paid' && project.visible ? (
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
@@ -2680,6 +2705,43 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                   Deal Room{project.deal_count > 1 ? 's' : ''}
                 </button>
               )}
+            </>
+          ) : project.payment_status === 'payment_pending' ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
+              >
+                View Details
+              </button>
+              <button 
+                disabled
+                className="btn-primary-small disabled"
+              >
+                Under Admin Review
+              </button>
+            </>
+          ) : project.payment_status === 'paid' && !project.visible ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
+              >
+                Edit Project
+              </button>
+              <button 
+                onClick={() => {
+                  addNotification({
+                    type: 'info',
+                    title: 'Submit for Re-review',
+                    message: 'Please address the admin feedback and click "Submit for Review" on the project page.'
+                  });
+                  navigate(`/project/${project.id}`);
+                }}
+                className="btn-primary-small"
+              >
+                Submit for Re-review
+              </button>
             </>
           ) : (
             <>
@@ -9845,13 +9907,18 @@ const AdminPanel = () => {
   const [stats, setStats] = useState(null);
   const [settings, setSettings] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [pendingProjects, setPendingProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState(null);
   const [overrideType, setOverrideType] = useState('');
   const [overrideTarget, setOverrideTarget] = useState(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const [denialReason, setDenialReason] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -9860,6 +9927,8 @@ const AdminPanel = () => {
   useEffect(() => {
     if (activeTab === 'godmode') {
       fetchPayments();
+    } else if (activeTab === 'projects') {
+      fetchProjects();
     }
   }, [activeTab]);
 
@@ -9874,6 +9943,10 @@ const AdminPanel = () => {
       setUsers(usersData);
       setStats(statsData);
       setSettings(settingsData);
+      
+      // Fetch pending projects for the notification badge
+      const projectsData = await api.getAdminProjects({ status: 'pending_review' });
+      setPendingProjects(projectsData);
     } catch (err) {
       addNotification({
         type: 'error',
@@ -9891,6 +9964,15 @@ const AdminPanel = () => {
       setPayments(paymentsData);
     } catch (err) {
       console.error('Failed to fetch payments:', err);
+    }
+  };
+
+  const fetchProjects = async () => {
+    try {
+      const projectsData = await api.getAdminProjects();
+      setProjects(projectsData);
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
     }
   };
 
@@ -9928,6 +10010,39 @@ const AdminPanel = () => {
             title: 'Project Force Published',
             message: 'Project is now live on the platform'
           });
+          break;
+          
+        case 'approve-project':
+          await api.approveProject(overrideTarget.id);
+          addNotification({
+            type: 'success',
+            title: 'Project Approved',
+            message: 'Project has been approved and published'
+          });
+          setPendingProjects(prev => prev.filter(p => p.id !== overrideTarget.id));
+          fetchProjects();
+          break;
+          
+        case 'deny-project':
+          await api.denyProject(overrideTarget.id, overrideReason);
+          addNotification({
+            type: 'success',
+            title: 'Project Denied',
+            message: 'Project has been denied and borrower notified'
+          });
+          setPendingProjects(prev => prev.filter(p => p.id !== overrideTarget.id));
+          fetchProjects();
+          break;
+          
+        case 'payment-failed':
+          await api.markPaymentFailed(overrideTarget.id);
+          addNotification({
+            type: 'success',
+            title: 'Payment Failed',
+            message: 'Project returned to draft due to payment failure'
+          });
+          setPendingProjects(prev => prev.filter(p => p.id !== overrideTarget.id));
+          fetchProjects();
           break;
           
         case 'complete-deal':
@@ -9979,6 +10094,11 @@ const AdminPanel = () => {
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
+    { 
+      id: 'projects', 
+      label: `Projects${pendingProjects.length > 0 ? ` (${pendingProjects.length} pending)` : ''}`,
+      notification: pendingProjects.length > 0
+    },
     { id: 'users', label: `Users (${users.length})` },
     { id: 'funders', label: 'Funders' },
     { id: 'godmode', label: '🔴 God Mode' },
@@ -10020,6 +10140,143 @@ const AdminPanel = () => {
                 <h3>Total Revenue</h3>
                 <div className="stat-value">{formatCurrency(stats.total_revenue || 0)}</div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Projects Tab */}
+        {activeTab === 'projects' && (
+          <div className="admin-projects">
+            <div className="projects-header">
+              <h3>Project Management</h3>
+              <div className="filter-buttons">
+                <button 
+                  onClick={() => fetchProjects()} 
+                  className="btn btn-sm btn-outline"
+                >
+                  All Projects
+                </button>
+                <button 
+                  onClick={async () => {
+                    const data = await api.getAdminProjects({ status: 'pending_review' });
+                    setProjects(data);
+                  }} 
+                  className="btn btn-sm btn-warning"
+                >
+                  Pending Review ({pendingProjects.length})
+                </button>
+                <button 
+                  onClick={async () => {
+                    const data = await api.getAdminProjects({ status: 'published' });
+                    setProjects(data);
+                  }} 
+                  className="btn btn-sm btn-success"
+                >
+                  Published
+                </button>
+              </div>
+            </div>
+
+            {pendingProjects.length > 0 && (
+              <div className="alert alert-warning" style={{ margin: '1rem 0' }}>
+                <strong>⚠️ {pendingProjects.length} projects pending review!</strong>
+                <p>These projects have completed payment and are waiting for admin approval.</p>
+              </div>
+            )}
+
+            <div className="projects-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Borrower</th>
+                    <th>Loan Amount</th>
+                    <th>Status</th>
+                    <th>Payment</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map(project => (
+                    <tr key={project.id} className={project.payment_status === 'payment_pending' ? 'highlight-row' : ''}>
+                      <td>{project.title}</td>
+                      <td>
+                        <div>
+                          <div>{project.borrower_name}</div>
+                          <small>{project.borrower_email}</small>
+                        </div>
+                      </td>
+                      <td>{formatCurrency(project.loan_amount)}</td>
+                      <td>
+                        <StatusBadge 
+                          status={
+                            project.payment_status === 'payment_pending' ? 'Pending Review' :
+                            project.visible ? 'Published' : 
+                            project.submission_status === 'rejected' ? 'Rejected' : 'Draft'
+                          } 
+                        />
+                      </td>
+                      <td>
+                        <StatusBadge status={project.payment_status} />
+                        {project.payment_intent_id && (
+                          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                            {project.payment_intent_id}
+                          </div>
+                        )}
+                      </td>
+                      <td>{formatDate(project.created_at)}</td>
+                      <td>
+                        <div className="action-buttons">
+                          {project.payment_status === 'payment_pending' && (
+                            <>
+                              <button 
+                                onClick={() => {
+                                  setSelectedProject(project);
+                                  setShowReviewModal(true);
+                                }}
+                                className="btn btn-sm btn-primary"
+                              >
+                                Review
+                              </button>
+                              <button 
+                                onClick={() => handleOverride('approve-project', project)}
+                                className="btn btn-sm btn-success"
+                              >
+                                Quick Approve
+                              </button>
+                            </>
+                          )}
+                          {project.payment_status === 'paid' && project.submission_status === 'rejected' && (
+                            <button 
+                              onClick={() => handleOverride('approve-project', project)}
+                              className="btn btn-sm btn-warning"
+                            >
+                              Re-approve
+                            </button>
+                          )}
+                          {project.payment_status === 'unpaid' && (
+                            <button 
+                              onClick={() => handleOverride('publish-project', project)}
+                              className="btn btn-sm btn-danger"
+                            >
+                              Force Publish
+                            </button>
+                          )}
+                          <a 
+                            href={`/project/${project.id}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline"
+                          >
+                            View
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -10352,6 +10609,189 @@ const AdminPanel = () => {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Project Review Modal */}
+      <Modal 
+        isOpen={showReviewModal} 
+        onClose={() => {
+          setShowReviewModal(false);
+          setSelectedProject(null);
+          setDenialReason('');
+        }}
+        title="Review Project for Approval"
+        size="large"
+      >
+        {selectedProject && (
+          <div className="project-review-modal">
+            <div className="review-section">
+              <h3>Project Details</h3>
+              <div className="project-details-grid">
+                <div className="detail-item">
+                  <label>Title:</label>
+                  <span>{selectedProject.title}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Borrower:</label>
+                  <span>{selectedProject.borrower_name} ({selectedProject.borrower_email})</span>
+                </div>
+                <div className="detail-item">
+                  <label>Loan Amount:</label>
+                  <span>{formatCurrency(selectedProject.loan_amount)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Property Type:</label>
+                  <span>{selectedProject.property_type}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Location:</label>
+                  <span>{selectedProject.suburb}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Payment Intent ID:</label>
+                  <span style={{ fontSize: '0.875rem' }}>{selectedProject.payment_intent_id || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="review-section">
+              <h3>Payment Verification</h3>
+              <div className="alert alert-info">
+                <p>Please verify the payment in Stripe dashboard before approving:</p>
+                <a 
+                  href={`https://dashboard.stripe.com/payments/${selectedProject.payment_intent_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm btn-outline"
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  View in Stripe Dashboard →
+                </a>
+              </div>
+            </div>
+
+            <div className="review-section">
+              <h3>Actions</h3>
+              <div className="review-actions">
+                <div className="action-group">
+                  <button 
+                    onClick={async () => {
+                      try {
+                        await api.approveProject(selectedProject.id);
+                        addNotification({
+                          type: 'success',
+                          title: 'Project Approved',
+                          message: 'Project has been approved and is now live'
+                        });
+                        setShowReviewModal(false);
+                        setPendingProjects(prev => prev.filter(p => p.id !== selectedProject.id));
+                        fetchProjects();
+                      } catch (err) {
+                        addNotification({
+                          type: 'error',
+                          title: 'Approval Failed',
+                          message: err.message
+                        });
+                      }
+                    }}
+                    className="btn btn-success"
+                  >
+                    Approve & Publish
+                  </button>
+                  <a 
+                    href={`/project/${selectedProject.id}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="btn btn-outline"
+                  >
+                    View Full Project
+                  </a>
+                </div>
+
+                <div className="divider" style={{ margin: '2rem 0' }}></div>
+
+                <div className="denial-section">
+                  <h4>Deny Project</h4>
+                  <p>If there are issues with the project, provide a reason for denial:</p>
+                  <textarea
+                    value={denialReason}
+                    onChange={(e) => setDenialReason(e.target.value)}
+                    placeholder="Explain what needs to be fixed..."
+                    rows="3"
+                    className="form-textarea"
+                    style={{ marginBottom: '1rem' }}
+                  />
+                  <button 
+                    onClick={async () => {
+                      if (!denialReason.trim()) {
+                        addNotification({
+                          type: 'error',
+                          title: 'Reason Required',
+                          message: 'Please provide a reason for denial'
+                        });
+                        return;
+                      }
+                      try {
+                        await api.denyProject(selectedProject.id, denialReason);
+                        addNotification({
+                          type: 'success',
+                          title: 'Project Denied',
+                          message: 'Borrower has been notified'
+                        });
+                        setShowReviewModal(false);
+                        setPendingProjects(prev => prev.filter(p => p.id !== selectedProject.id));
+                        fetchProjects();
+                      } catch (err) {
+                        addNotification({
+                          type: 'error',
+                          title: 'Denial Failed',
+                          message: err.message
+                        });
+                      }
+                    }}
+                    disabled={!denialReason.trim()}
+                    className="btn btn-warning"
+                  >
+                    Deny with Reason
+                  </button>
+                </div>
+
+                <div className="divider" style={{ margin: '2rem 0' }}></div>
+
+                <div className="payment-failed-section">
+                  <h4>Payment Failed</h4>
+                  <p>If payment verification failed in Stripe:</p>
+                  <button 
+                    onClick={async () => {
+                      if (window.confirm('Are you sure the payment failed? This will return the project to draft status.')) {
+                        try {
+                          await api.markPaymentFailed(selectedProject.id);
+                          addNotification({
+                            type: 'success',
+                            title: 'Payment Marked as Failed',
+                            message: 'Project returned to draft'
+                          });
+                          setShowReviewModal(false);
+                          setPendingProjects(prev => prev.filter(p => p.id !== selectedProject.id));
+                          fetchProjects();
+                        } catch (err) {
+                          addNotification({
+                            type: 'error',
+                            title: 'Failed to Mark Payment',
+                            message: err.message
+                          });
+                        }
+                      }
+                    }}
+                    className="btn btn-danger"
+                  >
+                    Mark Payment as Failed
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

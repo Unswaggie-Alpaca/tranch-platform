@@ -10004,3 +10004,172 @@ td {
     align-items: flex-start;
   }
 }
+
+/* ===========================
+   Admin Panel Enhanced Styles
+   =========================== */
+
+.admin-projects {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow-md);
+}
+
+.projects-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.projects-table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.projects-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.projects-table th,
+.projects-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.projects-table th {
+  font-weight: 600;
+  color: var(--gray-700);
+  background: var(--gray-50);
+}
+
+.projects-table tr:hover {
+  background: var(--gray-50);
+}
+
+.projects-table tr.highlight-row {
+  background: #fef3c7;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.project-review-modal {
+  padding: 1.5rem;
+}
+
+.review-section {
+  margin-bottom: 2rem;
+}
+
+.review-section h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--gray-900);
+}
+
+.project-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  background: var(--gray-50);
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detail-item label {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+
+.detail-item span {
+  color: var(--gray-900);
+  font-weight: 600;
+}
+
+.review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.action-group {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.denial-section,
+.payment-failed-section {
+  background: var(--gray-50);
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+}
+
+.denial-section h4,
+.payment-failed-section h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--gray-900);
+}
+
+.alert {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+
+.alert-warning {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.alert-info {
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  color: #1e40af;
+}
+
+.divider {
+  border-top: 1px solid var(--gray-200);
+}
+
+.rejection-note {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  color: #92400e;
+}
+
+.status-badge-v2.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge-v2.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
