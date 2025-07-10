@@ -959,6 +959,18 @@ db.get("PRAGMA table_info(users)", (err, rows) => {
   }
 });
 
+// Migration to add rejection reason columns
+db.run(`ALTER TABLE projects ADD COLUMN last_rejection_reason TEXT`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add last_rejection_reason column:', err);
+  }
+});
+
+db.run(`ALTER TABLE projects ADD COLUMN rejection_date DATETIME`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add rejection_date column:', err);
+  }
+});
 
 // Body parsing middleware (after webhooks)
 app.use(express.json({ limit: '50mb' }));
@@ -2687,9 +2699,11 @@ app.post('/api/admin/revert-to-draft/:projectId', authenticateToken, requireRole
          payment_status = 'unpaid',
          visible = 0,
          submission_status = 'draft',
+         last_rejection_reason = ?,
+         rejection_date = CURRENT_TIMESTAMP,
          updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [projectId],
+        [reason || 'No specific reason provided', projectId],
         (err) => {
           if (err) reject(err);
           else resolve();
