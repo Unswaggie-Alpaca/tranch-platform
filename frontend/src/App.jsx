@@ -1066,19 +1066,30 @@ const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
 
 // Payment Form Component
 // In PaymentForm component, update the payment success handling:
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
 const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }) => {
   const api = useApi();
   const stripe = useStripe();
   const elements = useElements();
   const { addNotification } = useNotifications();
+  const [cardError, setCardError] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!stripe || !elements) return;
 
     setProcessing(true);
+    setCardError(null);
 
     try {
+      // Get the CardElement
+      const cardElement = elements.getElement(CardElement);
+      
+      if (!cardElement) {
+        throw new Error('Card element not found');
+      }
+
       // 1. Create payment intent
       const { client_secret, status } = await api.createProjectPayment(projectId);
 
@@ -1096,28 +1107,27 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
 
       // 3. Confirm payment with Stripe
       const result = await stripe.confirmCardPayment(client_secret, {
-        payment_method: { card: elements.getElement(CardElement) }
+        payment_method: {
+          card: cardElement
+        }
       });
       
-      if (result.error) throw new Error(result.error.message);
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
 
-      // 4. Payment successful - project should now be in payment_pending status
+      // 4. Payment successful
       addNotification({
         type: 'success',
         title: 'Payment Successful',
         message: 'Your payment has been received. Your project is now under admin review.'
       });
       
-      // Send email notification to admin
-      await api.sendEmailNotification('new_project_review', 'admin', {
-        project_title: project.title,
-        borrower_name: user.name
-      });
-      
       onSuccess();
-      setProcessing(false);
 
     } catch (err) {
+      console.error('Payment error:', err);
+      setCardError(err.message);
       addNotification({
         type: 'error',
         title: 'Payment Failed',
@@ -1127,18 +1137,30 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
     }
   };
 
+  const handleCardChange = (event) => {
+    if (event.error) {
+      setCardError(event.error.message);
+    } else {
+      setCardError(null);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="payment-form">
       <div className="card-element-container">
-        <CardElement options={{
-          style: {
-            base: {
-              fontSize: '16px',
-              color: '#424770',
-              '::placeholder': { color: '#aab7c4' }
+        <CardElement 
+          onChange={handleCardChange}
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': { color: '#aab7c4' }
+              }
             }
-          }
-        }} />
+          }} 
+        />
+        {cardError && <div className="card-error">{cardError}</div>}
       </div>
       <button
         type="submit"
