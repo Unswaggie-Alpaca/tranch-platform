@@ -3723,11 +3723,6 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
   }
 };
 
-
-  
-  setShowSuggestions(false);
-};
-
   const handleInputChange = (e) => {
     const newValue = e.target.value;
     onChange(newValue);
@@ -3735,14 +3730,17 @@ const AddressAutocomplete = ({ value, onChange, onSelect }) => {
   };
 
   const handleSelectSuggestion = async (suggestion) => {
-  // Extract suburb from the display name
-  const parts = suggestion.description.split(',');
-  const suburb = parts.length > 1 ? parts[1].trim() : '';
-  
-  onSelect({
-    location: suggestion.description,
-    suburb: suburb
-  });
+    // Extract suburb from the display name
+    const parts = suggestion.description.split(',');
+    const suburb = parts.length > 1 ? parts[1].trim() : '';
+    
+    onSelect({
+      location: suggestion.description,
+      suburb: suburb
+    });
+    
+    setShowSuggestions(false);
+  };
 
   return (
     <div className="address-autocomplete" ref={suggestionsRef}>
