@@ -1979,6 +1979,13 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       );
     });
 
+    console.log('Payment intent created:', {
+      id: paymentIntent.id,
+      amount: paymentIntent.amount,
+      status: paymentIntent.status,
+      metadata: paymentIntent.metadata
+    });
+
     res.json({
       client_secret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
@@ -2594,6 +2601,77 @@ app.post('/api/admin/sync-stripe-payment/:projectId', authenticateToken, require
   } catch (err) {
     console.error('Sync error:', err);
     res.status(500).json({ error: 'Failed to sync payment: ' + err.message });
+  }
+});
+
+// Manually confirm payment for a project
+app.post('/api/admin/confirm-payment/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  const { paymentIntentId } = req.body;
+  
+  try {
+    // First check if payment intent exists in Stripe
+    let stripeVerified = false;
+    if (paymentIntentId && paymentIntentId.startsWith('pi_')) {
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        stripeVerified = paymentIntent.status === 'succeeded';
+        console.log('Stripe payment intent status:', paymentIntent.status);
+      } catch (stripeErr) {
+        console.error('Failed to retrieve payment intent from Stripe:', stripeErr);
+      }
+    }
+    
+    // Update project to paid and visible
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE projects SET 
+         payment_status = 'paid',
+         visible = 1,
+         stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ?),
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [paymentIntentId || `admin_confirmed_${Date.now()}`, projectId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Update payment record if exists
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE payments SET status = 'completed' 
+         WHERE project_id = ? AND payment_type = 'project_listing'`,
+        [projectId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'manual_payment_confirm', ?, 'project', ?)`,
+        [req.user.id, projectId, `Manual payment confirmation. Stripe verified: ${stripeVerified}`],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve(); // Don't fail the request if logging fails
+        }
+      );
+    });
+    
+    res.json({ 
+      message: 'Payment confirmed and project published',
+      stripeVerified: stripeVerified
+    });
+  } catch (err) {
+    console.error('Manual payment confirmation error:', err);
+    res.status(500).json({ error: 'Failed to confirm payment: ' + err.message });
   }
 });
 
