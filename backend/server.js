@@ -743,12 +743,15 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
     FOREIGN KEY (project_id) REFERENCES projects (id)
   )`);
 
-  // Add payment intents table for storing client secrets
-db.run(`CREATE TABLE IF NOT EXISTS payment_intents (
-  payment_intent_id TEXT PRIMARY KEY,
-  client_secret TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-)`);
+
+  // User subscriptions table
+  db.run(`CREATE TABLE IF NOT EXISTS user_subscriptions (
+    user_id INTEGER PRIMARY KEY,
+    stripe_subscription_id TEXT NOT NULL,
+    stripe_customer_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  )`);
 
   // AI chat tables
   db.run(`CREATE TABLE IF NOT EXISTS ai_chat_sessions (
@@ -963,6 +966,10 @@ app.use(express.json({ limit: '50mb' }));
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
 app.use('/api/ai-chat', authenticateToken, aiChatRoutes);
+
+// Import Geocoding routes
+const geocodingRoutes = require('./routes/geocoding');
+app.use('/api/geocode', geocodingRoutes);
 
 // ================================
 // AUTH ROUTES
@@ -1856,17 +1863,48 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
 app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
   try {
     const { project_id } = req.body;
-    const amount = 49900; // $499 in cents
+    
+    if (!project_id) {
+      return res.status(400).json({ error: 'Project ID is required' });
+    }
+    
+    // Verify project exists and belongs to user
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM projects WHERE id = ? AND borrower_id = ?',
+        [project_id, req.user.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found or access denied' });
+    }
+    
+    // Get project listing fee from system settings
+    const feeSettings = await new Promise((resolve, reject) => {
+      db.get(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'project_listing_fee'",
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    const amount = parseInt(feeSettings?.setting_value || '49900'); // Default to $499 if not found
 
     // Check if project already has a pending or completed payment
     const existingPayment = await new Promise((resolve, reject) => {
       db.get(
-        `SELECT p.*, pi.client_secret FROM payments p
-         LEFT JOIN payment_intents pi ON p.stripe_payment_intent_id = pi.payment_intent_id
-         WHERE p.project_id = ? 
-         AND p.payment_type = 'project_listing'
-         AND p.status IN ('pending', 'completed')
-         ORDER BY p.created_at DESC LIMIT 1`,
+        `SELECT * FROM payments
+         WHERE project_id = ? 
+         AND payment_type = 'project_listing'
+         AND status IN ('pending', 'completed')
+         ORDER BY created_at DESC LIMIT 1`,
         [project_id],
         (err, row) => {
           if (err) reject(err);
@@ -1879,17 +1917,28 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       if (existingPayment.status === 'completed') {
         return res.status(400).json({ error: 'Project already paid for' });
       }
-      // Return existing pending payment with stored client secret
-      if (existingPayment.client_secret) {
-        return res.json({
-          client_secret: existingPayment.client_secret,
-          payment_intent_id: existingPayment.stripe_payment_intent_id,
-          amount: existingPayment.amount,
-          status: 'pending'
-        });
+      // For existing pending payment, retrieve from Stripe
+      if (existingPayment.stripe_payment_intent_id) {
+        try {
+          const paymentIntent = await stripe.paymentIntents.retrieve(
+            existingPayment.stripe_payment_intent_id
+          );
+          return res.json({
+            client_secret: paymentIntent.client_secret,
+            payment_intent_id: paymentIntent.id,
+            amount: existingPayment.amount,
+            status: 'pending'
+          });
+        } catch (stripeError) {
+          console.error('Failed to retrieve payment intent:', stripeError);
+          // Continue to create new payment intent if retrieval fails
+        }
       }
     }
 
+    // Generate idempotency key
+    const idempotencyKey = `project_${project_id}_user_${req.user.id}_${Date.now()}`;
+    
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: 'aud',
@@ -1901,6 +1950,8 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       automatic_payment_methods: {
         enabled: true,
       },
+    }, {
+      idempotencyKey: idempotencyKey
     });
 
     // Insert payment record with pending status
@@ -1915,31 +1966,6 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       );
     });
 
-    // Store client secret separately
-    await new Promise((resolve, reject) => {
-      db.run(
-        `CREATE TABLE IF NOT EXISTS payment_intents (
-          payment_intent_id TEXT PRIMARY KEY,
-          client_secret TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`,
-        (err) => {
-          if (err && !err.message.includes('already exists')) reject(err);
-          else resolve();
-        }
-      );
-    });
-
-    await new Promise((resolve, reject) => {
-      db.run(
-        'INSERT OR REPLACE INTO payment_intents (payment_intent_id, client_secret) VALUES (?, ?)',
-        [paymentIntent.id, paymentIntent.client_secret],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        }
-      );
-    });
 
     // Update project to pending payment status
     await new Promise((resolve, reject) => {
@@ -1970,6 +1996,23 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
   try {
     const { payment_method_id } = req.body;
+    
+    if (!payment_method_id) {
+      return res.status(400).json({ error: 'Payment method ID is required' });
+    }
+    
+    // Get subscription fee from system settings
+    const feeSettings = await new Promise((resolve, reject) => {
+      db.get(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'monthly_subscription_fee'",
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    const subscriptionAmount = parseInt(feeSettings?.setting_value || '29900'); // Default to $299 if not found
     
     // Check if user already has a pending or active subscription payment
     const existingPayment = await new Promise((resolve, reject) => {
@@ -2024,10 +2067,19 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
         );
       });
     } else {
-      await stripe.paymentMethods.attach(payment_method_id, {
-        customer: customerId,
-      });
+      try {
+        // Attach payment method to existing customer
+        await stripe.paymentMethods.attach(payment_method_id, {
+          customer: customerId,
+        });
+      } catch (attachError) {
+        // If payment method is already attached, continue
+        if (attachError.code !== 'resource_already_attached') {
+          throw attachError;
+        }
+      }
       
+      // Update default payment method
       await stripe.customers.update(customerId, {
         invoice_settings: {
           default_payment_method: payment_method_id,
@@ -2035,6 +2087,9 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       });
     }
 
+    // Generate idempotency key for subscription
+    const idempotencyKey = `subscription_user_${req.user.id}_${Date.now()}`;
+    
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID }],
@@ -2047,13 +2102,15 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
         user_id: String(req.user.id),
         user_email: req.user.email
       }
+    }, {
+      idempotencyKey: idempotencyKey
     });
 
     // Create payment record with pending status - store subscription ID separately
     await new Promise((resolve, reject) => {
       db.run(
         'INSERT INTO payments (user_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?)',
-        [req.user.id, subscription.latest_invoice.payment_intent.id, 29900, 'subscription', 'pending'],
+        [req.user.id, subscription.latest_invoice.payment_intent.id, subscriptionAmount, 'subscription', 'pending'],
         function(err) {
           if (err) reject(err);
           else resolve(this.lastID);
@@ -2061,23 +2118,7 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       );
     });
 
-    // Store subscription ID in a separate table
-    await new Promise((resolve, reject) => {
-      db.run(
-        `CREATE TABLE IF NOT EXISTS user_subscriptions (
-          user_id INTEGER PRIMARY KEY,
-          stripe_subscription_id TEXT NOT NULL,
-          stripe_customer_id TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users (id)
-        )`,
-        (err) => {
-          if (err && !err.message.includes('already exists')) reject(err);
-          else resolve();
-        }
-      );
-    });
-
+    // Store subscription ID in user_subscriptions table
     await new Promise((resolve, reject) => {
       db.run(
         'INSERT OR REPLACE INTO user_subscriptions (user_id, stripe_subscription_id, stripe_customer_id) VALUES (?, ?, ?)',
@@ -2115,6 +2156,127 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
     console.error('Subscription creation error:', error);
     res.status(500).json({ 
       error: error.message || 'Subscription creation failed' 
+    });
+  }
+});
+
+// Cancel subscription
+app.post('/api/payments/cancel-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
+  try {
+    // Get user's subscription ID
+    const subscriptionData = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT stripe_subscription_id FROM user_subscriptions WHERE user_id = ?',
+        [req.user.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!subscriptionData || !subscriptionData.stripe_subscription_id) {
+      return res.status(404).json({ error: 'No active subscription found' });
+    }
+
+    // Cancel the subscription in Stripe
+    const subscription = await stripe.subscriptions.cancel(
+      subscriptionData.stripe_subscription_id
+    );
+
+    // Update user's subscription status
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE users SET subscription_status = ? WHERE id = ?',
+        ['cancelled', req.user.id],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    // Update payment record
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE payments 
+         SET status = 'cancelled' 
+         WHERE user_id = ? AND payment_type = 'subscription' AND status = 'completed'
+         ORDER BY created_at DESC LIMIT 1`,
+        [req.user.id],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    res.json({
+      message: 'Subscription cancelled successfully',
+      cancellation_date: subscription.canceled_at
+    });
+  } catch (error) {
+    console.error('Subscription cancellation error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to cancel subscription' 
+    });
+  }
+});
+
+// Update payment method
+app.post('/api/payments/update-payment-method', authenticateToken, requireRole(['funder']), async (req, res) => {
+  try {
+    const { payment_method_id } = req.body;
+
+    if (!payment_method_id) {
+      return res.status(400).json({ error: 'Payment method ID required' });
+    }
+
+    const customerId = req.user.stripe_customer_id;
+    if (!customerId) {
+      return res.status(400).json({ error: 'No Stripe customer found' });
+    }
+
+    // Attach the new payment method to the customer
+    await stripe.paymentMethods.attach(payment_method_id, {
+      customer: customerId,
+    });
+
+    // Set as default payment method
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: payment_method_id,
+      },
+    });
+
+    // Get user's subscription to update its default payment method
+    const subscriptionData = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT stripe_subscription_id FROM user_subscriptions WHERE user_id = ?',
+        [req.user.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (subscriptionData && subscriptionData.stripe_subscription_id) {
+      await stripe.subscriptions.update(
+        subscriptionData.stripe_subscription_id,
+        {
+          default_payment_method: payment_method_id,
+        }
+      );
+    }
+
+    res.json({
+      message: 'Payment method updated successfully'
+    });
+  } catch (error) {
+    console.error('Payment method update error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to update payment method' 
     });
   }
 });
