@@ -2396,7 +2396,7 @@ app.post('/api/admin/force-approve-funder/:id', authenticateToken, requireRole([
   );
 });
 
-// Force publish a project (bypass payment)
+// Get unpaid and payment pending projects
 app.get('/api/admin/unpaid-projects', authenticateToken, requireRole(['admin']), (req, res) => {
   db.all(
     `SELECT p.*, u.name as borrower_name, u.email as borrower_email,
@@ -2405,7 +2405,7 @@ app.get('/api/admin/unpaid-projects', authenticateToken, requireRole(['admin']),
      FROM projects p
      JOIN users u ON p.borrower_id = u.id
      LEFT JOIN payments pay ON p.id = pay.project_id
-     WHERE p.payment_status = 'unpaid'
+     WHERE p.payment_status IN ('unpaid', 'pending') OR p.visible = 0
      ORDER BY p.created_at DESC`,
     (err, projects) => {
       if (err) {
