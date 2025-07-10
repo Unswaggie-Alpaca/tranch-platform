@@ -350,9 +350,10 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
               db.serialize(() => {
                 db.run('BEGIN TRANSACTION');
                 
+                // Update project to payment_pending state (NOT visible)
                 db.run(
-                  'UPDATE projects SET payment_status = ?, visible = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                  ['paid', projectId],
+                  'UPDATE projects SET payment_status = ?, visible = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                  ['payment_pending', projectId],
                   function(err) {
                     if (err) {
                       db.run('ROLLBACK');
@@ -372,6 +373,38 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
                         
                         db.run('COMMIT');
                         console.log('Transaction committed successfully');
+                        
+                        // Get project and admin details for notification
+                        db.get(
+                          `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
+                           FROM projects p 
+                           JOIN users u ON p.borrower_id = u.id 
+                           WHERE p.id = ?`,
+                          [projectId],
+                          (err, project) => {
+                            if (!err && project) {
+                              // Send notifications to all admin users
+                              db.all(
+                                'SELECT email FROM users WHERE role = ?',
+                                ['admin'],
+                                (err, admins) => {
+                                  if (!err && admins) {
+                                    admins.forEach(admin => {
+                                      sendEmail('admin_review_required', admin.email, {
+                                        project_title: project.title,
+                                        project_id: project.id,
+                                        borrower_name: project.borrower_name,
+                                        loan_amount: project.loan_amount,
+                                        suburb: project.suburb
+                                      });
+                                    });
+                                  }
+                                }
+                              );
+                            }
+                          }
+                        );
+                        
                         resolve();
                       }
                     );
@@ -2734,6 +2767,288 @@ app.post('/api/admin/revert-to-draft/:projectId', authenticateToken, requireRole
   }
 });
 
+// Approve project after payment verification
+app.post('/api/admin/approve-project/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  
+  try {
+    // Get project details
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
+         FROM projects p 
+         JOIN users u ON p.borrower_id = u.id 
+         WHERE p.id = ? AND p.payment_status = 'payment_pending'`,
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found or not in payment_pending state' });
+    }
+    
+    // Update project to published
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE projects SET 
+         payment_status = 'paid',
+         visible = 1,
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [projectId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'approve_project', ?, 'project', 'Approved after payment verification')`,
+        [req.user.id, projectId],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Send email notification to borrower
+    sendEmail('project_published', project.borrower_email, {
+      project_title: project.title,
+      project_id: project.id,
+      admin_action: true
+    });
+    
+    res.json({ 
+      message: 'Project approved and published',
+      success: true
+    });
+  } catch (err) {
+    console.error('Approve project error:', err);
+    res.status(500).json({ error: 'Failed to approve project: ' + err.message });
+  }
+});
+
+// Deny project with reason (but keep payment)
+app.post('/api/admin/deny-project/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  const { reason } = req.body;
+  
+  if (!reason) {
+    return res.status(400).json({ error: 'Denial reason is required' });
+  }
+  
+  try {
+    // Get project details
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
+         FROM projects p 
+         JOIN users u ON p.borrower_id = u.id 
+         WHERE p.id = ? AND p.payment_status = 'payment_pending'`,
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found or not in payment_pending state' });
+    }
+    
+    // Update project - keep payment status as paid but not visible
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE projects SET 
+         payment_status = 'paid',
+         visible = 0,
+         submission_status = 'rejected',
+         last_rejection_reason = ?,
+         rejection_date = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [reason, projectId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'deny_project', ?, 'project', ?)`,
+        [req.user.id, projectId, reason],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Send email notification to borrower
+    sendEmail('project_rejected', project.borrower_email, {
+      project_title: project.title,
+      project_id: project.id,
+      reason: reason
+    });
+    
+    res.json({ 
+      message: 'Project denied with reason',
+      success: true
+    });
+  } catch (err) {
+    console.error('Deny project error:', err);
+    res.status(500).json({ error: 'Failed to deny project: ' + err.message });
+  }
+});
+
+// Mark project as payment failed (return to draft)
+app.post('/api/admin/payment-failed/:projectId', authenticateToken, requireRole(['admin']), async (req, res) => {
+  const { projectId } = req.params;
+  
+  try {
+    // Get project details
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
+         FROM projects p 
+         JOIN users u ON p.borrower_id = u.id 
+         WHERE p.id = ?`,
+        [projectId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Update project to unpaid/draft
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE projects SET 
+         payment_status = 'unpaid',
+         visible = 0,
+         submission_status = 'draft',
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [projectId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    
+    // Update payment record if exists
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE payments SET status = 'failed' 
+         WHERE project_id = ? AND status = 'completed'`,
+        [projectId],
+        (err) => {
+          if (err) console.error('Failed to update payment:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Log admin action
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO admin_overrides (admin_id, action_type, target_id, target_type, reason)
+         VALUES (?, 'payment_failed', ?, 'project', 'Payment verification failed')`,
+        [req.user.id, projectId],
+        (err) => {
+          if (err) console.error('Failed to log override:', err);
+          resolve();
+        }
+      );
+    });
+    
+    // Send email notification to borrower
+    sendEmail('payment_failed_notification', project.borrower_email, {
+      project_title: project.title,
+      project_id: project.id
+    });
+    
+    res.json({ 
+      message: 'Project marked as payment failed and returned to draft',
+      success: true
+    });
+  } catch (err) {
+    console.error('Payment failed error:', err);
+    res.status(500).json({ error: 'Failed to mark payment as failed: ' + err.message });
+  }
+});
+
+// Get all projects for admin with enhanced filtering
+app.get('/api/admin/projects', authenticateToken, requireRole(['admin']), (req, res) => {
+  const { status, payment_status } = req.query;
+  
+  let query = `
+    SELECT p.*, 
+      u.name as borrower_name, 
+      u.email as borrower_email,
+      (SELECT COUNT(*) FROM access_requests WHERE project_id = p.id) as access_request_count,
+      (SELECT COUNT(*) FROM deals WHERE project_id = p.id) as deal_count,
+      pm.status as payment_record_status,
+      pm.stripe_payment_intent_id as payment_intent_id
+    FROM projects p
+    JOIN users u ON p.borrower_id = u.id
+    LEFT JOIN payments pm ON p.id = pm.project_id AND pm.payment_type = 'project_listing'
+    WHERE 1=1
+  `;
+  
+  const params = [];
+  
+  if (status === 'pending_review') {
+    query += ` AND p.payment_status = 'payment_pending'`;
+  } else if (status === 'published') {
+    query += ` AND p.visible = 1 AND p.payment_status = 'paid'`;
+  } else if (status === 'draft') {
+    query += ` AND p.payment_status = 'unpaid'`;
+  } else if (status === 'rejected') {
+    query += ` AND p.submission_status = 'rejected'`;
+  }
+  
+  if (payment_status) {
+    query += ` AND p.payment_status = ?`;
+    params.push(payment_status);
+  }
+  
+  query += ` ORDER BY 
+    CASE 
+      WHEN p.payment_status = 'payment_pending' THEN 0
+      ELSE 1
+    END,
+    p.updated_at DESC`;
+  
+  db.all(query, params, (err, projects) => {
+    if (err) {
+      console.error('Admin projects fetch error:', err);
+      return res.status(500).json({ error: 'Failed to fetch projects' });
+    }
+    res.json(projects);
+  });
+});
+
 // Force complete a deal
 app.post('/api/admin/force-complete-deal/:id', authenticateToken, requireRole(['admin']), (req, res) => {
   const dealId = req.params.id;
@@ -3300,8 +3615,17 @@ app.post('/api/geocode/autocomplete', authenticateToken, async (req, res) => {
 
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&countrycodes=au&q=${encodeURIComponent(input)}&limit=5&addressdetails=1`
+      `https://nominatim.openstreetmap.org/search?format=json&countrycodes=au&q=${encodeURIComponent(input)}&limit=5&addressdetails=1`,
+      {
+        headers: {
+          'User-Agent': 'Tranch Platform/1.0' // Required by Nominatim
+        }
+      }
     );
+    
+    if (!response.ok) {
+      throw new Error('Nominatim API error');
+    }
     
     const data = await response.json();
     

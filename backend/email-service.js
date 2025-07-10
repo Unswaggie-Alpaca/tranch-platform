@@ -79,6 +79,44 @@ const emailTemplates = {
         </div>
       </div>
     `
+  }),
+  
+  admin_review_required: (data) => ({
+    subject: `New Project Pending Review: ${data.project_title}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #f59e0b; color: white; padding: 2rem; text-align: center;">
+          <h1>New Project Pending Review</h1>
+        </div>
+        <div style="padding: 2rem; background: white;">
+          <p>A new project requires your review and approval:</p>
+          <div style="background: #f3f4f6; padding: 1.5rem; border-radius: 4px; margin: 1rem 0;">
+            <p><strong>Project:</strong> ${data.project_title}</p>
+            <p><strong>Borrower:</strong> ${data.borrower_name}</p>
+            <p><strong>Loan Amount:</strong> $${(data.loan_amount / 100).toLocaleString()}</p>
+            <p><strong>Location:</strong> ${data.suburb}</p>
+          </div>
+          <p>The borrower has successfully completed payment. Please review the project details and payment status in Stripe before approving.</p>
+          <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Review in Admin Panel</a>
+        </div>
+      </div>
+    `
+  }),
+  
+  payment_failed_notification: (data) => ({
+    subject: `Payment Failed: ${data.project_title}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #dc2626; color: white; padding: 2rem; text-align: center;">
+          <h1>Payment Failed</h1>
+        </div>
+        <div style="padding: 2rem; background: white;">
+          <p>Your payment for project <strong>${data.project_title}</strong> has failed.</p>
+          <p>The project has been returned to draft status. You will need to attempt payment again to publish your project.</p>
+          <a href="${process.env.FRONTEND_URL}/project/${data.project_id}/edit" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">View Project</a>
+        </div>
+      </div>
+    `
   })
 };
 
