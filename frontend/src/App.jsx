@@ -3020,6 +3020,9 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
   const [showAccessForm, setShowAccessForm] = useState(false);
   const [accessMessage, setAccessMessage] = useState('');
   const [requesting, setRequesting] = useState(false);
+    const [deals, setDeals] = useState([]);
+  const [showDeals, setShowDeals] = useState(false);
+  const [loadingDeals, setLoadingDeals] = useState(false);
 
 // In App.jsx, replace the handleRequestAccess function in FunderProjectCard component:
 
