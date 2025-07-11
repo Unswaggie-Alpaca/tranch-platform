@@ -2267,7 +2267,7 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
     
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID }],
+      items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID.trim() }],
       payment_behavior: 'default_incomplete',
       payment_settings: { 
         save_default_payment_method: 'on_subscription' 
