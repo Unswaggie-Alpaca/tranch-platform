@@ -1,7 +1,8 @@
-// email-service.js
+// Create new file: backend/email-service.js
+
 const nodemailer = require('nodemailer');
 
-// Configure your email transport
+// Create transporter
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
   port: process.env.EMAIL_PORT || 587,
@@ -12,197 +13,151 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Email templates
 const emailTemplates = {
-  access_request_received: (data) => ({
-    subject: `New Access Request for ${data.project_title}`,
+  account_approved: (data) => ({
+    subject: 'Your Tranch Account Has Been Approved',
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; text-align: center;">
-          <h1>New Access Request</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Hi ${data.borrower_name || 'there'},</p>
-          <p>A verified funder has requested access to your project <strong>${data.project_title}</strong>.</p>
-          <a href="${process.env.FRONTEND_URL}/messages" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">View Request</a>
-        </div>
-      </div>
+      <h2>Welcome to Tranch!</h2>
+      <p>Hi ${data.recipient_name},</p>
+      <p>Great news! Your account has been approved and you now have full access to the Tranch platform.</p>
+      <p>You can now:</p>
+      <ul>
+        <li>Browse investment opportunities</li>
+        <li>Request access to project details</li>
+        <li>Create deal rooms with developers</li>
+        <li>Submit proposals and negotiate terms</li>
+      </ul>
+      <p><a href="${process.env.FRONTEND_URL}/dashboard" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Dashboard</a></p>
+      <p>Best regards,<br>The Tranch Team</p>
+    `
+  }),
+  
+  message_received: (data) => ({
+    subject: `New Message: ${data.project_title || 'Tranch Platform'}`,
+    html: `
+      <h2>You have a new message</h2>
+      <p>Hi ${data.recipient_name},</p>
+      <p>You've received a new message regarding: <strong>${data.project_title}</strong></p>
+      <p>From: ${data.sender_name}</p>
+      <blockquote style="border-left: 3px solid #3B82F6; padding-left: 16px; margin: 16px 0;">
+        ${data.message_preview || 'Click below to view the full message'}
+      </blockquote>
+      <p><a href="${process.env.FRONTEND_URL}/messages" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Message</a></p>
+      <p>Best regards,<br>The Tranch Team</p>
     `
   }),
   
   deal_room_created: (data) => ({
-    subject: `Deal Room Created for ${data.project_title}`,
+    subject: `Deal Room Created: ${data.project_title}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; text-align: center;">
-          <h1>Deal Room Created</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Great news!</p>
-          <p>A funder has engaged with your project <strong>${data.project_title}</strong> and created a deal room.</p>
-          <a href="${process.env.FRONTEND_URL}/dashboard" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Go to Deal Room</a>
-        </div>
-      </div>
+      <h2>A funder has engaged with your project!</h2>
+      <p>Hi ${data.recipient_name},</p>
+      <p>Exciting news! A verified funder has created a deal room for your project: <strong>${data.project_title}</strong></p>
+      <p>This means they're interested in potentially funding your development. You can now:</p>
+      <ul>
+        <li>Share additional documents</li>
+        <li>Communicate directly with the funder</li>
+        <li>Review and respond to proposals</li>
+        <li>Negotiate terms</li>
+      </ul>
+      <p><a href="${process.env.FRONTEND_URL}/dashboard" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Go to Deal Room</a></p>
+      <p>Best regards,<br>The Tranch Team</p>
+    `
+  }),
+  
+  access_request_received: (data) => ({
+    subject: `Access Request: ${data.project_title}`,
+    html: `
+      <h2>New Access Request</h2>
+      <p>Hi ${data.recipient_name},</p>
+      <p>A funder has requested access to view the full details of your project: <strong>${data.project_title}</strong></p>
+      ${data.funder_message ? `
+        <p>Their message:</p>
+        <blockquote style="border-left: 3px solid #3B82F6; padding-left: 16px; margin: 16px 0;">
+          ${data.funder_message}
+        </blockquote>
+      ` : ''}
+      <p>You can review their profile and approve or decline access.</p>
+      <p><a href="${process.env.FRONTEND_URL}/messages" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Review Request</a></p>
+      <p>Best regards,<br>The Tranch Team</p>
     `
   }),
   
   project_published: (data) => ({
-    subject: `Your Project "${data.project_title}" is Now Live!`,
+    subject: `Your Project is Now Live: ${data.project_title}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; text-align: center;">
-          <h1>Project Published!</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Congratulations!</p>
-          <p>Your project <strong>${data.project_title}</strong> is now live on Tranch and visible to all verified funders.</p>
-          ${data.admin_action ? '<p><em>This project was published by an administrator.</em></p>' : ''}
-          <a href="${process.env.FRONTEND_URL}/project/${data.project_id}" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">View Your Project</a>
-        </div>
-      </div>
+      <h2>Your project is live!</h2>
+      <p>Hi ${data.recipient_name},</p>
+      <p>Congratulations! Your project <strong>${data.project_title}</strong> has been reviewed and is now live on the Tranch marketplace.</p>
+      <p>Verified funders can now discover your project and request access to view full details.</p>
+      <p>What happens next:</p>
+      <ul>
+        <li>Funders will browse and discover your project</li>
+        <li>Interested funders will request access</li>
+        <li>You'll receive notifications when funders engage</li>
+        <li>Deal rooms will be created for serious discussions</li>
+      </ul>
+      <p><a href="${process.env.FRONTEND_URL}/dashboard" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Your Project</a></p>
+      <p>Best regards,<br>The Tranch Team</p>
     `
   }),
   
   project_rejected: (data) => ({
-    subject: `Action Required: ${data.project_title}`,
+    subject: `Project Review Update: ${data.project_title}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #dc2626; color: white; padding: 2rem; text-align: center;">
-          <h1>Project Needs Attention</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Your project <strong>${data.project_title}</strong> has been moved back to draft status.</p>
-          <div style="background: #fef3c7; padding: 1rem; border-radius: 4px; margin: 1rem 0;">
-            <strong>Reason:</strong> ${data.reason}
-          </div>
-          <p>Please address the issues mentioned above and resubmit your project.</p>
-          <a href="${process.env.FRONTEND_URL}/project/${data.project_id}/edit" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Edit Project</a>
-        </div>
-      </div>
-    `
-  }),
-  
-  admin_review_required: (data) => ({
-    subject: `New Project Pending Review: ${data.project_title}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #f59e0b; color: white; padding: 2rem; text-align: center;">
-          <h1>New Project Pending Review</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>A new project requires your review and approval:</p>
-          <div style="background: #f3f4f6; padding: 1.5rem; border-radius: 4px; margin: 1rem 0;">
-            <p><strong>Project:</strong> ${data.project_title}</p>
-            <p><strong>Borrower:</strong> ${data.borrower_name}</p>
-            <p><strong>Loan Amount:</strong> $${(data.loan_amount / 100).toLocaleString()}</p>
-            <p><strong>Location:</strong> ${data.suburb}</p>
-          </div>
-          <p>The borrower has successfully completed payment. Please review the project details and payment status in Stripe before approving.</p>
-          <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Review in Admin Panel</a>
-        </div>
-      </div>
-    `
-  }),
-  
-  payment_failed_notification: (data) => ({
-    subject: `Payment Failed: ${data.project_title}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #dc2626; color: white; padding: 2rem; text-align: center;">
-          <h1>Payment Failed</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Your payment for project <strong>${data.project_title}</strong> has failed.</p>
-          <p>The project has been returned to draft status. You will need to attempt payment again to publish your project.</p>
-          <a href="${process.env.FRONTEND_URL}/project/${data.project_id}/edit" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">View Project</a>
-        </div>
-      </div>
-    `
-  }),
-  
-  admin_subscription_review: (data) => ({
-    subject: `New Subscription Pending Review: ${data.user_name}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #f59e0b; color: white; padding: 2rem; text-align: center;">
-          <h1>New Subscription Pending Review</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>A new funder subscription requires your review and approval:</p>
-          <div style="background: #f3f4f6; padding: 1.5rem; border-radius: 4px; margin: 1rem 0;">
-            <p><strong>Funder:</strong> ${data.user_name}</p>
-            <p><strong>Email:</strong> ${data.user_email}</p>
-            <p><strong>Company:</strong> ${data.company_name}</p>
-            <p><strong>User ID:</strong> ${data.user_id}</p>
-          </div>
-          <p>The funder has successfully completed payment. Please review their profile and verify payment status in Stripe before approving.</p>
-          <a href="${process.env.FRONTEND_URL}/admin" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Review in Admin Panel</a>
-        </div>
-      </div>
-    `
-  }),
-  
-  subscription_approved: (data) => ({
-    subject: `Your Funder Subscription is Active!`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; text-align: center;">
-          <h1>Subscription Approved!</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Great news! Your funder subscription has been approved and is now active.</p>
-          <p>You now have full access to:</p>
-          <ul style="margin: 1rem 0;">
-            <li>View all project details</li>
-            <li>Connect with borrowers</li>
-            <li>Access deal rooms</li>
-            <li>Download documents</li>
-          </ul>
-          <a href="${process.env.FRONTEND_URL}/dashboard" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Start Exploring Projects</a>
-        </div>
-      </div>
-    `
-  }),
-  
-  subscription_denied: (data) => ({
-    subject: `Subscription Review: Action Required`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #dc2626; color: white; padding: 2rem; text-align: center;">
-          <h1>Subscription Needs Attention</h1>
-        </div>
-        <div style="padding: 2rem; background: white;">
-          <p>Your subscription application needs additional information.</p>
-          <div style="background: #fef3c7; padding: 1rem; border-radius: 4px; margin: 1rem 0;">
-            <strong>Reason:</strong> ${data.reason}
-          </div>
-          <p>Please update your profile with the requested information and contact support.</p>
-          <a href="${process.env.FRONTEND_URL}/profile" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 1rem 0;">Update Profile</a>
-        </div>
-      </div>
+      <h2>Project Review Update</h2>
+      <p>Hi ${data.recipient_name},</p>
+      <p>Thank you for submitting your project <strong>${data.project_title}</strong> to Tranch.</p>
+      <p>After review, we need some additional information or adjustments before your project can go live.</p>
+      ${data.rejection_reason ? `
+        <p>Feedback from our team:</p>
+        <blockquote style="border-left: 3px solid #F59E0B; padding-left: 16px; margin: 16px 0;">
+          ${data.rejection_reason}
+        </blockquote>
+      ` : ''}
+      <p>Please update your project based on the feedback and resubmit for review.</p>
+      <p><a href="${process.env.FRONTEND_URL}/dashboard" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Edit Project</a></p>
+      <p>If you have questions, please don't hesitate to contact our support team.</p>
+      <p>Best regards,<br>The Tranch Team</p>
     `
   })
 };
 
+// Send email function
 const sendEmail = async (type, recipientEmail, data) => {
   try {
     const template = emailTemplates[type];
     if (!template) {
-      console.error(`Email template not found: ${type}`);
-      return;
+      throw new Error(`Email template '${type}' not found`);
     }
     
     const emailContent = template(data);
     
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || 'noreply@tranch.com.au',
+    const mailOptions = {
+      from: `"Tranch Platform" <${process.env.EMAIL_USER}>`,
       to: recipientEmail,
       subject: emailContent.subject,
       html: emailContent.html
-    });
+    };
     
-    console.log(`Email sent: ${type} to ${recipientEmail}`);
+    // Add common footer
+    mailOptions.html += `
+      <hr style="margin-top: 32px; border: none; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #6b7280; margin-top: 16px;">
+        This email was sent by Tranch. If you have any questions, please contact support.<br>
+        <a href="${process.env.FRONTEND_URL}" style="color: #3B82F6;">Visit Tranch</a> | 
+        <a href="${process.env.FRONTEND_URL}/settings" style="color: #3B82F6;">Email Preferences</a>
+      </p>
+    `;
+    
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent:', info.messageId);
+    
+    return info;
   } catch (error) {
     console.error('Email send error:', error);
+    throw error;
   }
 };
 
