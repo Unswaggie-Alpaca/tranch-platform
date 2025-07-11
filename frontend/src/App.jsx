@@ -1027,7 +1027,41 @@ const FileUpload = ({ onUpload, accept, maxSize, multiple = false, disabled = fa
 // ===========================
 // PAYMENT MODAL - Place this AFTER your utility functions but BEFORE Dashboard component
 // ===========================
+const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
+  const [processing, setProcessing] = useState(false);
+  
+  if (!isOpen) return null;
 
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Publish Project" size="medium">
+      <div className="payment-summary">
+        <h3>{project.title}</h3>
+        <p className="payment-description">
+          Publishing your project will make it visible to all verified funders on the platform.
+        </p>
+        <div className="payment-amount">
+          <span>Publishing Fee:</span>
+          <strong>{formatCurrency(499)}</strong>
+        </div>
+      </div>
+
+      <Elements stripe={stripePromise}>
+        <PaymentForm 
+          amount={499}
+          projectId={project.id}
+          onSuccess={onSuccess}
+          processing={processing}
+          setProcessing={setProcessing}
+        />
+      </Elements>
+
+      <div className="payment-security">
+        <span>🔒</span>
+        <p>Secured by Stripe. Your payment information is encrypted and secure.</p>
+      </div>
+    </Modal>
+  );
+};
 
 // Payment Form Component
 // In PaymentForm component, update the payment success handling:
@@ -1036,58 +1070,91 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
   const stripe = useStripe();
   const elements = useElements();
   const { addNotification } = useNotifications();
+  const [cardError, setCardError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    
+    if (!stripe || !elements) {
+      console.error('Stripe not loaded');
+      return;
+    }
 
     setProcessing(true);
+    setCardError('');
 
     try {
-      // 1. Create payment intent
-      const { client_secret, status } = await api.createProjectPayment(projectId);
+      // 1. Create payment intent on server
+      const response = await fetch(`${API_BASE_URL}/payments/create-project-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ project_id: projectId })
+      });
 
-      // 2. If already pending, just notify and close
-      if (status === 'payment_pending') {
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create payment');
+      }
+
+      // 2. Check if payment is already completed
+      if (data.status === 'payment_pending') {
         addNotification({
           type: 'info',
-          title: 'Payment Processing',
-          message: 'Your payment is being processed and will be reviewed by our team.'
+          title: 'Payment Already Processed',
+          message: data.message
         });
         onSuccess();
-        setProcessing(false);
         return;
       }
 
-      // 3. Confirm payment with Stripe
-      const result = await stripe.confirmCardPayment(client_secret, {
-        payment_method: { card: elements.getElement(CardElement) }
-      });
-      
-      if (result.error) throw new Error(result.error.message);
+      // 3. Get the card element
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        throw new Error('Card element not found');
+      }
 
-      // 4. Payment successful - project should now be in payment_pending status
+      // 4. Confirm the payment
+      console.log('Confirming payment with client secret:', data.client_secret);
+      
+      const result = await stripe.confirmCardPayment(data.client_secret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            // You can add billing details here if needed
+          }
+        }
+      });
+
+      if (result.error) {
+        // Show error to customer
+        console.error('Payment confirmation error:', result.error);
+        setCardError(result.error.message);
+        throw new Error(result.error.message);
+      }
+
+      // 5. Payment succeeded!
+      console.log('Payment confirmed:', result.paymentIntent);
+      
       addNotification({
         type: 'success',
         title: 'Payment Successful',
         message: 'Your payment has been received. Your project is now under admin review.'
       });
       
-      // Send email notification to admin
-      await api.sendEmailNotification('new_project_review', 'admin', {
-        project_title: project.title,
-        borrower_name: user.name
-      });
-      
       onSuccess();
-      setProcessing(false);
 
     } catch (err) {
+      console.error('Payment error:', err);
       addNotification({
         type: 'error',
         title: 'Payment Failed',
-        message: err.message
+        message: err.message || 'An error occurred during payment'
       });
+    } finally {
       setProcessing(false);
     }
   };
@@ -1095,16 +1162,37 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
   return (
     <form onSubmit={handleSubmit} className="payment-form">
       <div className="card-element-container">
-        <CardElement options={{
-          style: {
-            base: {
-              fontSize: '16px',
-              color: '#424770',
-              '::placeholder': { color: '#aab7c4' }
+        <CardElement 
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': { 
+                  color: '#aab7c4' 
+                }
+              },
+              invalid: {
+                color: '#9e2146',
+              }
+            },
+            hidePostalCode: true
+          }}
+          onChange={(event) => {
+            if (event.error) {
+              setCardError(event.error.message);
+            } else {
+              setCardError('');
             }
-          }
-        }} />
+          }}
+        />
+        {cardError && (
+          <div className="card-error">
+            {cardError}
+          </div>
+        )}
       </div>
+      
       <button
         type="submit"
         disabled={!stripe || processing}
@@ -1112,7 +1200,8 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       >
         {processing ? (
           <>
-            <span className="spinner-small" /> Processing...
+            <span className="spinner-small"></span>
+            Processing...
           </>
         ) : (
           `Pay ${formatCurrency(amount)}`
@@ -5224,105 +5313,6 @@ const MyProjects = () => {
   );
 };
 
-// ===========================
-// PAYMENT MODAL COMPONENT
-// ===========================
-
-const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
-  const [processing, setProcessing] = useState(false);
-  const api = useApi();
-  const { addNotification } = useNotifications();
-  
-  const handlePayment = async () => {
-    setProcessing(true);
-    
-    try {
-      // Create checkout session
-      const response = await fetch('/api/payments/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ project_id: project.id })
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error);
-      }
-      
-      // Redirect to Stripe Checkout
-      window.location.href = data.checkout_url;
-      
-    } catch (error) {
-      addNotification({
-        type: 'error',
-        title: 'Payment Error',
-        message: error.message
-      });
-      setProcessing(false);
-    }
-  };
-  
-  if (!isOpen) return null;
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Publish Project" size="medium">
-      <div className="payment-summary">
-        <h3>{project.title}</h3>
-        <p className="payment-description">
-          Publishing your project will make it visible to all verified funders on the platform.
-        </p>
-        <div className="payment-amount">
-          <span>Publishing Fee:</span>
-          <strong>{formatCurrency(499)}</strong>
-        </div>
-      </div>
-
-      <button
-        onClick={handlePayment}
-        disabled={processing}
-        className="btn btn-primary btn-block"
-      >
-        {processing ? (
-          <>
-            <span className="spinner-small"></span>
-            Redirecting to payment...
-          </>
-        ) : (
-          'Proceed to Payment'
-        )}
-      </button>
-
-      <div className="payment-security">
-        <span>🔒</span>
-        <p>You'll be redirected to Stripe's secure checkout page</p>
-      </div>
-    </Modal>
-  );
-};
-
-// ========================================
-// Handle Success Page Return
-// ========================================
-
-// In your project view component, check for payment success
-useEffect(() => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const paymentStatus = urlParams.get('payment');
-  
-  if (paymentStatus === 'success') {
-    addNotification({
-      type: 'success',
-      title: 'Payment Successful!',
-      message: 'Your project is now under review and will be published once approved.'
-    });
-    // Clean up URL
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
-}, []);
 
 // ===========================
 // PROJECT DETAIL PAGE
