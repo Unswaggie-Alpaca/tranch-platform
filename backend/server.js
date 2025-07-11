@@ -301,6 +301,75 @@ app.post('/api/webhooks/clerk',
   }
 );
 
+app.post('/api/payments/create-checkout-session', authenticateToken, requireRole(['borrower']), async (req, res) => {
+  const { project_id } = req.body;
+  
+  try {
+    // Validate project ownership
+    const project = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM projects WHERE id = ? AND borrower_id = ?',
+        [project_id, req.user.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    // Get fee amount
+    const feeSettings = await new Promise((resolve, reject) => {
+      db.get(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'project_listing_fee'",
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    const amount = parseInt(feeSettings?.setting_value || '49900');
+
+    // Create Stripe Checkout session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: `Publish Project: ${project.title}`,
+            description: 'One-time fee to publish your project to verified funders'
+          },
+          unit_amount: amount,
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: `${process.env.APP_URL}/project/${project_id}?payment=success`,
+      cancel_url: `${process.env.APP_URL}/project/${project_id}?payment=cancelled`,
+      metadata: {
+        project_id: String(project_id),
+        user_id: String(req.user.id),
+        payment_type: 'project_listing'
+      }
+    });
+
+    res.json({ 
+      checkout_url: session.url,
+      session_id: session.id 
+    });
+    
+  } catch (error) {
+    console.error('Checkout session error:', error);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+
 // ----
 // Place this *before* any `app.use(express.json())` or other body parsers!
 // ----
