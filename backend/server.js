@@ -4665,7 +4665,8 @@ app.get('/api/deals/:id/proposal', authenticateToken, (req, res) => {
             console.error('Proposal fetch error:', err);
             return res.status(500).json({ error: 'Failed to fetch proposal' });
           }
-          res.json(proposal);
+          // Explicitly return null if no proposal found
+          res.json(proposal || null);
         }
       );
     }
