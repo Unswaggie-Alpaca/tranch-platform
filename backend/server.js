@@ -3912,9 +3912,10 @@ app.post('/api/deals', authenticateToken, (req, res) => {
     
     // Verify the access request is approved
     db.get(
-      `SELECT ar.*, p.borrower_id, p.title as project_title
+      `SELECT ar.*, p.borrower_id, p.title as project_title, u.name as funder_name
        FROM access_requests ar
        JOIN projects p ON ar.project_id = p.id
+       JOIN users u ON ar.funder_id = u.id
        WHERE ar.id = ? 
        AND ar.status = 'approved' 
        AND (ar.funder_id = ? OR p.borrower_id = ?)`,
@@ -3931,66 +3932,51 @@ app.post('/api/deals', authenticateToken, (req, res) => {
           return res.status(404).json({ error: 'Access request not found or not approved' });
         }
 
-        // Check if deal already exists for this funder
+        // Check if deal already exists for this funder and project
         db.get(
-          'SELECT id FROM deals WHERE project_id = ? AND funder_id = ? AND status = "active"',
+          'SELECT id FROM deals WHERE project_id = ? AND funder_id = ? AND status != "declined"',
           [project_id, accessRequest.funder_id],
           (err, existingDeal) => {
             if (err) {
-              console.error('Deal lookup error:', err);
+              console.error('Deal check error:', err);
               db.run('ROLLBACK');
               return res.status(500).json({ error: 'Database error' });
             }
 
-            if (existingDeal) {
-              db.run('COMMIT');
-              return res.json({ deal_id: existingDeal.id });
-            }
-
-            // Create new deal
+            // Create the deal - each funder gets their own deal room
+            const dealId = generateId();
             db.run(
-              `INSERT INTO deals (project_id, access_request_id, borrower_id, funder_id, status) 
-               VALUES (?, ?, ?, ?, 'active')`,
-              [project_id, access_request_id, accessRequest.borrower_id, accessRequest.funder_id],
+              `INSERT INTO deals (
+                id, project_id, borrower_id, funder_id, 
+                access_request_id, status, created_at
+              ) VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))`,
+              [dealId, project_id, accessRequest.borrower_id, accessRequest.funder_id, access_request_id],
               function(err) {
                 if (err) {
                   console.error('Deal creation error:', err);
                   db.run('ROLLBACK');
-                  
-                  // Check if it's a unique constraint violation
-                  if (err.code === 'SQLITE_CONSTRAINT') {
-                    // Another request created the deal, try to fetch it
-                    db.get(
-                      'SELECT id FROM deals WHERE project_id = ? AND funder_id = ? AND status = "active"',
-                      [project_id, accessRequest.funder_id],
-                      (fetchErr, newDeal) => {
-                        if (newDeal) {
-                          return res.json({ deal_id: newDeal.id });
-                        }
-                        return res.status(500).json({ error: 'Failed to create deal' });
-                      }
-                    );
-                  } else {
-                    return res.status(500).json({ error: 'Failed to create deal' });
-                  }
-                } else {
-                  const dealId = this.lastID;
-                  
-                  // Send notification to borrower
-                  db.run(
-                    'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
-                    [accessRequest.borrower_id, 'deal_created', `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, dealId],
-                    (notifErr) => {
-                      if (notifErr) console.error('Notification error:', notifErr);
-                    }
-                  );
-                  
-                  db.run('COMMIT');
-                  res.status(201).json({ 
-                    message: 'Deal created successfully',
-                    deal_id: dealId 
-                  });
+                  return res.status(500).json({ error: 'Failed to create deal' });
                 }
+
+                // Create notification for borrower
+                db.run(
+                  'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
+                  [
+                    accessRequest.borrower_id, 
+                    'deal_created', 
+                    `${accessRequest.funder_name} has created a deal room for: ${accessRequest.project_title}`, 
+                    dealId
+                  ],
+                  (notifErr) => {
+                    if (notifErr) console.error('Notification error:', notifErr);
+                  }
+                );
+                
+                db.run('COMMIT');
+                res.status(201).json({ 
+                  message: 'Deal created successfully',
+                  deal_id: dealId 
+                });
               }
             );
           }
@@ -4000,6 +3986,42 @@ app.post('/api/deals', authenticateToken, (req, res) => {
   });
 });
 
+// Add this new endpoint to get all deals for a project (for borrowers):
+app.get('/api/projects/:projectId/deals', authenticateToken, (req, res) => {
+  const { projectId } = req.params;
+  
+  // First verify the user has access to this project
+  db.get(
+    'SELECT * FROM projects WHERE id = ? AND (borrower_id = ? OR id IN (SELECT project_id FROM deals WHERE funder_id = ?))',
+    [projectId, req.user.id, req.user.id],
+    (err, project) => {
+      if (err || !project) {
+        return res.status(404).json({ error: 'Project not found or access denied' });
+      }
+      
+      // Get all deals for this project
+      db.all(
+        `SELECT d.*, 
+         ub.name as borrower_name, ub.company_name as borrower_company,
+         uf.name as funder_name, uf.company_name as funder_company
+         FROM deals d
+         JOIN users ub ON d.borrower_id = ub.id
+         JOIN users uf ON d.funder_id = uf.id
+         WHERE d.project_id = ? 
+         AND (d.borrower_id = ? OR d.funder_id = ?)
+         ORDER BY d.created_at DESC`,
+        [projectId, req.user.id, req.user.id],
+        (err, deals) => {
+          if (err) {
+            console.error('Deals fetch error:', err);
+            return res.status(500).json({ error: 'Failed to fetch deals' });
+          }
+          res.json(deals || []);
+        }
+      );
+    }
+  );
+});
 
 // Get user contact info
 app.get('/api/users/:id/contact', authenticateToken, async (req, res) => {
@@ -4665,8 +4687,7 @@ app.get('/api/deals/:id/proposal', authenticateToken, (req, res) => {
             console.error('Proposal fetch error:', err);
             return res.status(500).json({ error: 'Failed to fetch proposal' });
           }
-          // Explicitly return null if no proposal found
-          res.json(proposal || null);
+          res.json(proposal);
         }
       );
     }
