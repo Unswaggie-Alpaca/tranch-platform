@@ -1084,21 +1084,8 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
     setCardError('');
 
     try {
-      // 1. Create payment intent on server
-      const response = await fetch(`${API_BASE_URL}/payments/create-project-payment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ project_id: projectId })
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create payment');
-      }
+      // 1. Create payment intent on server using the api client
+      const data = await api.createProjectPayment(projectId);
 
       // 2. Check if payment is already completed
       if (data.status === 'payment_pending') {
