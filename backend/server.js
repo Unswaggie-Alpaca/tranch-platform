@@ -1996,14 +1996,10 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
 
 // Create project payment
 app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
+  const { project_id } = req.body;
+  
   try {
-    const { project_id } = req.body;
-    
-    if (!project_id) {
-      return res.status(400).json({ error: 'Project ID is required' });
-    }
-    
-    // Verify project exists and belongs to user
+    // Validate project ownership
     const project = await new Promise((resolve, reject) => {
       db.get(
         'SELECT * FROM projects WHERE id = ? AND borrower_id = ?',
@@ -2019,7 +2015,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       return res.status(404).json({ error: 'Project not found or access denied' });
     }
     
-    // Get project listing fee from system settings
+    // Get project listing fee
     const feeSettings = await new Promise((resolve, reject) => {
       db.get(
         "SELECT setting_value FROM system_settings WHERE setting_key = 'project_listing_fee'",
@@ -2030,9 +2026,9 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       );
     });
     
-    const amount = parseInt(feeSettings?.setting_value || '49900'); // Default to $499 if not found
+    const amount = parseInt(feeSettings?.setting_value || '49900');
 
-    // Check if project already has a pending or completed payment
+    // Check for existing payments
     const existingPayment = await new Promise((resolve, reject) => {
       db.get(
         `SELECT * FROM payments
@@ -2052,44 +2048,91 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       if (existingPayment.status === 'completed') {
         return res.status(400).json({ error: 'Project already paid for' });
       }
-      // For existing pending payment, retrieve from Stripe
-      if (existingPayment.stripe_payment_intent_id) {
+      
+      // Check if existing payment intent is stale (older than 1 hour)
+      const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
+      const ONE_HOUR = 60 * 60 * 1000;
+      
+      if (existingPayment.stripe_payment_intent_id && paymentAge < ONE_HOUR) {
         try {
           const paymentIntent = await stripe.paymentIntents.retrieve(
             existingPayment.stripe_payment_intent_id
           );
-          return res.json({
-            client_secret: paymentIntent.client_secret,
-            payment_intent_id: paymentIntent.id,
-            amount: existingPayment.amount,
-            status: 'payment_pending'
-          });
+          
+          // If payment succeeded but webhook failed, update manually
+          if (paymentIntent.status === 'succeeded') {
+            await new Promise((resolve, reject) => {
+              db.run(
+                'UPDATE payments SET status = ? WHERE id = ?',
+                ['completed', existingPayment.id],
+                (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                }
+              );
+            });
+            
+            await new Promise((resolve, reject) => {
+              db.run(
+                'UPDATE projects SET payment_status = ?, visible = 0 WHERE id = ?',
+                ['payment_pending', project_id],
+                (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                }
+              );
+            });
+            
+            return res.json({
+              status: 'payment_pending',
+              message: 'Payment already completed, pending admin review'
+            });
+          }
+          
+          // Return existing valid payment intent
+          if (paymentIntent.status === 'requires_payment_method' || 
+              paymentIntent.status === 'requires_confirmation') {
+            return res.json({
+              client_secret: paymentIntent.client_secret,
+              payment_intent_id: paymentIntent.id,
+              amount: existingPayment.amount,
+              status: 'existing'
+            });
+          }
         } catch (stripeError) {
           console.error('Failed to retrieve payment intent:', stripeError);
-          // Continue to create new payment intent if retrieval fails
         }
       }
+      
+      // Delete stale payment record
+      await new Promise((resolve, reject) => {
+        db.run(
+          'DELETE FROM payments WHERE id = ?',
+          [existingPayment.id],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
     }
 
-    // Generate idempotency key
-    const idempotencyKey = `project_${project_id}_user_${req.user.id}_${Date.now()}`;
-    
+    // Create new payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: 'aud',
       metadata: {
         project_id: String(project_id),
         user_id: String(req.user.id),
-        payment_type: 'project_listing'
+        payment_type: 'project_listing',
+        user_email: req.user.email
       },
       automatic_payment_methods: {
         enabled: true,
       },
-    }, {
-      idempotencyKey: idempotencyKey
     });
 
-    // Insert payment record with pending status
+    // Insert new payment record
     await new Promise((resolve, reject) => {
       db.run(
         'INSERT INTO payments (user_id, project_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?)',
@@ -2101,8 +2144,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       );
     });
 
-
-    // Store the payment intent ID but keep status as unpaid until webhook confirms
+    // Store the payment intent ID
     await new Promise((resolve, reject) => {
       db.run(
         'UPDATE projects SET stripe_payment_intent_id = ? WHERE id = ?',
@@ -2114,7 +2156,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       );
     });
 
-    console.log('Payment intent created:', {
+    console.log('New payment intent created:', {
       id: paymentIntent.id,
       amount: paymentIntent.amount,
       status: paymentIntent.status,
@@ -2125,7 +2167,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
       client_secret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
       amount: amount,
-      status: 'payment_pending'
+      status: 'new'
     });
   } catch (error) {
     console.error('Payment creation error:', error);
