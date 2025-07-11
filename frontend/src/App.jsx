@@ -9353,7 +9353,7 @@ ${formData.counter_notes ? `\nNotes: ${formData.counter_notes}` : ''}`;
 
 // In App.jsx, replace the entire ContactShareModal component:
 
-const ContactShareModal = ({ isOpen, onClose, deal, user }) => {
+const ContactInfoModal = ({ isOpen, onClose, deal, user }) => {
   const [otherPartyContact, setOtherPartyContact] = useState(null);
   const [loading, setLoading] = useState(true);
   const [shareConfirmed, setShareConfirmed] = useState(false);
