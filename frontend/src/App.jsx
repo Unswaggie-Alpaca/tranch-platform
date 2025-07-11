@@ -2582,19 +2582,51 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
                 View Details
               </button>
               {project.deal_count > 0 && (
-                <button 
-                  onClick={() => {
-                    if (project.deal_count === 1 && deals.length > 0) {
-                      navigate(`/project/${project.id}/deal/${deals[0].id}`);
-                    } else {
-                      navigate(`/project/${project.id}`);
-                    }
-                  }}
-                  className="btn-primary-clean"
-                >
-                  Deal Room
-                </button>
-              )}
+  <button 
+    onClick={async () => {
+      // Always fetch fresh deals when clicking
+      setLoadingDeals(true);
+      try {
+        const dealsList = await api.getProjectDeals(project.id);
+        setDeals(dealsList);
+        
+        if (dealsList.length === 0) {
+          addNotification({
+            type: 'info',
+            title: 'No Deal Rooms',
+            message: 'No funders have created deal rooms yet'
+          });
+        } else if (dealsList.length === 1) {
+          // Single deal - go directly
+          navigate(`/project/${project.id}/deal/${dealsList[0].id}`);
+        } else {
+          // Multiple deals - show selector
+          setShowDeals(true);
+        }
+      } catch (err) {
+        console.error('Failed to fetch deals:', err);
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load deal rooms'
+        });
+      } finally {
+        setLoadingDeals(false);
+      }
+    }}
+    className="btn-primary-small"
+    disabled={loadingDeals}
+  >
+    {loadingDeals ? (
+      <>
+        <span className="spinner-small"></span>
+        Loading...
+      </>
+    ) : (
+      <>Deal Room{project.deal_count > 1 ? 's' : ''}</>
+    )}
+  </button>
+)}
             </>
           ) : project.payment_status === 'payment_pending' ? (
             <>
@@ -2770,7 +2802,52 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             <span className="info-value">{project.property_type || 'Not specified'}</span>
           </div>
         </div>
-
+{project.deal_count > 0 && (
+  <button 
+    onClick={async () => {
+      // Always fetch fresh deals when clicking
+      setLoadingDeals(true);
+      try {
+        const dealsList = await api.getProjectDeals(project.id);
+        setDeals(dealsList);
+        
+        if (dealsList.length === 0) {
+          addNotification({
+            type: 'info',
+            title: 'No Deal Rooms',
+            message: 'No funders have created deal rooms yet'
+          });
+        } else if (dealsList.length === 1) {
+          // Single deal - go directly
+          navigate(`/project/${project.id}/deal/${dealsList[0].id}`);
+        } else {
+          // Multiple deals - show selector
+          setShowDeals(true);
+        }
+      } catch (err) {
+        console.error('Failed to fetch deals:', err);
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load deal rooms'
+        });
+      } finally {
+        setLoadingDeals(false);
+      }
+    }}
+    className="btn-primary-small"
+    disabled={loadingDeals}
+  >
+    {loadingDeals ? (
+      <>
+        <span className="spinner-small"></span>
+        Loading...
+      </>
+    ) : (
+      <>Deal Room{project.deal_count > 1 ? 's' : ''}</>
+    )}
+  </button>
+)}
         <div className="card-actions-clean">
           {project.payment_status !== 'paid' ? (
             <>
@@ -2885,6 +2962,50 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
           </div>
         </div>
       </Modal>
+
+      {showDeals && deals.length > 1 && (
+  <Modal 
+    isOpen={showDeals} 
+    onClose={() => setShowDeals(false)}
+    title="Select Deal Room"
+    size="medium"
+  >
+    <div className="deal-selector">
+      <p className="modal-description">
+        You have {deals.length} active deal rooms for this project. Select which one you'd like to view:
+      </p>
+      
+      <div className="deal-list">
+        {deals.map(deal => (
+          <div 
+            key={deal.id}
+            className="deal-option"
+            onClick={() => {
+              navigate(`/project/${project.id}/deal/${deal.id}`);
+              setShowDeals(false);
+            }}
+          >
+            <div className="deal-info">
+              <h4>{deal.funder_name}</h4>
+              {deal.funder_email && (
+                <p className="company-name">{deal.funder_email}</p>
+              )}
+              <p className="deal-date">
+                Created {new Date(deal.created_at).toLocaleDateString()}
+              </p>
+              {deal.proposal_status === 'accepted' && (
+                <span className="accepted-badge">✓ Proposal Accepted</span>
+              )}
+            </div>
+            <svg className="arrow-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Modal>
+)}
     </>
   );
 };
