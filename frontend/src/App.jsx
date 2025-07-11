@@ -2648,233 +2648,243 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
 };
 
 // Borrower Project Card Component
+// In App.jsx, replace the BorrowerProjectCard component:
+
 const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
-  const api = useApi();
   const navigate = useNavigate();
+  const api = useApi();
   const { addNotification } = useNotifications();
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [deals, setDeals] = useState([]);
-  const [showDeals, setShowDeals] = useState(false);
+  const [showDealSelector, setShowDealSelector] = useState(false);
   const [loadingDeals, setLoadingDeals] = useState(false);
-
-  useEffect(() => {
-    if (project.deal_count > 0 && project.payment_status === 'paid') {
-      fetchDeals();
-    }
-  }, [project.id, project.deal_count]);
-
+  
+  // Fetch deals for this project
   const fetchDeals = async () => {
-    setLoadingDeals(true);
     try {
-      const dealsList = await api.getProjectDeals(project.id);
-      setDeals(dealsList);
+      setLoadingDeals(true);
+      const response = await api.request(`/projects/${project.id}/deals`);
+      setDeals(response || []);
     } catch (err) {
       console.error('Failed to fetch deals:', err);
     } finally {
       setLoadingDeals(false);
     }
   };
-
+  
+  const handleDealRoomClick = async () => {
+    await fetchDeals();
+    
+    if (deals.length === 0) {
+      addNotification({
+        type: 'info',
+        title: 'No Deal Rooms',
+        message: 'No funders have created deal rooms yet'
+      });
+    } else if (deals.length === 1) {
+      // If only one deal, go directly to it
+      navigate(`/project/${project.id}/deal/${deals[0].id}`);
+    } else {
+      // If multiple deals, show selector
+      setShowDealSelector(true);
+    }
+  };
+  
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      await api.deleteProject(project.id);
+      addNotification({
+        type: 'success',
+        title: 'Project Deleted',
+        message: 'Your project has been removed'
+      });
+      if (onProjectUpdate) onProjectUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err.message || 'Failed to delete project'
+      });
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+  
   const getStatusBadge = () => {
-    if (project.payment_status === 'paid' && project.visible) {
-      return <span className="status-badge-v2 live">LIVE</span>;
-    } else if (project.payment_status === 'payment_pending') {
-      return <span className="status-badge-v2 pending">UNDER REVIEW</span>;
-    } else if (project.payment_status === 'paid' && !project.visible) {
-      return <span className="status-badge-v2 rejected">REJECTED</span>;
+    if (project.payment_status !== 'paid') {
+      return <span className="status-badge-clean pending">AWAITING PAYMENT</span>;
     }
-    return <span className="status-badge-v2 draft">DRAFT</span>;
-  };
-
-  const getPropertyTypeIcon = () => {
-    switch (project.property_type) {
-      case 'Commercial':
-        return '';
-      case 'Residential':
-        return '';
-      case 'Mixed Use':
-        return '';
-      case 'Industrial':
-        return '';
+    
+    switch (project.status) {
+      case 'live':
+        return <span className="status-badge-clean live">LIVE</span>;
+      case 'in_review':
+        return <span className="status-badge-clean in-review">IN REVIEW</span>;
+      case 'rejected':
+        return <span className="status-badge-clean rejected">REJECTED</span>;
+      case 'draft':
+        return <span className="status-badge-clean draft">DRAFT</span>;
       default:
-        return '';
+        return <span className="status-badge-clean">{project.status?.toUpperCase()}</span>;
     }
   };
-
+  
   return (
     <>
-      <div className="project-card-v2">
-        <div className="card-header">
+      <div className="project-card-clean">
+        <div className="card-header-clean">
           {getStatusBadge()}
-          {project.deal_count > 0 && (
-            <span className="deal-indicator">{project.deal_count} active deal{project.deal_count > 1 ? 's' : ''}</span>
-          )}
+          <div className="card-menu">
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="menu-btn"
+              title="Delete project"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20">
+                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H3a1 1 0 000 2h1v10a2 2 0 002 2h8a2 2 0 002-2V6h1a1 1 0 100-2h-2V3a1 1 0 00-1-1H6zm3 4a1 1 0 012 0v8a1 1 0 11-2 0V6z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <div className="card-body">
-          <h3 className="project-name">{project.title}</h3>
-          
-          <div className="location-row">
-            <svg className="location-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-            </svg>
-            <span>{project.suburb || 'Location not specified'}</span>
-          </div>
-
-          <div className="project-details">
-            <div className="detail-row">
-              <span className="detail-label">SEEKING</span>
-              <span className="detail-value">{formatCurrency(project.loan_amount)}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">TYPE</span>
-              <span className="detail-value">
-                <span className="type-icon">{getPropertyTypeIcon()}</span>
-                {project.property_type}
-              </span>
-            </div>
-          </div>
-
-          {project.last_rejection_reason && (project.payment_status === 'unpaid' || (project.payment_status === 'paid' && !project.visible)) && (
-            <div className="rejection-notice">
-              <div className="rejection-header">
-                <svg className="rejection-icon" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <span className="rejection-label">Admin Feedback</span>
-              </div>
-              <div className="rejection-reason">
-                {project.last_rejection_reason}
-              </div>
-              {project.rejection_date && (
-                <div className="rejection-date">
-                  Received: {new Date(project.rejection_date).toLocaleDateString()}
-                </div>
-              )}
-              {project.payment_status === 'paid' && (
-                <div className="rejection-note">
-                  Note: You have already paid for this project. Please address the feedback and submit for re-review.
-                </div>
-              )}
-            </div>
-          )}
+        <h3 className="project-title-clean">{project.title || 'Untitled Project'}</h3>
+        
+        <div className="location-row-clean">
+          <svg viewBox="0 0 16 16" fill="none" className="location-icon-clean">
+            <path d="M8 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="currentColor"/>
+            <path fillRule="evenodd" clipRule="evenodd" d="M8 14s4-4.15 4-7a4 4 0 10-8 0c0 2.85 4 7 4 7z" fill="currentColor"/>
+          </svg>
+          <span>{project.suburb || 'Location TBD'}</span>
         </div>
 
-        <div className="card-footer">
-          {project.payment_status === 'paid' && project.visible ? (
+        <div className="project-info-grid">
+          <div className="info-block">
+            <span className="info-label">LOAN AMOUNT</span>
+            <span className="info-value">{formatCurrency(project.loan_amount)}</span>
+          </div>
+          <div className="info-block">
+            <span className="info-label">TYPE</span>
+            <span className="info-value">{project.property_type || 'Not specified'}</span>
+          </div>
+        </div>
+
+        <div className="card-actions-clean">
+          {project.payment_status !== 'paid' ? (
             <>
               <button 
-                onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                onClick={() => navigate(`/projects/${project.id}/edit`)}
+                className="btn-text-clean"
               >
-                View Details
-              </button>
-              {project.deal_count > 0 && (
-                <button 
-                  onClick={() => {
-                    if (project.deal_count === 1 && deals.length > 0) {
-                      navigate(`/project/${project.id}/deal/${deals[0].id}`);
-                    } else {
-                      navigate(`/project/${project.id}`);
-                    }
-                  }}
-                  className="btn-primary-small"
-                >
-                  Deal Room{project.deal_count > 1 ? 's' : ''}
-                </button>
-              )}
-            </>
-          ) : project.payment_status === 'payment_pending' ? (
-            <>
-              <button 
-                onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
-              >
-                View Details
+                Edit
               </button>
               <button 
-                disabled
-                className="btn-primary-small disabled"
+                onClick={() => navigate(`/payment/${project.id}`)}
+                className="btn-primary-clean"
               >
-                Under Admin Review
+                Complete Payment
               </button>
             </>
-          ) : project.payment_status === 'paid' && !project.visible && (
-              <>
-                <button 
-                  onClick={() => navigate(`/project/${project.id}/edit`)}
-                  className="btn btn-outline"
-                >
-                  Edit Project
-                </button>
-                <button 
-                  onClick={async () => {
-                    try {
-                      await api.updateProjectStatus(project.id, {
-                        status: 'payment_pending',
-                        submission_status: 'pending_review',
-                        reason: 'Resubmitted after addressing feedback'
-                      });
-                      
-                      // Notify admin
-                      await api.sendEmailNotification('project_resubmitted', 'admin', {
-                        project_title: project.title,
-                        borrower_name: user.name
-                      });
-                      
-                      addNotification({
-                        type: 'success',
-                        title: 'Resubmitted for Review',
-                        message: 'Your project has been resubmitted and will be reviewed by our team.'
-                      });
-                      
-                      if (onProjectUpdate) onProjectUpdate();
-                    } catch (err) {
-                      addNotification({
-                        type: 'error',
-                        title: 'Resubmission Failed',
-                        message: err.message
-                      });
-                    }
-                  }}
-                  className="btn btn-primary-small"
-                >
-                  Submit for Re-review
-                </button>
-              </>
-          )}
           ) : (
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn-text-clean"
               >
                 View Details
               </button>
-              <button 
-                onClick={() => setShowPaymentModal(true)}
-                className="btn-primary-small"
-                disabled={!project.documents_complete}
-                title={!project.documents_complete ? 'Upload all required documents first' : ''}
-              >
-                Publish
-              </button>
+              {project.status === 'live' && (
+                <button 
+                  onClick={handleDealRoomClick}
+                  className="btn-primary-clean"
+                  disabled={loadingDeals}
+                >
+                  {loadingDeals ? (
+                    <>
+                      <span className="spinner-small"></span>
+                      Loading...
+                    </>
+                  ) : (
+                    <>Deal Rooms {deals.length > 0 && `(${deals.length})`}</>
+                  )}
+                </button>
+              )}
             </>
-          
+          )}
         </div>
       </div>
-
-      {showPaymentModal && (
-        <PaymentModal 
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          project={project}
-          onSuccess={() => {
-            setShowPaymentModal(false);
-            if (onProjectUpdate) onProjectUpdate();
-          }}
-        />
-      )}
+      
+      {/* Deal Selector Modal */}
+      <Modal 
+        isOpen={showDealSelector} 
+        onClose={() => setShowDealSelector(false)}
+        title="Select Deal Room"
+        size="medium"
+      >
+        <div className="deal-selector">
+          <p className="modal-description">
+            Multiple funders have created deal rooms for this project. Select which one you'd like to view:
+          </p>
+          
+          <div className="deal-list">
+            {deals.map(deal => (
+              <div 
+                key={deal.id}
+                className="deal-option"
+                onClick={() => {
+                  navigate(`/project/${project.id}/deal/${deal.id}`);
+                  setShowDealSelector(false);
+                }}
+              >
+                <div className="deal-info">
+                  <h4>{deal.funder_name}</h4>
+                  {deal.funder_company && (
+                    <p className="company-name">{deal.funder_company}</p>
+                  )}
+                  <p className="deal-date">
+                    Created {new Date(deal.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="deal-status">
+                  <StatusBadge status={deal.status} />
+                </div>
+                <svg className="arrow-icon" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Modal>
+      
+      {/* Delete Confirmation */}
+      <Modal 
+        isOpen={showDeleteConfirm} 
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Project?"
+        size="small"
+      >
+        <div className="delete-confirm">
+          <p>Are you sure you want to delete "{project.title}"? This action cannot be undone.</p>
+          <div className="modal-actions">
+            <button 
+              onClick={() => setShowDeleteConfirm(false)}
+              className="btn btn-outline"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleDelete}
+              disabled={deleting}
+              className="btn btn-danger"
+            >
+              {deleting ? 'Deleting...' : 'Delete Project'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };
@@ -2890,60 +2900,102 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
   const [accessMessage, setAccessMessage] = useState('');
   const [requesting, setRequesting] = useState(false);
 
-  const handleRequestAccess = async () => {
-    setRequesting(true);
+// In App.jsx, replace the handleRequestAccess function in FunderProjectCard component:
+
+const handleRequestAccess = async () => {
+  if (!accessMessage.trim()) {
+    addNotification({
+      type: 'error',
+      title: 'Message Required',
+      message: 'Please provide a message to the developer'
+    });
+    return;
+  }
+  
+  setRequesting(true);
+  try {
+    const response = await api.requestProjectAccess(project.id, accessMessage);
+    
+    // Send notification to borrower with link to messages
+    await api.createNotification(project.borrower_id, {
+      type: 'access_request',
+      title: 'New Access Request',
+      message: `A funder has requested access to "${project.title}". Click to view and respond.`,
+      related_id: response.access_request_id,
+      action_url: '/messages',
+      action_text: 'View Message'
+    });
+    
+    // Send email notification
     try {
-      await api.requestAccess(project.id, accessMessage.trim() || null);
-      
       await api.sendEmailNotification('access_request_received', project.borrower_id, {
         project_title: project.title,
-        funder_name: 'A verified funder'
+        funder_message: accessMessage
       });
-      
-      addNotification({
-        type: 'success',
-        title: 'Access Request Sent',
-        message: 'Your request has been sent to the developer.'
-      });
-      
-      setShowAccessForm(false);
-      setAccessMessage('');
-      if (onProjectUpdate) onProjectUpdate();
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Request Failed',
-        message: err.message || 'Failed to send access request'
-      });
-    } finally {
-      setRequesting(false);
+    } catch (emailErr) {
+      console.error('Email notification failed:', emailErr);
     }
-  };
+    
+    addNotification({
+      type: 'success',
+      title: 'Request Sent',
+      message: 'Your access request has been sent to the developer'
+    });
+    
+    setShowAccessForm(false);
+    setAccessMessage('');
+    if (onProjectUpdate) onProjectUpdate();
+  } catch (err) {
+    addNotification({
+      type: 'error',
+      title: 'Request Failed',
+      message: err.message || 'Failed to send access request'
+    });
+  } finally {
+    setRequesting(false);
+  }
+};
+ // In App.jsx, replace the handleEngage function in FunderProjectCard component:
 
-  const handleEngage = async () => {
+const handleEngage = async () => {
+  try {
+    const response = await api.createDeal(project.id, project.access_request_id);
+    
+    // Create notification for borrower
+    await api.createNotification(project.borrower_id, {
+      type: 'deal_room_created',
+      title: 'Deal Room Created',
+      message: `A funder has engaged with your project "${project.title}" and created a deal room.`,
+      related_id: response.deal_id,
+      action_url: `/project/${project.id}/deal/${response.deal_id}`,
+      action_text: 'Go to Deal Room'
+    });
+    
+    // Send email notification
     try {
-      const response = await api.createDeal(project.id, project.access_request_id);
-      
       await api.sendEmailNotification('deal_room_created', project.borrower_id, {
         project_title: project.title,
         funder_name: 'A verified funder'
       });
-      
-      addNotification({
-        type: 'success',
-        title: 'Deal Room Created',
-        message: 'Successfully created deal room'
-      });
-      
-      navigate(`/project/${project.id}/deal/${response.deal_id}`);
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Failed to create deal room',
-        message: err.message || 'Could not create deal room'
-      });
+    } catch (emailErr) {
+      console.error('Email notification failed:', emailErr);
     }
-  };
+    
+    addNotification({
+      type: 'success',
+      title: 'Deal Room Created',
+      message: 'Successfully created deal room'
+    });
+    
+    navigate(`/project/${project.id}/deal/${response.deal_id}`);
+  } catch (err) {
+    addNotification({
+      type: 'error',
+      title: 'Failed to create deal room',
+      message: err.message || 'Could not create deal room'
+    });
+  }
+};
 
   return (
     <>
@@ -3870,6 +3922,7 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   const [loading, setLoading] = useState(false);
   const suggestionsRef = useRef(null);
   const searchTimeout = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -3892,7 +3945,10 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
     try {
       const response = await api.request('/geocode/autocomplete', {
         method: 'POST',
-        body: JSON.stringify({ input: query })
+        body: JSON.stringify({ 
+          input: query,
+          country: 'AU' // Restrict to Australia
+        })
       });
       
       if (response.predictions) {
@@ -3921,20 +3977,44 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
     }, 300);
   };
 
-  const handleSelectSuggestion = (suggestion) => {
-    // Parse the address to extract suburb
-    const parts = suggestion.description.split(',');
-    let suburb = '';
+  const parseAustralianAddress = (description) => {
+    const parts = description.split(',').map(p => p.trim());
+    let result = {
+      location: description,
+      street: '',
+      suburb: '',
+      state: '',
+      postcode: '',
+      city: ''
+    };
     
-    // Australian address format typically: Street, Suburb State Postcode, Country
-    if (parts.length >= 2) {
-      // Get the second part and clean it
-      suburb = parts[1].trim().split(' ')[0]; // Takes first word which is usually suburb
+    if (parts.length >= 3) {
+      // Typical format: "123 Street Name, Suburb STATE Postcode, Australia"
+      result.street = parts[0];
+      
+      // Parse suburb, state and postcode from second part
+      const suburbStatePart = parts[1].trim();
+      const statePostcodeMatch = suburbStatePart.match(/(.+?)\s+([A-Z]{2,3})\s+(\d{4})$/);
+      
+      if (statePostcodeMatch) {
+        result.suburb = statePostcodeMatch[1].trim();
+        result.state = statePostcodeMatch[2];
+        result.postcode = statePostcodeMatch[3];
+        result.city = result.suburb; // In Australia, suburb often serves as city
+      } else {
+        // Fallback - just take the first word as suburb
+        result.suburb = suburbStatePart.split(' ')[0];
+      }
     }
     
+    return result;
+  };
+
+  const handleSelectSuggestion = (suggestion) => {
+    const addressData = parseAustralianAddress(suggestion.description);
+    
     onSelect({
-      location: suggestion.description,
-      suburb: suburb,
+      ...addressData,
       place_id: suggestion.place_id
     });
     
@@ -3945,6 +4025,7 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   return (
     <div className="address-autocomplete" ref={suggestionsRef}>
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={handleInputChange}
@@ -3978,7 +4059,6 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
     </div>
   );
 };
-
 // ===========================
 // CREATE PROJECT WIZARD
 // ===========================
@@ -4301,7 +4381,7 @@ const CreateProject = () => {
             </div>
 
             <div className="form-row">
-  <div className="form-group">
+  <div className="form-group full-width">
     <label htmlFor="location">
       Full Address *
       <Tooltip content="Start typing to search for addresses">
@@ -4315,14 +4395,18 @@ const CreateProject = () => {
       onSelect={(addressData) => setFormData({ 
         ...formData, 
         location: addressData.location,
-        suburb: addressData.suburb 
+        suburb: addressData.suburb,
+        state: addressData.state,
+        postcode: addressData.postcode
       })}
     />
     {validationErrors.location && (
       <span className="field-error">{validationErrors.location}</span>
     )}
   </div>
+</div>
 
+<div className="form-row">
   <div className="form-group">
     <label htmlFor="suburb">
       Suburb *
@@ -4343,8 +4427,42 @@ const CreateProject = () => {
       <span className="field-error">{validationErrors.suburb}</span>
     )}
   </div>
-</div>
 
+  <div className="form-group">
+    <label htmlFor="state">
+      State
+      <Tooltip content="Auto-filled from address selection">
+        <span className="help-icon">?</span>
+      </Tooltip>
+    </label>
+    <input
+      type="text"
+      id="state"
+      value={formData.state || ''}
+      onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+      className="form-input"
+      placeholder="e.g., NSW, VIC, QLD"
+    />
+  </div>
+
+  <div className="form-group">
+    <label htmlFor="postcode">
+      Postcode
+      <Tooltip content="Auto-filled from address selection">
+        <span className="help-icon">?</span>
+      </Tooltip>
+    </label>
+    <input
+      type="text"
+      id="postcode"
+      value={formData.postcode || ''}
+      onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
+      className="form-input"
+      placeholder="e.g., 2000"
+      maxLength="4"
+    />
+  </div>
+</div>
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="property_type">
@@ -4757,7 +4875,7 @@ const CreateProject = () => {
 
               <div className="form-group">
                 <label htmlFor="planning_permit_status">
-                  Planning Permit Status
+                  Development Application Status
                   <Tooltip content="Current status of planning/development approvals">
                     <span className="help-icon">?</span>
                   </Tooltip>
@@ -4931,7 +5049,7 @@ const CreateProject = () => {
               ))}
             </div>
 
-            <div className="optional-documents">
+           <div className="optional-documents">
               <h4>Additional Documents (Optional)</h4>
               <div className="document-upload-item">
                 <input
@@ -6408,7 +6526,7 @@ const EditProject = () => {
               </div>
 
               <div className="form-group">
-                <label>Planning Permit Status</label>
+                <label>Development Application Status</label>
                 <select
                   value={project.planning_permit_status || 'Not Started'}
                   onChange={(e) => setProject({ ...project, planning_permit_status: e.target.value })}
@@ -6737,23 +6855,75 @@ const MessagesPage = () => {
     }
   };
 
-  const handleApproveAccess = async (requestId) => {
-    try {
-      await api.approveAccessRequest(requestId);
-      addNotification({
-        type: 'success',
-        title: 'Access Approved',
-        message: 'Funder now has access to full project details'
-      });
-      fetchConversations();
-    } catch (err) {
-      addNotification({
-        type: 'error',
-        title: 'Approval Failed',
-        message: err.message
-      });
+const handleApproveAccess = async (requestId) => {
+  try {
+    await api.approveAccessRequest(requestId);
+    
+    // Update the conversation status locally
+    setConversations(conversations.map(conv => 
+      conv.id === requestId 
+        ? { ...conv, status: 'approved' } 
+        : conv
+    ));
+    
+    // Update selected conversation if it's the current one
+    if (selectedConversation?.id === requestId) {
+      setSelectedConversation({ ...selectedConversation, status: 'approved' });
     }
-  };
+    
+    addNotification({
+      type: 'success',
+      title: 'Access Approved',
+      message: 'The funder now has access to the full project details'
+    });
+    
+    await fetchConversations();
+  } catch (err) {
+    addNotification({
+      type: 'error',
+      title: 'Approval Failed',
+      message: err.message || 'Failed to approve access'
+    });
+  }
+};
+
+const formatMessageDate = (dateString) => {
+  const date = new Date(dateString);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString('en-AU', { 
+      weekday: 'long',
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  }
+};
+
+const formatMessageTime = (dateString) => {
+  return new Date(dateString).toLocaleTimeString('en-AU', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+};
+
+const formatMessageContent = (content) => {
+  // Handle line breaks
+  const lines = content.split('\n');
+  return lines.map((line, index) => (
+    <React.Fragment key={index}>
+      {line}
+      {index < lines.length - 1 && <br />}
+    </React.Fragment>
+  ));
+};
 
   const handleDeclineAccess = async (requestId) => {
     try {
@@ -6864,51 +7034,74 @@ const MessagesPage = () => {
                 </div>
 
                 {user.role === 'borrower' && selectedConversation.status === 'pending' && (
-                  <div className="chat-actions">
-                    <button 
-                      onClick={() => handleApproveAccess(selectedConversation.id)}
-                      className="btn btn-sm btn-primary"
-                    >
-                      Approve Access
-                    </button>
-                    <button 
-                      onClick={() => handleDeclineAccess(selectedConversation.id)}
-                      className="btn btn-sm btn-outline"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                )}
+  <div className="chat-actions">
+    <button 
+      onClick={() => handleApproveAccess(selectedConversation.id)}
+      className="btn btn-sm btn-primary"
+      disabled={selectedConversation.status === 'approved'}
+    >
+      Approve Access
+    </button>
+    <button 
+      onClick={() => handleDeclineAccess(selectedConversation.id)}
+      className="btn btn-sm btn-outline"
+      disabled={selectedConversation.status === 'approved' || selectedConversation.status === 'declined'}
+    >
+      Decline
+    </button>
+  </div>
+)}
               </div>
 
-              {/* Messages Area */}
-              <div className="messages-area">
-                {messages.length === 0 ? (
-                  <div className="no-messages">
-                    <div className="no-messages-icon">💬</div>
-                    <h3>Start the conversation</h3>
-                    <p>Send a message to begin discussing this {user.role === 'borrower' ? 'investment opportunity' : 'project'}.</p>
-                  </div>
-                ) : (
-                  <div className="messages-list">
-                    {messages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`message-bubble ${message.sender_role === user.role ? 'own' : 'other'}`}
-                      >
-                        <div className="message-header">
-                          <span className="sender-name">{message.sender_name}</span>
-                          <span className="message-time">{formatTime(message.sent_at)}</span>
-                        </div>
-                        <div className="message-content">
-                          {message.message}
-                        </div>
-                      </div>
-                    ))}
-                    <div ref={messagesEndRef} />
-                  </div>
-                )}
+              {/* Messages Area - Update this part */}
+<div className="messages-area" ref={messagesEndRef}>
+  {messages.length === 0 ? (
+    <div className="no-messages">
+      <div className="no-messages-icon">💬</div>
+      <h3>Start the conversation</h3>
+      <p>Send a message to begin discussing this {user.role === 'borrower' ? 'investment opportunity' : 'project'}.</p>
+    </div>
+  ) : (
+    <div className="messages-list">
+      {messages.map((message, index) => {
+        const isUser = message.sender_role === user.role;
+        const showTimestamp = index === 0 || 
+          new Date(message.created_at).toDateString() !== 
+          new Date(messages[index - 1].created_at).toDateString();
+        
+        return (
+          <React.Fragment key={message.id}>
+            {showTimestamp && (
+              <div className="message-date-divider">
+                <span>{formatMessageDate(message.created_at)}</span>
               </div>
+            )}
+            
+            <div className={`message-bubble ${isUser ? 'sent' : 'received'}`}>
+              <div className="message-header">
+                <span className="message-sender">
+                  {isUser ? 'You' : message.sender_name}
+                </span>
+                <span className="message-time">
+                  {formatMessageTime(message.created_at)}
+                </span>
+              </div>
+              
+              <div className="message-content">
+                {formatMessageContent(message.message)}
+              </div>
+              
+              {!isUser && !message.is_read && (
+                <div className="unread-indicator"></div>
+              )}
+            </div>
+          </React.Fragment>
+        );
+      })}
+      <div ref={messagesEndRef} />
+    </div>
+  )}
+</div>
 
               {/* Message Input */}
               <div className="message-input-area">
@@ -7480,6 +7673,412 @@ const DealRoom = () => {
   );
 };
 
+// In App.jsx, ensure the DealProposal component is properly implemented:
+
+const DealProposal = ({ deal, proposal, userRole, onUpdate }) => {
+  const [showQuoteWizard, setShowQuoteWizard] = useState(false);
+  const [responding, setResponding] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
+  
+  const handleAcceptProposal = async () => {
+    try {
+      setResponding(true);
+      await api.respondToProposal(proposal.id, 'accepted');
+      
+      addNotification({
+        type: 'success',
+        title: 'Proposal Accepted',
+        message: 'You have accepted the funding proposal'
+      });
+      
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Action Failed',
+        message: 'Failed to accept proposal'
+      });
+    } finally {
+      setResponding(false);
+    }
+  };
+  
+  const handleDeclineProposal = async () => {
+    try {
+      setResponding(true);
+      await api.respondToProposal(proposal.id, 'declined');
+      
+      addNotification({
+        type: 'success',
+        title: 'Proposal Declined',
+        message: 'You have declined the funding proposal'
+      });
+      
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Action Failed',
+        message: 'Failed to decline proposal'
+      });
+    } finally {
+      setResponding(false);
+    }
+  };
+  
+  if (!proposal && userRole === 'funder') {
+    return (
+      <div className="deal-proposal-empty">
+        <div className="empty-icon">📋</div>
+        <h3>No Proposal Yet</h3>
+        <p>Submit an indicative quote to start negotiations with the developer.</p>
+        <button 
+          onClick={() => setShowQuoteWizard(true)}
+          className="btn btn-primary"
+        >
+          Submit Indicative Quote
+        </button>
+        
+        {showQuoteWizard && (
+          <QuoteWizard
+            dealId={deal.id}
+            onClose={() => setShowQuoteWizard(false)}
+            onSubmit={() => {
+              setShowQuoteWizard(false);
+              if (onUpdate) onUpdate();
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+  
+  if (!proposal) {
+    return (
+      <div className="deal-proposal-empty">
+        <div className="empty-icon">⏳</div>
+        <h3>Awaiting Proposal</h3>
+        <p>The funder hasn't submitted a proposal yet.</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="deal-proposal">
+      <div className="proposal-header">
+        <h3>Indicative Funding Proposal</h3>
+        <StatusBadge status={proposal.status} />
+      </div>
+      
+      <div className="proposal-content">
+        <div className="proposal-section">
+          <h4>Loan Terms</h4>
+          <div className="proposal-details">
+            <div className="detail-row">
+              <span className="detail-label">Loan Amount:</span>
+              <span className="detail-value">{formatCurrency(proposal.loan_amount)}</span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Interest Rate:</span>
+              <span className="detail-value">{proposal.interest_rate}% per annum</span>
+            </div>
+            <div className="detail-row">
+              <span className="detail-label">Loan Term:</span>
+              <span className="detail-value">{proposal.loan_term} months</span>
+            </div>
+            {proposal.establishment_fee && (
+              <div className="detail-row">
+                <span className="detail-label">Establishment Fee:</span>
+                <span className="detail-value">{formatCurrency(proposal.establishment_fee)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {proposal.conditions && (
+          <div className="proposal-section">
+            <h4>Conditions</h4>
+            <p className="proposal-conditions">{proposal.conditions}</p>
+          </div>
+        )}
+        
+        <div className="proposal-meta">
+          <p>Submitted by {proposal.funder_name} on {formatDate(proposal.created_at)}</p>
+        </div>
+      </div>
+      
+      {userRole === 'borrower' && proposal.status === 'pending' && (
+        <div className="proposal-actions">
+          <button 
+            onClick={handleDeclineProposal}
+            disabled={responding}
+            className="btn btn-outline"
+          >
+            Decline
+          </button>
+          <button 
+            onClick={handleAcceptProposal}
+            disabled={responding}
+            className="btn btn-primary"
+          >
+            {responding ? 'Processing...' : 'Accept Proposal'}
+          </button>
+        </div>
+      )}
+      
+      {proposal.status === 'accepted' && (
+        <div className="proposal-accepted-banner">
+          <div className="accepted-icon">✓</div>
+          <div>
+            <h4>Proposal Accepted</h4>
+            <p>This funding proposal has been accepted. Please exchange contact information to proceed with formal documentation.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DealDataRoom = ({ dealId, projectId, userRole }) => {
+  const [projectDocuments, setProjectDocuments] = useState([]);
+  const [dealDocuments, setDealDocuments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const api = useApi();
+  const { addNotification } = useNotifications();
+  const fileInputRef = useRef(null);
+  
+  useEffect(() => {
+    fetchAllDocuments();
+  }, [dealId, projectId]);
+  
+  const fetchAllDocuments = async () => {
+    try {
+      setLoading(true);
+      // Fetch project documents
+      const projectDocs = await api.getProjectDocumentsForDeal(projectId);
+      setProjectDocuments(projectDocs || []);
+      
+      // Fetch deal-specific documents
+      const dealDocs = await api.getDealDocuments(dealId);
+      setDealDocuments(dealDocs || []);
+    } catch (err) {
+      console.error('Failed to fetch documents:', err);
+      addNotification({
+        type: 'error',
+        title: 'Load Failed',
+        message: 'Failed to load documents'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleUploadDealDocument = async (files) => {
+    setUploading(true);
+    const formData = new FormData();
+    
+    for (let file of files) {
+      formData.append('documents', file);
+    }
+    
+    try {
+      await api.uploadDealDocuments(dealId, formData);
+      
+      addNotification({
+        type: 'success',
+        title: 'Upload Complete',
+        message: 'Documents uploaded successfully'
+      });
+      
+      await fetchAllDocuments();
+    } catch (err) {
+      console.error('Upload error:', err);
+      addNotification({
+        type: 'error',
+        title: 'Upload Failed',
+        message: err.message || 'Failed to upload documents'
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  const handleDownload = async (document) => {
+    try {
+      const blob = await api.downloadDocument(document.file_path);
+      const url = window.URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = document.file_name;
+      window.document.body.appendChild(a);
+      a.click();
+      window.document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Download Failed',
+        message: 'Failed to download document'
+      });
+    }
+  };
+  
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('en-AU', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+  
+  const getDocumentIcon = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    const iconMap = {
+      pdf: '📄',
+      doc: '📝',
+      docx: '📝',
+      xls: '📊',
+      xlsx: '📊',
+      ppt: '📊',
+      pptx: '📊',
+      jpg: '🖼️',
+      jpeg: '🖼️',
+      png: '🖼️',
+      gif: '🖼️',
+      zip: '📦',
+      rar: '📦',
+      default: '📎'
+    };
+    return iconMap[ext] || iconMap.default;
+  };
+  
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+  
+  return (
+    <div className="deal-data-room">
+      {/* Project Documents Section - Read Only */}
+      <div className="document-section">
+        <div className="section-header">
+          <div>
+            <h4>Project Documents</h4>
+            <span className="section-subtitle">Original project documentation</span>
+          </div>
+          <div className="document-count">{projectDocuments.length} files</div>
+        </div>
+        
+        <div className="document-grid">
+          {projectDocuments.length > 0 ? (
+            projectDocuments.map(doc => (
+              <div key={`project-${doc.id}`} className="document-card">
+                <div className="document-icon">{getDocumentIcon(doc.file_name)}</div>
+                <div className="document-info">
+                  <h5 className="document-name">{doc.file_name}</h5>
+                  <div className="document-meta">
+                    <span className="document-type">{doc.document_type || 'Document'}</span>
+                    <span className="document-date">{formatDate(doc.created_at)}</span>
+                  </div>
+                </div>
+                <div className="document-actions">
+                  <button 
+                    onClick={() => handleDownload(doc)}
+                    className="btn-icon"
+                    title="Download"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-documents">
+              <p>No project documents available</p>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Deal Documents Section - Can Upload */}
+      <div className="document-section">
+        <div className="section-header">
+          <div>
+            <h4>Deal Documents</h4>
+            <span className="section-subtitle">Documents shared in this deal room</span>
+          </div>
+          <div className="section-actions">
+            <span className="document-count">{dealDocuments.length} files</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={(e) => handleUploadDealDocument(Array.from(e.target.files))}
+              style={{ display: 'none' }}
+              id="deal-file-upload"
+            />
+            <label htmlFor="deal-file-upload" className="btn btn-primary btn-sm">
+              {uploading ? (
+                <>
+                  <span className="spinner-small"></span>
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Upload Documents
+                </>
+              )}
+            </label>
+          </div>
+        </div>
+        
+        <div className="document-grid">
+          {dealDocuments.length > 0 ? (
+            dealDocuments.map(doc => (
+              <div key={`deal-${doc.id}`} className="document-card">
+                <div className="document-icon">{getDocumentIcon(doc.file_name)}</div>
+                <div className="document-info">
+                  <h5 className="document-name">{doc.file_name}</h5>
+                  <div className="document-meta">
+                    <span className="document-uploader">Uploaded by {doc.uploader_name}</span>
+                    <span className="document-date">{formatDate(doc.created_at)}</span>
+                  </div>
+                </div>
+                <div className="document-actions">
+                  <button 
+                    onClick={() => handleDownload(doc)}
+                    className="btn-icon"
+                    title="Download"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-documents">
+              <p>No deal documents uploaded yet</p>
+              <p className="text-muted">Upload documents to share with other participants</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DealOverview = ({ deal, project }) => {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-AU', {
@@ -7695,6 +8294,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
   const [uploading, setUploading] = useState(false);
   const api = useApi();
   const { addNotification } = useNotifications();
+  const fileInputRef = useRef(null);
   
   useEffect(() => {
     fetchDealDocuments();
@@ -7726,7 +8326,7 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
         message: 'Documents uploaded to deal room'
       });
       
-      await fetchDealDocuments(); // Refresh deal documents
+      await fetchDealDocuments();
     } catch (err) {
       console.error('Upload error:', err);
       addNotification({
@@ -7736,6 +8336,9 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
       });
     } finally {
       setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
   
@@ -7768,6 +8371,22 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
     });
   };
   
+  const getDocumentIcon = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    const iconMap = {
+      pdf: '📄',
+      doc: '📝',
+      docx: '📝',
+      xls: '📊',
+      xlsx: '📊',
+      jpg: '🖼️',
+      jpeg: '🖼️',
+      png: '🖼️',
+      default: '📎'
+    };
+    return iconMap[ext] || iconMap.default;
+  };
+  
   return (
     <div className="deal-documents">
       {/* Project Documents Section - Read Only */}
@@ -7782,12 +8401,12 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
             projectDocuments.map(doc => (
               <div key={`project-${doc.id}`} className="document-item">
                 <div className="document-info">
-                  <div className="document-icon">📄</div>
+                  <div className="document-icon">{getDocumentIcon(doc.file_name)}</div>
                   <div className="document-details">
                     <h5>{doc.file_name}</h5>
                     <div className="document-meta">
                       {doc.document_type ? `${doc.document_type.replace(/_/g, ' ')} • ` : ''}
-                      Project Document • {formatDate(doc.uploaded_at)}
+                      Project Document • {formatDate(doc.uploaded_at || doc.created_at)}
                     </div>
                   </div>
                 </div>
@@ -7815,17 +8434,30 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
           <h4>Deal Documents <span className="document-count">{dealDocuments.length}</span></h4>
           <span className="section-subtitle">Documents specific to this deal</span>
           <div className="section-actions">
-            <FileUpload
-              onUpload={handleUploadDealDocument}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={(e) => handleUploadDealDocument(Array.from(e.target.files))}
               accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-              maxSize={10 * 1024 * 1024}
-              multiple={true}
-              disabled={uploading}
-            >
-              <button className="btn btn-sm btn-primary" disabled={uploading}>
-                {uploading ? 'Uploading...' : 'Upload to Deal'}
-              </button>
-            </FileUpload>
+              style={{ display: 'none' }}
+              id="deal-doc-upload"
+            />
+            <label htmlFor="deal-doc-upload" className="btn btn-sm btn-primary">
+              {uploading ? (
+                <>
+                  <span className="spinner-small"></span>
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Upload Documents
+                </>
+              )}
+            </label>
           </div>
         </div>
         
@@ -7834,11 +8466,11 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
             dealDocuments.map(doc => (
               <div key={`deal-${doc.id}`} className="document-item">
                 <div className="document-info">
-                  <div className="document-icon">📄</div>
+                  <div className="document-icon">{getDocumentIcon(doc.file_name)}</div>
                   <div className="document-details">
                     <h5>{doc.file_name}</h5>
                     <div className="document-meta">
-                      Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at)}
+                      Uploaded by {doc.uploader_name} • {formatDate(doc.uploaded_at || doc.created_at)}
                     </div>
                   </div>
                 </div>
@@ -8593,113 +9225,203 @@ ${formData.counter_notes ? `\nNotes: ${formData.counter_notes}` : ''}`;
   );
 };
 
-const ContactInfoModal = ({ user, targetUser, dealId, isOpen, onClose }) => {
-  const [showInfo, setShowInfo] = useState(false);
-  const [sharing, setSharing] = useState(false);
+// In App.jsx, replace the entire ContactShareModal component:
+
+const ContactShareModal = ({ isOpen, onClose, deal, user }) => {
+  const [otherPartyContact, setOtherPartyContact] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [shareConfirmed, setShareConfirmed] = useState(false);
   const api = useApi();
   const { addNotification } = useNotifications();
-
-  const handleShareContact = async () => {
-    setSharing(true);
+  
+  useEffect(() => {
+    if (isOpen) {
+      fetchContactInfo();
+    }
+  }, [isOpen]);
+  
+  const fetchContactInfo = async () => {
     try {
-      await api.shareContactInfo(user.id, targetUser.id);
-      setShowInfo(true);
+      setLoading(true);
+      const otherUserId = user.role === 'borrower' ? deal.funder_id : deal.borrower_id;
+      const contactInfo = await api.getContactInfo(otherUserId);
+      setOtherPartyContact(contactInfo);
+    } catch (err) {
+      console.log('Contact info not yet shared');
+      setOtherPartyContact(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleShareContact = async () => {
+    try {
+      const otherUserId = user.role === 'borrower' ? deal.funder_id : deal.borrower_id;
+      await api.shareContactInfo(user.id, otherUserId);
+      
+      setShareConfirmed(true);
       
       addNotification({
         type: 'success',
         title: 'Contact Shared',
         message: 'Your contact information has been shared'
       });
+      
+      // Refresh to show the other party's info if they've also shared
+      setTimeout(() => {
+        fetchContactInfo();
+      }, 1000);
     } catch (err) {
       addNotification({
         type: 'error',
         title: 'Share Failed',
         message: 'Failed to share contact information'
       });
-    } finally {
-      setSharing(false);
     }
   };
-
+  
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    addNotification({
+      type: 'success',
+      title: 'Copied',
+      message: 'Copied to clipboard'
+    });
+  };
+  
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Contact Information" size="medium">
-      <div className="contact-info-modal">
-        {!showInfo ? (
+    <Modal isOpen={isOpen} onClose={onClose} title="Exchange Contact Information" size="medium">
+      <div className="contact-share-modal">
+        {loading ? (
+          <LoadingSpinner />
+        ) : (
           <>
-            <p>Share contact information to continue discussions outside the platform.</p>
-            
-            <div className="contact-preview">
-              <h4>Your Contact Info</h4>
-              <div className="contact-details">
-                <div className="contact-item">
-                  <label>Name:</label>
-                  <span>{user.name}</span>
+            {/* Your Contact Info */}
+            <div className="contact-section your-contact">
+              <h4>Your Contact Information</h4>
+              <div className="contact-card">
+                <div className="contact-row">
+                  <span className="contact-label">Name:</span>
+                  <span className="contact-value">{user.name}</span>
                 </div>
-                <div className="contact-item">
-                  <label>Email:</label>
-                  <span>{user.email}</span>
+                <div className="contact-row">
+                  <span className="contact-label">Email:</span>
+                  <span className="contact-value">{user.email}</span>
                 </div>
                 {user.phone && (
-                  <div className="contact-item">
-                    <label>Phone:</label>
-                    <span>{user.phone}</span>
+                  <div className="contact-row">
+                    <span className="contact-label">Phone:</span>
+                    <span className="contact-value">{user.phone}</span>
                   </div>
                 )}
                 {user.company_name && (
-                  <div className="contact-item">
-                    <label>Company:</label>
-                    <span>{user.company_name}</span>
+                  <div className="contact-row">
+                    <span className="contact-label">Company:</span>
+                    <span className="contact-value">{user.company_name}</span>
+                  </div>
+                )}
+                {user.linkedin && (
+                  <div className="contact-row">
+                    <span className="contact-label">LinkedIn:</span>
+                    <span className="contact-value">{user.linkedin}</span>
                   </div>
                 )}
               </div>
-            </div>
-            
-            <button 
-              onClick={handleShareContact}
-              disabled={sharing}
-              className="btn btn-primary btn-block"
-            >
-              {sharing ? 'Sharing...' : 'Share My Contact Info'}
-            </button>
-          </>
-        ) : (
-          <div className="shared-contacts">
-            <h4>Contact Information Shared</h4>
-            
-            <div className="contact-card">
-              <h5>{targetUser.name}</h5>
-              <div className="contact-details">
-                <div className="contact-item">
-                  <label>Email:</label>
-                  <a href={`mailto:${targetUser.email}`}>{targetUser.email}</a>
+              
+              {!shareConfirmed && (
+                <div className="share-notice">
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="info-icon">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <p>Sharing your contact information will allow the other party to contact you directly.</p>
                 </div>
-                {targetUser.phone && (
-                  <div className="contact-item">
-                    <label>Phone:</label>
-                    <a href={`tel:${targetUser.phone}`}>{targetUser.phone}</a>
-                  </div>
-                )}
-                {targetUser.company_name && (
-                  <div className="contact-item">
-                    <label>Company:</label>
-                    <span>{targetUser.company_name}</span>
-                  </div>
-                )}
-                {targetUser.linkedin && (
-                  <div className="contact-item">
-                    <label>LinkedIn:</label>
-                    <a href={targetUser.linkedin} target="_blank" rel="noopener noreferrer">
-                      View Profile
-                    </a>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
             
-            <button onClick={onClose} className="btn btn-primary btn-block">
-              Close
-            </button>
-          </div>
+            {/* Other Party's Contact */}
+            <div className="contact-section other-contact">
+              <h4>{user.role === 'borrower' ? 'Funder' : 'Developer'} Contact Information</h4>
+              
+              {otherPartyContact ? (
+                <div className="contact-card">
+                  <div className="contact-row">
+                    <span className="contact-label">Name:</span>
+                    <span className="contact-value">
+                      {otherPartyContact.name}
+                      <button 
+                        onClick={() => copyToClipboard(otherPartyContact.name)}
+                        className="copy-btn"
+                        title="Copy"
+                      >
+                        📋
+                      </button>
+                    </span>
+                  </div>
+                  <div className="contact-row">
+                    <span className="contact-label">Email:</span>
+                    <span className="contact-value">
+                      {otherPartyContact.email}
+                      <button 
+                        onClick={() => copyToClipboard(otherPartyContact.email)}
+                        className="copy-btn"
+                        title="Copy"
+                      >
+                        📋
+                      </button>
+                    </span>
+                  </div>
+                  {otherPartyContact.phone && (
+                    <div className="contact-row">
+                      <span className="contact-label">Phone:</span>
+                      <span className="contact-value">
+                        {otherPartyContact.phone}
+                        <button 
+                          onClick={() => copyToClipboard(otherPartyContact.phone)}
+                          className="copy-btn"
+                          title="Copy"
+                        >
+                          📋
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                  {otherPartyContact.company_name && (
+                    <div className="contact-row">
+                      <span className="contact-label">Company:</span>
+                      <span className="contact-value">{otherPartyContact.company_name}</span>
+                    </div>
+                  )}
+                  {otherPartyContact.linkedin && (
+                    <div className="contact-row">
+                      <span className="contact-label">LinkedIn:</span>
+                      <a href={otherPartyContact.linkedin} target="_blank" rel="noopener noreferrer" className="contact-link">
+                        View Profile →
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="no-contact-shared">
+                  <div className="empty-icon">🔒</div>
+                  <p>Contact information will appear here once both parties have agreed to share.</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Actions */}
+            <div className="modal-actions">
+              {!shareConfirmed && !otherPartyContact ? (
+                <button onClick={handleShareContact} className="btn btn-primary">
+                  Share My Contact Information
+                </button>
+              ) : shareConfirmed && !otherPartyContact ? (
+                <div className="waiting-message">
+                  <span className="spinner-small"></span>
+                  Waiting for the other party to share their contact information...
+                </div>
+              ) : null}
+            </div>
+          </>
         )}
       </div>
     </Modal>
