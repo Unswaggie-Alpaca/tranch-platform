@@ -2519,6 +2519,8 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
   const { addNotification } = useNotifications();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [deals, setDeals] = useState([]);
+const [showDeals, setShowDeals] = useState(false);
+const [loadingDeals, setLoadingDeals] = useState(false);
 
   useEffect(() => {
     if (project.deal_count > 0 && project.payment_status === 'paid') {
