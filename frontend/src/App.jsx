@@ -2895,11 +2895,6 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
     try {
       await api.requestAccess(project.id, accessMessage.trim() || null);
       
-      await api.sendEmailNotification('access_request_received', project.borrower_id, {
-        project_title: project.title,
-        funder_name: 'A verified funder'
-      });
-      
       addNotification({
         type: 'success',
         title: 'Access Request Sent',
@@ -2923,11 +2918,6 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
   const handleEngage = async () => {
     try {
       const response = await api.createDeal(project.id, project.access_request_id);
-      
-      await api.sendEmailNotification('deal_room_created', project.borrower_id, {
-        project_title: project.title,
-        funder_name: 'A verified funder'
-      });
       
       addNotification({
         type: 'success',
@@ -8104,18 +8094,40 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     );
   }
   
-  // No proposal yet - show waiting message for borrowers
+  // No proposal yet - show appropriate message based on role
   if (!proposal) {
+    if (userRole === 'borrower') {
+      return (
+        <div className="proposal-section">
+          <div className="content-card">
+            <h3>Indicative Quotes</h3>
+            <div className="empty-state">
+              <p><strong>No submissions yet</strong></p>
+              <p className="text-muted">The funder will submit an indicative quote for your review.</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // For funders, this case is already handled above
+    return null;
+  }
+  
+  // Validate proposal data exists and has required fields
+  if (!proposal || !proposal.loan_amount || !proposal.interest_rate || !proposal.loan_term) {
     return (
       <div className="proposal-section">
         <div className="content-card">
-          <h3>Awaiting Proposal</h3>
-          <p>No proposals have been submitted yet. The funder will submit an indicative quote for your review.</p>
+          <h3>Indicative Quotes</h3>
+          <div className="empty-state">
+            <p><strong>Invalid proposal data</strong></p>
+            <p className="text-muted">Unable to display proposal details.</p>
+          </div>
         </div>
       </div>
     );
   }
-  
+
   // Show the proposal details
   return (
     <div className="proposal-section">
