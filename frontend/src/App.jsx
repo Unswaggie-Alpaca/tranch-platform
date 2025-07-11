@@ -11241,13 +11241,15 @@ const SubscriptionModal = ({ isOpen, onClose, onSuccess }) => {
   );
 };
 
-// Subscription Form Component
+// ================================================
+// CLIENT SIDE - Updated SubscriptionForm
+// ================================================
+
 const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
   const api = useApi();
   const stripe = useStripe();
   const elements = useElements();
   const { addNotification } = useNotifications();
-  const { refreshUser } = useApp();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -11266,35 +11268,33 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
       if (error) throw new Error(error.message);
 
       // Create subscription
-      const { subscription_id, client_secret, status } = await api.createSubscription(paymentMethod.id);
+      const response = await api.createSubscription(paymentMethod.id);
       
-      if (status === 'pending') {
+      if (response.status === 'success') {
+        // Payment already succeeded on server
         addNotification({
-          type: 'info',
-          title: 'Subscription Processing',
-          message: 'Your subscription payment is being processed. Please refresh the page in a few moments to see your active subscription.'
+          type: 'success',
+          title: 'Subscription Active',
+          message: 'Your subscription has been activated successfully!'
         });
-        
-        // Close modal and let user manually refresh
         onSuccess();
-        setProcessing(false);
-        return;
+      } else if (response.status === 'requires_action' && response.client_secret) {
+        // 3D Secure required
+        const result = await stripe.confirmCardPayment(response.client_secret);
+        
+        if (result.error) {
+          throw new Error(result.error.message);
+        }
+        
+        addNotification({
+          type: 'success',
+          title: 'Subscription Active',
+          message: 'Your subscription has been activated successfully!'
+        });
+        onSuccess();
+      } else {
+        throw new Error('Unexpected response from server');
       }
-      
-      if (client_secret) {
-        // 3D Secure authentication required
-        const result = await stripe.confirmCardPayment(client_secret);
-        if (result.error) throw new Error(result.error.message);
-      }
-      
-      addNotification({
-        type: 'success',
-        title: 'Payment Successful',
-        message: 'Your subscription has been activated. Please refresh the page if needed.'
-      });
-      
-      onSuccess();
-      setProcessing(false);
       
     } catch (err) {
       addNotification({
@@ -11302,6 +11302,7 @@ const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
         title: 'Subscription Failed',
         message: err.message || 'Failed to activate subscription'
       });
+    } finally {
       setProcessing(false);
     }
   };
