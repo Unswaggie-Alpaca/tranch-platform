@@ -1028,41 +1028,6 @@ const FileUpload = ({ onUpload, accept, maxSize, multiple = false, disabled = fa
 // PAYMENT MODAL - Place this AFTER your utility functions but BEFORE Dashboard component
 // ===========================
 
-const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
-  const [processing, setProcessing] = useState(false);
-  
-  if (!isOpen) return null;
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Publish Project" size="medium">
-      <div className="payment-summary">
-        <h3>{project.title}</h3>
-        <p className="payment-description">
-          Publishing your project will make it visible to all verified funders on the platform.
-        </p>
-        <div className="payment-amount">
-          <span>Publishing Fee:</span>
-          <strong>{formatCurrency(499)}</strong>
-        </div>
-      </div>
-
-      <Elements stripe={stripePromise}>
-        <PaymentForm 
-          amount={499}
-          projectId={project.id}
-          onSuccess={onSuccess}
-          processing={processing}
-          setProcessing={setProcessing}
-        />
-      </Elements>
-
-      <div className="payment-security">
-        <span>🔒</span>
-        <p>Secured by Stripe. Your payment information is encrypted and secure.</p>
-      </div>
-    </Modal>
-  );
-};
 
 // Payment Form Component
 // In PaymentForm component, update the payment success handling:
@@ -5260,6 +5225,106 @@ const MyProjects = () => {
 };
 
 // ===========================
+// PAYMENT MODAL COMPONENT
+// ===========================
+
+const PaymentModal = ({ isOpen, onClose, project, onSuccess }) => {
+  const [processing, setProcessing] = useState(false);
+  const api = useApi();
+  const { addNotification } = useNotifications();
+  
+  const handlePayment = async () => {
+    setProcessing(true);
+    
+    try {
+      // Create checkout session
+      const response = await fetch('/api/payments/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ project_id: project.id })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error);
+      }
+      
+      // Redirect to Stripe Checkout
+      window.location.href = data.checkout_url;
+      
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: 'Payment Error',
+        message: error.message
+      });
+      setProcessing(false);
+    }
+  };
+  
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Publish Project" size="medium">
+      <div className="payment-summary">
+        <h3>{project.title}</h3>
+        <p className="payment-description">
+          Publishing your project will make it visible to all verified funders on the platform.
+        </p>
+        <div className="payment-amount">
+          <span>Publishing Fee:</span>
+          <strong>{formatCurrency(499)}</strong>
+        </div>
+      </div>
+
+      <button
+        onClick={handlePayment}
+        disabled={processing}
+        className="btn btn-primary btn-block"
+      >
+        {processing ? (
+          <>
+            <span className="spinner-small"></span>
+            Redirecting to payment...
+          </>
+        ) : (
+          'Proceed to Payment'
+        )}
+      </button>
+
+      <div className="payment-security">
+        <span>🔒</span>
+        <p>You'll be redirected to Stripe's secure checkout page</p>
+      </div>
+    </Modal>
+  );
+};
+
+// ========================================
+// Handle Success Page Return
+// ========================================
+
+// In your project view component, check for payment success
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const paymentStatus = urlParams.get('payment');
+  
+  if (paymentStatus === 'success') {
+    addNotification({
+      type: 'success',
+      title: 'Payment Successful!',
+      message: 'Your project is now under review and will be published once approved.'
+    });
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}, []);
+
+// ===========================
 // PROJECT DETAIL PAGE
 // ===========================
 
@@ -5840,12 +5905,14 @@ const tabs = [
        )}
      </div>
 
-     <PaymentModal 
-       isOpen={showPaymentModal}
-       onClose={() => setShowPaymentModal(false)}
-       project={project}
-       onSuccess={handlePaymentSuccess}
-     />
+     <Elements stripe={stripePromise}>
+       <PaymentModal 
+         isOpen={showPaymentModal}
+         onClose={() => setShowPaymentModal(false)}
+         project={project}
+         onSuccess={handlePaymentSuccess}
+       />
+     </Elements>
 
      {previewDocument && (
        <DocumentPreviewModal 
