@@ -2168,6 +2168,10 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
 });
 
 // Create subscription
+// ================================================
+// SERVER SIDE - Update your create-subscription endpoint
+// ================================================
+
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
   try {
     const { payment_method_id } = req.body;
@@ -2187,9 +2191,9 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       );
     });
     
-    const subscriptionAmount = parseInt(feeSettings?.setting_value || '29900'); // Default to $299 if not found
+    const subscriptionAmount = parseInt(feeSettings?.setting_value || '29900');
     
-    // Check if user already has a pending or active subscription payment
+    // Check for existing payments (keep your existing logic)
     const existingPayment = await new Promise((resolve, reject) => {
       db.get(
         `SELECT * FROM payments 
@@ -2209,24 +2213,26 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
       if (existingPayment.status === 'completed' || req.user.subscription_status === 'active') {
         return res.status(400).json({ error: 'Already have an active subscription' });
       }
-      // Return existing pending payment
-      return res.json({
-        subscription_id: existingPayment.stripe_payment_intent_id,
-        status: 'pending',
-        message: 'Subscription payment is being processed'
+      // Delete any pending subscription attempts
+      await new Promise((resolve, reject) => {
+        db.run(
+          'DELETE FROM payments WHERE id = ?',
+          [existingPayment.id],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
       });
     }
     
+    // Create or get customer (keep your existing logic)
     let customerId = req.user.stripe_customer_id;
     
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: req.user.email,
         name: req.user.name,
-        payment_method: payment_method_id,
-        invoice_settings: {
-          default_payment_method: payment_method_id,
-        },
         metadata: { 
           user_id: String(req.user.id),
           role: req.user.role
@@ -2241,99 +2247,219 @@ app.post('/api/payments/create-subscription', authenticateToken, requireRole(['f
           (err) => err ? reject(err) : resolve()
         );
       });
-    } else {
-      try {
-        // Attach payment method to existing customer
-        await stripe.paymentMethods.attach(payment_method_id, {
-          customer: customerId,
-        });
-      } catch (attachError) {
-        // If payment method is already attached, continue
-        if (attachError.code !== 'resource_already_attached') {
-          throw attachError;
-        }
-      }
-      
-      // Update default payment method
-      await stripe.customers.update(customerId, {
-        invoice_settings: {
-          default_payment_method: payment_method_id,
-        },
-      });
     }
 
-    // Generate idempotency key for subscription
-    const idempotencyKey = `subscription_user_${req.user.id}_${Date.now()}`;
-    
+    // Attach payment method to customer
+    await stripe.paymentMethods.attach(payment_method_id, {
+      customer: customerId,
+    });
+
+    // Set as default payment method
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: payment_method_id,
+      },
+    });
+
+    // OPTION 1: Create subscription that charges immediately
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: process.env.STRIPE_FUNDER_MONTHLY_PRICE_ID.trim() }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: { 
-        save_default_payment_method: 'on_subscription' 
+      payment_settings: {
+        payment_method_types: ['card'],
+        save_default_payment_method: 'on_subscription'
       },
-      expand: ['latest_invoice.payment_intent'],
-      metadata: {
-        user_id: String(req.user.id),
-        user_email: req.user.email
+      payment_behavior: 'default_incomplete',
+      expand: ['latest_invoice.payment_intent']
+    });
+
+    // IMPORTANT: Confirm the payment intent immediately
+    if (subscription.latest_invoice.payment_intent) {
+      const paymentIntent = await stripe.paymentIntents.confirm(
+        subscription.latest_invoice.payment_intent.id,
+        {
+          payment_method: payment_method_id
+        }
+      );
+
+      if (paymentIntent.status === 'succeeded') {
+        // Payment succeeded immediately
+        await new Promise((resolve, reject) => {
+          db.run(
+            'INSERT INTO payments (user_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?)',
+            [req.user.id, paymentIntent.id, subscriptionAmount, 'subscription', 'completed'],
+            function(err) {
+              if (err) reject(err);
+              else resolve(this.lastID);
+            }
+          );
+        });
+
+        // Store subscription info
+        await new Promise((resolve, reject) => {
+          db.run(
+            'INSERT OR REPLACE INTO user_subscriptions (user_id, stripe_subscription_id, stripe_customer_id) VALUES (?, ?, ?)',
+            [req.user.id, subscription.id, customerId],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+
+        // Update user status
+        await new Promise((resolve, reject) => {
+          db.run(
+            'UPDATE users SET subscription_status = ?, approved = 0 WHERE id = ?',
+            ['payment_pending', req.user.id],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+
+        return res.json({
+          subscription_id: subscription.id,
+          status: 'success',
+          message: 'Subscription payment successful'
+        });
+      } else if (paymentIntent.status === 'requires_action') {
+        // 3D Secure required
+        return res.json({
+          subscription_id: subscription.id,
+          client_secret: paymentIntent.client_secret,
+          status: 'requires_action'
+        });
       }
-    }, {
-      idempotencyKey: idempotencyKey
-    });
-
-    // Create payment record with pending status - store subscription ID separately
-    await new Promise((resolve, reject) => {
-      db.run(
-        'INSERT INTO payments (user_id, stripe_payment_intent_id, amount, payment_type, status) VALUES (?, ?, ?, ?, ?)',
-        [req.user.id, subscription.latest_invoice.payment_intent.id, subscriptionAmount, 'subscription', 'pending'],
-        function(err) {
-          if (err) reject(err);
-          else resolve(this.lastID);
-        }
-      );
-    });
-
-    // Store subscription ID in user_subscriptions table
-    await new Promise((resolve, reject) => {
-      db.run(
-        'INSERT OR REPLACE INTO user_subscriptions (user_id, stripe_subscription_id, stripe_customer_id) VALUES (?, ?, ?)',
-        [req.user.id, subscription.id, customerId],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        }
-      );
-    });
-
-    // Update user subscription status to payment_pending (requires admin approval)
-    await new Promise((resolve, reject) => {
-      db.run(
-        'UPDATE users SET subscription_status = ?, approved = 0 WHERE id = ?',
-        ['payment_pending', req.user.id],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        }
-      );
-    });
-
-    const response = {
-      subscription_id: subscription.id,
-      status: 'pending'
-    };
-
-    if (subscription.latest_invoice?.payment_intent?.client_secret) {
-      response.client_secret = subscription.latest_invoice.payment_intent.client_secret;
     }
 
-    res.json(response);
+    // Shouldn't reach here
+    throw new Error('Failed to process subscription payment');
+
   } catch (error) {
     console.error('Subscription creation error:', error);
+    
+    // Clean up failed subscription if created
+    if (error.raw && error.raw.subscription) {
+      try {
+        await stripe.subscriptions.del(error.raw.subscription);
+      } catch (cleanupError) {
+        console.error('Failed to clean up subscription:', cleanupError);
+      }
+    }
+    
     res.status(500).json({ 
       error: error.message || 'Subscription creation failed' 
     });
   }
 });
+
+// ================================================
+// CLIENT SIDE - Updated SubscriptionForm
+// ================================================
+
+const SubscriptionForm = ({ onSuccess, processing, setProcessing }) => {
+  const api = useApi();
+  const stripe = useStripe();
+  const elements = useElements();
+  const { addNotification } = useNotifications();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!stripe || !elements) return;
+    
+    setProcessing(true);
+
+    try {
+      // Create payment method
+      const { error, paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+      });
+
+      if (error) throw new Error(error.message);
+
+      // Create subscription
+      const response = await api.createSubscription(paymentMethod.id);
+      
+      if (response.status === 'success') {
+        // Payment already succeeded on server
+        addNotification({
+          type: 'success',
+          title: 'Subscription Active',
+          message: 'Your subscription has been activated successfully!'
+        });
+        onSuccess();
+      } else if (response.status === 'requires_action' && response.client_secret) {
+        // 3D Secure required
+        const result = await stripe.confirmCardPayment(response.client_secret);
+        
+        if (result.error) {
+          throw new Error(result.error.message);
+        }
+        
+        addNotification({
+          type: 'success',
+          title: 'Subscription Active',
+          message: 'Your subscription has been activated successfully!'
+        });
+        onSuccess();
+      } else {
+        throw new Error('Unexpected response from server');
+      }
+      
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Subscription Failed',
+        message: err.message || 'Failed to activate subscription'
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="card-element-container">
+        <CardElement 
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                  color: '#aab7c4',
+                },
+              },
+            },
+          }}
+        />
+      </div>
+      
+      <button 
+        type="submit" 
+        disabled={processing || !stripe}
+        className="btn btn-primary btn-block"
+      >
+        {processing ? (
+          <>
+            <span className="spinner-small"></span>
+            Processing...
+          </>
+        ) : (
+          'Start Subscription - $299/month'
+        )}
+      </button>
+      
+      <div className="subscription-terms">
+        <p>By subscribing, you agree to our terms of service. Cancel anytime.</p>
+      </div>
+    </form>
+  );
+};
 
 // Cancel subscription
 app.post('/api/payments/cancel-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
