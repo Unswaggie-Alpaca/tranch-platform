@@ -1995,6 +1995,11 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
 // ================================
 
 // Create project payment
+
+// ================================================
+// SERVER CHANGES - Replace your existing endpoint
+// ================================================
+
 app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
   const { project_id } = req.body;
   
@@ -2049,11 +2054,8 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
         return res.status(400).json({ error: 'Project already paid for' });
       }
       
-      // Check if existing payment intent is stale (older than 1 hour)
-      const paymentAge = Date.now() - new Date(existingPayment.created_at).getTime();
-      const ONE_HOUR = 60 * 60 * 1000;
-      
-      if (existingPayment.stripe_payment_intent_id && paymentAge < ONE_HOUR) {
+      // For ANY pending payment, check if it actually succeeded in Stripe
+      if (existingPayment.stripe_payment_intent_id) {
         try {
           const paymentIntent = await stripe.paymentIntents.retrieve(
             existingPayment.stripe_payment_intent_id
@@ -2088,23 +2090,13 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
               message: 'Payment already completed, pending admin review'
             });
           }
-          
-          // Return existing valid payment intent
-          if (paymentIntent.status === 'requires_payment_method' || 
-              paymentIntent.status === 'requires_confirmation') {
-            return res.json({
-              client_secret: paymentIntent.client_secret,
-              payment_intent_id: paymentIntent.id,
-              amount: existingPayment.amount,
-              status: 'existing'
-            });
-          }
         } catch (stripeError) {
           console.error('Failed to retrieve payment intent:', stripeError);
         }
       }
       
-      // Delete stale payment record
+      // ALWAYS delete any pending payment record to start fresh
+      console.log('Deleting existing pending payment record:', existingPayment.id);
       await new Promise((resolve, reject) => {
         db.run(
           'DELETE FROM payments WHERE id = ?',
@@ -2174,7 +2166,6 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
     res.status(500).json({ error: 'Payment creation failed' });
   }
 });
-
 
 // Create subscription
 app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
