@@ -3943,14 +3943,6 @@ app.post('/api/deals', authenticateToken, (req, res) => {
               return res.status(500).json({ error: 'Database error' });
             }
 
-            if (existingDeal) {
-              db.run('ROLLBACK');
-              return res.status(409).json({ 
-                error: 'Deal already exists', 
-                deal_id: existingDeal.id 
-              });
-            }
-
             // Create the deal - each funder gets their own deal room
             const dealId = generateId();
             db.run(
