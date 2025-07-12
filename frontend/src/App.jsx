@@ -587,14 +587,24 @@ const NotificationProvider = ({ children }) => {
     setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
-  const markAllAsRead = () => {
+   const markAllAsRead = async () => {
     // Mark all as read in the backend
-    notifications.filter(n => !n.read).forEach(n => {
-      api.put(`/notifications/${n.id}/read`).catch(console.error);
-    });
+    const unreadNotifications = notifications.filter(n => !n.read);
     
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    setUnreadCount(0);
+    // Use Promise.all to mark all notifications as read concurrently
+    try {
+      await Promise.all(
+        unreadNotifications.map(n => 
+          api.markNotificationRead(n.id)
+        )
+      );
+      
+      // Update local state after successful API calls
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+    }
   };
 
   const value = {
@@ -3005,7 +3015,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
           )}
         </div>
       </div>
-
+          
       {showPaymentModal && (
         <PaymentModal 
           isOpen={showPaymentModal}
@@ -3018,7 +3028,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
         />
       )}
     </>
-  );
+    );
 };
 
 // Funder Project Card Component
