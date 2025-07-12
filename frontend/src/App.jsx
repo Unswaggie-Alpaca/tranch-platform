@@ -3059,18 +3059,14 @@ const FunderProjectCard = ({ project, onProjectUpdate }) => {
     try {
       const response = await api.createDeal(project.id, project.access_request_id);
       
-      await api.sendEmailNotification('deal_room_created', project.borrower_id, {
-        project_title: project.title,
-        funder_name: 'A verified funder'
-      });
+      // Navigate immediately to the deal room
+      navigate(`/deals/${response.deal_id}`);
       
       addNotification({
         type: 'success',
         title: 'Deal Room Created',
         message: 'Successfully created deal room'
       });
-      
-      navigate(`/project/${project.id}/deal/${response.deal_id}`);
     } catch (err) {
       addNotification({
         type: 'error',
@@ -7070,12 +7066,22 @@ const MessagesPage = () => {
   const handleApproveAccess = async (requestId) => {
     try {
       await api.approveAccessRequest(requestId);
+      
+      // Update the conversation status locally
+      setConversations(prev => prev.map(conv => 
+        conv.id === requestId ? { ...conv, status: 'approved' } : conv
+      ));
+      
+      // Update selected conversation if it's the current one
+      if (selectedConversation?.id === requestId) {
+        setSelectedConversation(prev => ({ ...prev, status: 'approved' }));
+      }
+      
       addNotification({
         type: 'success',
         title: 'Access Approved',
         message: 'Funder now has access to full project details'
       });
-      fetchConversations();
     } catch (err) {
       addNotification({
         type: 'error',
@@ -7088,12 +7094,22 @@ const MessagesPage = () => {
   const handleDeclineAccess = async (requestId) => {
     try {
       await api.declineAccessRequest(requestId);
+      
+      // Update the conversation status locally
+      setConversations(prev => prev.map(conv => 
+        conv.id === requestId ? { ...conv, status: 'declined' } : conv
+      ));
+      
+      // Update selected conversation if it's the current one
+      if (selectedConversation?.id === requestId) {
+        setSelectedConversation(prev => ({ ...prev, status: 'declined' }));
+      }
+      
       addNotification({
         type: 'info',
         title: 'Access Declined',
         message: 'Access request has been declined'
       });
-      fetchConversations();
     } catch (err) {
       addNotification({
         type: 'error',
