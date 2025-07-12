@@ -4820,6 +4820,10 @@ app.get('/api/deals/:id/proposal', authenticateToken, (req, res) => {
             console.error('Proposal fetch error:', err);
             return res.status(500).json({ error: 'Failed to fetch proposal' });
           }
+          // Return empty object if no proposal found instead of null
+          if (!proposal) {
+            return res.json({});
+          }
           res.json(proposal);
         }
       );
@@ -4834,7 +4838,14 @@ app.post('/api/deals/:id/proposals', authenticateToken, requireRole(['funder']),
 
   // Validate required fields
   if (!loan_amount || !interest_rate || !loan_term) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    return res.status(400).json({ 
+      error: 'Missing required fields',
+      details: {
+        loan_amount: !loan_amount ? 'Required' : 'OK',
+        interest_rate: !interest_rate ? 'Required' : 'OK',
+        loan_term: !loan_term ? 'Required' : 'OK'
+      }
+    });
   }
 
   db.get(
