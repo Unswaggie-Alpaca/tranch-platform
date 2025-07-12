@@ -1759,18 +1759,44 @@ app.post('/api/access-requests', authenticateToken, requireRole(['funder']), (re
         return res.status(400).json({ error: 'Access request already exists' });
       }
 
-      db.run(
-        'INSERT INTO access_requests (project_id, funder_id, initial_message) VALUES (?, ?, ?)',
-        [project_id, req.user.id, initial_message],
-        function(err) {
-          if (err) {
-            console.error('Access request creation error:', err);
-            return res.status(500).json({ error: 'Failed to create access request' });
+      // Get project details to notify borrower
+      db.get(
+        'SELECT borrower_id, title FROM projects WHERE id = ?',
+        [project_id],
+        async (err, project) => {
+          if (err || !project) {
+            return res.status(404).json({ error: 'Project not found' });
           }
-          res.status(201).json({ 
-            message: 'Access request submitted',
-            request_id: this.lastID
-          });
+          
+          db.run(
+            'INSERT INTO access_requests (project_id, funder_id, initial_message) VALUES (?, ?, ?)',
+            [project_id, req.user.id, initial_message],
+            async function(err) {
+              if (err) {
+                console.error('Access request creation error:', err);
+                return res.status(500).json({ error: 'Failed to create access request' });
+              }
+              
+              const requestId = this.lastID;
+              
+              // Create notification for borrower
+              try {
+                await createNotification(
+                  project.borrower_id,
+                  'access_request',
+                  `${req.user.name} has requested access to "${project.title}"`,
+                  requestId
+                );
+              } catch (notifErr) {
+                console.error('Failed to create notification:', notifErr);
+              }
+              
+              res.status(201).json({ 
+                message: 'Access request submitted',
+                request_id: requestId
+              });
+            }
+          );
         }
       );
     }
@@ -1845,11 +1871,24 @@ app.put('/api/access-requests/:id/approve', authenticateToken, requireRole(['bor
       db.run(
         'UPDATE access_requests SET status = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?',
         ['approved', requestId],
-        (err) => {
+        async (err) => {
           if (err) {
             console.error('Access request approval error:', err);
             return res.status(500).json({ error: 'Failed to approve request' });
           }
+          
+          // Create notification for funder
+          try {
+            await createNotification(
+              request.funder_id,
+              'access_granted',
+              `Your access request for "${request.project_title}" has been approved!`,
+              request.project_id
+            );
+          } catch (notifErr) {
+            console.error('Failed to create notification:', notifErr);
+          }
+          
           res.json({ message: 'Access request approved' });
         }
       );
@@ -2480,6 +2519,28 @@ app.post('/api/payments/update-payment-method', authenticateToken, requireRole([
 });
 
 // ================================
+// NOTIFICATION HELPER FUNCTIONS
+// ================================
+
+const createNotification = (userId, type, message, relatedId = null) => {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO notifications (user_id, type, message, related_id) 
+       VALUES (?, ?, ?, ?)`,
+      [userId, type, message, relatedId],
+      function(err) {
+        if (err) {
+          console.error('Failed to create notification:', err);
+          reject(err);
+        } else {
+          resolve(this.lastID);
+        }
+      }
+    );
+  });
+};
+
+// ================================
 // ADMIN ROUTES
 // ================================
 
@@ -2503,17 +2564,39 @@ app.get('/api/admin/users', authenticateToken, requireRole(['admin']), (req, res
 app.put('/api/admin/users/:id/approve', authenticateToken, requireRole(['admin']), (req, res) => {
   const userId = req.params.id;
 
-  db.run(
-    'UPDATE users SET approved = TRUE, verification_status = ? WHERE id = ?', 
-    ['verified', userId], 
-    (err) => {
-      if (err) {
-        console.error('User approval error:', err);
-        return res.status(500).json({ error: 'Failed to approve user' });
-      }
-      res.json({ message: 'User approved successfully' });
+  // First get user details to check role
+  db.get('SELECT * FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err || !user) {
+      return res.status(404).json({ error: 'User not found' });
     }
-  );
+
+    db.run(
+      'UPDATE users SET approved = TRUE, verification_status = ? WHERE id = ?', 
+      ['verified', userId], 
+      async (err) => {
+        if (err) {
+          console.error('User approval error:', err);
+          return res.status(500).json({ error: 'Failed to approve user' });
+        }
+        
+        // Create notification for funder accounts
+        if (user.role === 'funder') {
+          try {
+            await createNotification(
+              userId,
+              'account_approved',
+              'Your account has been approved! You can now browse projects and submit offers.',
+              null
+            );
+          } catch (notifErr) {
+            console.error('Failed to create notification:', notifErr);
+          }
+        }
+        
+        res.json({ message: 'User approved successfully' });
+      }
+    );
+  });
 });
 
 // Get admin stats
@@ -2972,6 +3055,14 @@ app.post('/api/admin/approve-project/:projectId', authenticateToken, requireRole
       project_id: project.id,
       admin_action: true
     });
+    
+    // Create in-app notification for borrower
+    await createNotification(
+      project.borrower_id,
+      'project_approved',
+      `Your project "${project.title}" has been approved and is now live!`,
+      projectId
+    );
     
     res.json({ 
       message: 'Project approved and published',
@@ -3980,13 +4071,12 @@ app.post('/api/deals', authenticateToken, (req, res) => {
                   const dealId = this.lastID;
                   
                   // Send notification to borrower
-                  db.run(
-                    'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
-                    [accessRequest.borrower_id, 'deal_created', `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, dealId],
-                    (notifErr) => {
-                      if (notifErr) console.error('Notification error:', notifErr);
-                    }
-                  );
+                  createNotification(
+                    accessRequest.borrower_id, 
+                    'deal_engagement', 
+                    `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, 
+                    dealId
+                  ).catch(err => console.error('Failed to create notification:', err));
                   
                   db.run('COMMIT');
                   res.status(201).json({ 
@@ -4476,9 +4566,18 @@ app.post('/api/deals/:id/quotes', authenticateToken, requireRole(['funder']), (r
             return res.status(500).json({ error: 'Failed to create quote' });
           }
 
+          // Create notification for borrower
+          const quoteId = this.lastID;
+          createNotification(
+            deal.borrower_id,
+            'proposal_received',
+            `You have received a funding offer from ${req.user.name}`,
+            dealId
+          ).catch(err => console.error('Failed to create notification:', err));
+
           res.status(201).json({
             message: 'Quote submitted successfully',
-            quote_id: this.lastID
+            quote_id: quoteId
           });
         }
       );
@@ -4708,14 +4807,17 @@ app.post('/api/deals/:id/proposals', authenticateToken, requireRole(['funder']),
           }
 
           // Create notification for borrower
-          db.run(
-            'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
-            [deal.borrower_id, 'offer', 'You have received a funding offer', dealId]
-          );
+          const proposalId = this.lastID;
+          createNotification(
+            deal.borrower_id,
+            'proposal_received',
+            `You have received a funding offer from ${req.user.name}`,
+            dealId
+          ).catch(err => console.error('Failed to create notification:', err));
 
           res.status(201).json({
             message: 'Proposal submitted successfully',
-            proposal_id: this.lastID
+            proposal_id: proposalId
           });
         }
       );
@@ -4763,10 +4865,12 @@ app.put('/api/proposals/:id/respond', authenticateToken, requireRole(['borrower'
           }
 
           // Create notification for funder
-          db.run(
-            'INSERT INTO notifications (user_id, type, message, related_id) VALUES (?, ?, ?, ?)',
-            [proposal.funder_id, 'offer_response', `Your offer has been ${status}`, proposal.deal_id]
-          );
+          createNotification(
+            proposal.funder_id,
+            'proposal_response',
+            `Your offer has been ${status}`,
+            proposal.deal_id
+          ).catch(err => console.error('Failed to create notification:', err));
 
           res.json({ message: `Proposal ${status} successfully` });
         }
