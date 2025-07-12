@@ -7826,7 +7826,6 @@ td {
   cursor: not-allowed;
   transform: none;
 }
-}
 
 /* Large monitor - scale proportionally */
 @media (min-width: 1920px) {
