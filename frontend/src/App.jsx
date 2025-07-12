@@ -3002,7 +3002,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                 Publish
               </button>
             </>
-          
+          )}
         </div>
       </div>
 
