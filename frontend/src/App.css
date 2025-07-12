@@ -4715,6 +4715,7 @@ label .required {
   margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5220,8 +5221,8 @@ label .required {
   font-weight: 600;
   color: var(--gray-900);
   font-size: 0.9375rem;
-  truncate: ellipsis;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -5638,82 +5639,64 @@ label .required {
 
 .ai-message {
   display: flex;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  flex-direction: column;
+  margin-bottom: 1.25rem;
   animation: messageIn 0.3s ease-out;
-  position: relative;
+  align-items: flex-start;
 }
 
 .ai-message.user {
+  align-items: flex-end;
+}
+
+/* Remove the ::before labels - they're causing layout issues */
+
+/* Remove avatar styling - not needed for chat interface */
+
+.ai-message-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.ai-message.user .ai-message-header {
   flex-direction: row-reverse;
 }
 
-/* Add message sender labels */
-.ai-message::before {
-  content: attr(data-sender);
-  position: absolute;
-  top: -18px;
-  font-size: 11px;
-  color: #64748b;
+.message-sender {
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--gray-700) !important;
 }
 
-.ai-message.user::before {
-  content: 'You';
-  right: 0;
-}
-
-.ai-message.ai::before {
-  content: 'AI Assistant';
-  left: 50px;
-}
-
-.message-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-full);
-  background: var(--gradient-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.ai-message.ai .message-avatar {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 2px solid #667eea;
-  font-size: 1rem;
-}
-
-.ai-message.user .message-avatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+.message-time {
+  color: var(--gray-500);
+  font-size: 0.75rem;
 }
 
 .message-text {
   background: white;
   padding: 1rem 1.25rem;
-  border-radius: var(--radius-lg);
-  max-width: 70%;
+  border-radius: 18px;
+  max-width: 85%;
   line-height: 1.6;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--gray-100);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--gray-200);
+  word-wrap: break-word;
 }
 
 .ai-message.user .message-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: #667eea;
+  color: white !important; /* Ensure user text is always white */
   border: none;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  border-radius: 18px 18px 4px 18px;
 }
 
 .ai-message.ai .message-text {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 18px 18px 18px 4px;
 }
 
 .thinking-indicator {
@@ -5722,21 +5705,44 @@ label .required {
   padding: 1rem;
 }
 
-.thinking-indicator span {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  background: var(--gray-400);
-  animation: thinking 1.4s infinite;
+/* Typing indicator styling */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px;
+  background: #f1f5f9;
+  border-radius: 18px 18px 18px 4px;
+  width: fit-content;
 }
 
-.thinking-indicator span:nth-child(2) {
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #94a3b8;
+  border-radius: 50%;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
   animation-delay: 0.2s;
 }
 
-.thinking-indicator span:nth-child(3) {
+.typing-indicator span:nth-child(3) {
   animation-delay: 0.4s;
 }
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+/* Removed duplicate thinking-indicator styles - using typing-indicator instead */
 
 @keyframes thinking {
   0%, 60%, 100% {
@@ -5780,7 +5786,7 @@ label .required {
 /* AI Message Formatting */
 .ai-message.ai .message-text {
   line-height: 1.7;
-  color: var(--gray-800);
+  color: var(--gray-800) !important; /* Ensure AI text is always readable */
 }
 
 .ai-message.ai .message-text p {
@@ -7762,8 +7768,10 @@ td {
   
   .broker-ai-header h3 {
     font-size: 16px;
+    color: white !important; /* Force white color */
   }
-  
+}
+
 /* BrokerAI Input Area - Complete Styling */
 .broker-ai-input {
   padding: 16px;
@@ -7820,36 +7828,28 @@ td {
 }
 }
 
-/* Large monitor fixes */
+/* Large monitor - scale proportionally */
 @media (min-width: 1920px) {
+  .broker-ai-floating {
+    width: 420px;
+    height: 700px;
+  }
+  
+  .broker-ai-input {
+    padding: 20px;
+    gap: 16px;
+  }
+  
+  .broker-ai-input input {
+    padding: 14px 20px;
+    font-size: 16px;
+    border-radius: 14px;
+  }
+  
   .broker-ai-input button {
     padding: 14px 28px;
     font-size: 16px;
     border-radius: 14px;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
-  }
-  
-  .broker-ai-input button:hover:not(:disabled) {
-    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-  }
-  
-  .broker-ai-floating {
-    width: 420px;
-  }
-  
-  .message-text {
-    font-size: 16px;
-    padding: 1.125rem 1.5rem;
-  }
-  
-  .ai-message {
-    gap: 1.25rem;
-    margin-bottom: 1.75rem;
-  }
-  
-  .message-avatar {
-    width: 44px;
-    height: 44px;
   }
 }
 
@@ -7881,7 +7881,7 @@ td {
 .broker-ai-controls button {
   background: rgba(255, 255, 255, 0.2);
   border: none;
-  color: white;
+  color: white !important;
   cursor: pointer;
   width: 32px;
   height: 32px;
@@ -7890,8 +7890,8 @@ td {
   justify-content: center;
   border-radius: 8px;
   transition: all 0.2s;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: normal;
   line-height: 1;
 }
 
@@ -7899,15 +7899,7 @@ td {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Style each button specifically */
-.broker-ai-controls button:first-child {
-  font-size: 20px;
-  padding-bottom: 4px; /* Adjust minimize button position */
-}
-
-.broker-ai-controls button:last-child {
-  font-size: 22px;
-}
+/* Removed duplicate broker-ai-controls button styles - consolidated above */
 
 /* Ensure the button stays accessible */
 .broker-ai-floating-button {
@@ -7935,10 +7927,19 @@ td {
 .broker-ai-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 16px 20px;
+  padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-radius: 16px 16px 0 0;
+}
+
+.broker-ai-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: white !important;
+  margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .broker-ai-messages {
@@ -7968,11 +7969,13 @@ td {
   background: #94a3b8;
 }
 
-/* Suggested questions styling */
+/* Welcome message styling */
 .ai-welcome {
   text-align: center;
-  padding: 20px;
+  padding: 40px 20px;
   color: #64748b;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .suggested-questions {

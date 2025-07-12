@@ -1444,7 +1444,6 @@ const BrokerAIFloating = () => {
   const api = useApi();
   const { user } = useApp();
   const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(true);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState(null);
@@ -1509,14 +1508,13 @@ const BrokerAIFloating = () => {
     }
   };
 
-  if (!user || isMinimized) {
+  if (!user) return null;
+
+  if (!isOpen) {
     return (
       <button 
         className="broker-ai-floating-button"
-        onClick={() => {
-          setIsMinimized(false);
-          setIsOpen(true);
-        }}
+        onClick={() => setIsOpen(true)}
       >
         <span className="ai-icon">
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1546,11 +1544,21 @@ const BrokerAIFloating = () => {
         ) : (
           messages.map(msg => (
             <div key={msg.id} className={`ai-message ${msg.sender}`}>
-              {msg.sender === 'ai' ? (
-                <ReactMarkdown>{msg.message}</ReactMarkdown>
-              ) : (
-                <p>{msg.message}</p>
-              )}
+              <div className="ai-message-header">
+                <span className="message-sender">
+                  {msg.sender === 'user' ? 'You' : 'AI Assistant'}
+                </span>
+                <span className="message-time">
+                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="message-text">
+                {msg.sender === 'ai' ? (
+                  <ReactMarkdown>{msg.message}</ReactMarkdown>
+                ) : (
+                  <p>{msg.message}</p>
+                )}
+              </div>
             </div>
           ))
         )}
@@ -1571,7 +1579,7 @@ const BrokerAIFloating = () => {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Ask me anything..."
           disabled={loading}
         />
