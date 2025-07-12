@@ -1544,6 +1544,50 @@ app.put('/api/projects/:id', authenticateToken, requireRole(['borrower']), (req,
   );
 });
 
+// Resubmit project for review (after rejection)
+app.post('/api/projects/:id/resubmit', authenticateToken, requireRole(['borrower']), (req, res) => {
+  const projectId = req.params.id;
+  
+  // First check if the project exists and belongs to the user and is rejected
+  db.get(
+    `SELECT * FROM projects 
+     WHERE id = ? AND borrower_id = ? AND submission_status = 'rejected'`,
+    [projectId, req.user.id],
+    (err, project) => {
+      if (err) {
+        console.error('Project lookup error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found or not eligible for resubmission' });
+      }
+      
+      // Update the project status for resubmission
+      db.run(
+        `UPDATE projects SET 
+         payment_status = 'payment_pending',
+         submission_status = 'pending_review',
+         visible = 0,
+         updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [projectId],
+        (err) => {
+          if (err) {
+            console.error('Project resubmit error:', err);
+            return res.status(500).json({ error: 'Failed to resubmit project' });
+          }
+          
+          res.json({ 
+            message: 'Project resubmitted successfully',
+            status: 'pending_review'
+          });
+        }
+      );
+    }
+  );
+});
+
 // ================================
 // DOCUMENT MANAGEMENT ROUTES
 // ================================
