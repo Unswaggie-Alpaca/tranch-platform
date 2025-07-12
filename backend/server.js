@@ -1752,8 +1752,8 @@ app.post('/api/access-requests', authenticateToken, requireRole(['funder']), (re
   }
 
   db.get(
-    'SELECT * FROM access_requests WHERE project_id = ? AND funder_id = ?', 
-    [project_id, req.user.id], 
+    'SELECT * FROM access_requests WHERE project_id = ? AND funder_id = ? AND status IN (?, ?)', 
+    [project_id, req.user.id, 'pending', 'approved'], 
     (err, existing) => {
       if (existing) {
         return res.status(400).json({ error: 'Access request already exists' });
@@ -3889,8 +3889,9 @@ app.post('/api/notifications/email', authenticateToken, async (req, res) => {
     
     res.json({ message: 'Email notification sent' });
   } catch (error) {
-    console.error('Email notification error:', error);
-    res.status(500).json({ error: 'Failed to send email notification' });
+    console.error('Email notification error (non-blocking):', error);
+    // Return success even if email fails - don't block functionality
+    res.json({ message: 'Notification processed (email may have failed)' });
   }
 });
 
