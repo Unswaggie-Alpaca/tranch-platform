@@ -1855,7 +1855,7 @@ app.put('/api/access-requests/:id/approve', authenticateToken, requireRole(['bor
   const requestId = req.params.id;
 
   db.get(
-    `SELECT ar.*, p.borrower_id FROM access_requests ar 
+    `SELECT ar.*, p.borrower_id, p.title as project_title FROM access_requests ar 
      JOIN projects p ON ar.project_id = p.id 
      WHERE ar.id = ?`,
     [requestId],
@@ -2523,6 +2523,8 @@ app.post('/api/payments/update-payment-method', authenticateToken, requireRole([
 // ================================
 
 const createNotification = (userId, type, message, relatedId = null) => {
+  console.log('Creating notification:', { userId, type, message, relatedId });
+  
   return new Promise((resolve, reject) => {
     db.run(
       `INSERT INTO notifications (user_id, type, message, related_id) 
@@ -2533,6 +2535,7 @@ const createNotification = (userId, type, message, relatedId = null) => {
           console.error('Failed to create notification:', err);
           reject(err);
         } else {
+          console.log('Notification created successfully with ID:', this.lastID);
           resolve(this.lastID);
         }
       }
@@ -4070,18 +4073,23 @@ app.post('/api/deals', authenticateToken, (req, res) => {
                 } else {
                   const dealId = this.lastID;
                   
-                  // Send notification to borrower
-                  createNotification(
-                    accessRequest.borrower_id, 
-                    'deal_engagement', 
-                    `${req.user.name} has engaged with your project: ${accessRequest.project_title}`, 
-                    dealId
-                  ).catch(err => console.error('Failed to create notification:', err));
-                  
-                  db.run('COMMIT');
-                  res.status(201).json({ 
-                    message: 'Deal created successfully',
-                    deal_id: dealId 
+                  // Get funder's name for notification
+                  db.get('SELECT name FROM users WHERE id = ?', [req.user.id], (userErr, funderUser) => {
+                    const funderName = funderUser?.name || 'A funder';
+                    
+                    // Send notification to borrower
+                    createNotification(
+                      accessRequest.borrower_id, 
+                      'deal_engagement', 
+                      `${funderName} has engaged with your project: ${accessRequest.project_title}`, 
+                      dealId
+                    ).catch(err => console.error('Failed to create notification:', err));
+                    
+                    db.run('COMMIT');
+                    res.status(201).json({ 
+                      message: 'Deal created successfully',
+                      deal_id: dealId 
+                    });
                   });
                 }
               }
@@ -4909,6 +4917,8 @@ app.get('/api/deals/:dealId/documents/:documentId', authenticateToken, (req, res
 
 // Get notifications
 app.get('/api/notifications', authenticateToken, (req, res) => {
+  console.log('Fetching notifications for user:', req.user.id);
+  
   db.all(
     `SELECT * FROM notifications 
      WHERE user_id = ? 
@@ -4920,6 +4930,7 @@ app.get('/api/notifications', authenticateToken, (req, res) => {
         console.error('Notifications fetch error:', err);
         return res.status(500).json({ error: 'Failed to fetch notifications' });
       }
+      console.log(`Found ${notifications.length} notifications for user ${req.user.id}`);
       res.json(notifications);
     }
   );
