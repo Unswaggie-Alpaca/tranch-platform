@@ -766,6 +766,8 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
     description TEXT,
     location TEXT NOT NULL,
     suburb TEXT NOT NULL,
+    state TEXT,
+    postcode TEXT,
     loan_amount INTEGER NOT NULL,
     interest_rate REAL,
     loan_term INTEGER,
@@ -1269,7 +1271,7 @@ app.put('/api/users/:id/profile', authenticateToken, async (req, res) => {
 // Create project
 app.post('/api/projects', authenticateToken, requireRole(['borrower']), (req, res) => {
   const {
-    title, description, location, suburb, loan_amount, interest_rate, loan_term, 
+    title, description, location, suburb, state, postcode, loan_amount, interest_rate, loan_term, 
     property_type, development_stage, total_project_cost, equity_contribution,
     land_value, construction_cost, expected_gdc, expected_profit,
     project_size_sqm, number_of_units, number_of_levels, car_spaces,
@@ -1307,16 +1309,16 @@ if (equity_contribution && equity_contribution < 0) {
 
   db.run(
     `INSERT INTO projects (
-      borrower_id, title, description, location, suburb, loan_amount, 
+      borrower_id, title, description, location, suburb, state, postcode, loan_amount, 
       interest_rate, loan_term, property_type, development_stage,
       total_project_cost, equity_contribution, land_value, construction_cost,
       expected_gdc, expected_profit, lvr, icr,
       project_size_sqm, number_of_units, number_of_levels, car_spaces,
       zoning, planning_permit_status, expected_start_date, expected_completion_date,
       market_risk_rating, construction_risk_rating, location_risk_rating
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      req.user.id, title, description, location, suburb, loan_amount,
+      req.user.id, title, description, location, suburb, state, postcode, loan_amount,
       interest_rate, loan_term, property_type, development_stage,
       total_project_cost, equity_contribution, land_value, construction_cost,
       expected_gdc, expected_profit, lvr, icr,
