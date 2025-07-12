@@ -1534,8 +1534,7 @@ const BrokerAIFloating = () => {
       <div className="broker-ai-header">
         <h3>BrokerAI Assistant</h3>
         <div className="broker-ai-controls">
-          <button onClick={() => setIsOpen(false)}>_</button>
-          <button onClick={() => setIsMinimized(true)}>×</button>
+          <button onClick={() => setIsOpen(false)} title="Minimize">_</button>
         </div>
       </div>
       
@@ -6673,11 +6672,17 @@ const MessagesPage = () => {
   }, [selectedConversation]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only scroll to bottom when new messages are added, not on initial load
+    if (messages.length > 0) {
+      const timeout = setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [messages.length]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   };
 
   const fetchConversations = async () => {

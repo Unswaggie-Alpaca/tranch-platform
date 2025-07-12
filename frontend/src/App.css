@@ -5641,10 +5641,33 @@ label .required {
   gap: 1rem;
   margin-bottom: 1.5rem;
   animation: messageIn 0.3s ease-out;
+  position: relative;
 }
 
 .ai-message.user {
   flex-direction: row-reverse;
+}
+
+/* Add message sender labels */
+.ai-message::before {
+  content: attr(data-sender);
+  position: absolute;
+  top: -18px;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ai-message.user::before {
+  content: 'You';
+  right: 0;
+}
+
+.ai-message.ai::before {
+  content: 'AI Assistant';
+  left: 50px;
 }
 
 .message-avatar {
@@ -5657,10 +5680,18 @@ label .required {
   justify-content: center;
   font-size: 1.25rem;
   flex-shrink: 0;
+  position: relative;
 }
 
 .ai-message.ai .message-avatar {
-  background: var(--gradient-dark);
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #667eea;
+  font-size: 1rem;
+}
+
+.ai-message.user .message-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
 .message-text {
@@ -5670,11 +5701,19 @@ label .required {
   max-width: 70%;
   line-height: 1.6;
   box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-100);
 }
 
 .ai-message.user .message-text {
-  background: var(--gradient-primary);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+  border: none;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.ai-message.ai .message-text {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 
 .thinking-indicator {
@@ -5780,6 +5819,73 @@ label .required {
   font-family: var(--font-mono);
   font-size: 0.875em;
   color: var(--primary-700);
+}
+
+/* Table styling within AI messages */
+.ai-message.ai .message-text table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  background: white;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.ai-message.ai .message-text table th {
+  background: #667eea;
+  color: white;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ai-message.ai .message-text table th:last-child {
+  border-right: none;
+}
+
+.ai-message.ai .message-text table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.ai-message.ai .message-text table td:last-child {
+  border-right: none;
+}
+
+.ai-message.ai .message-text table tr:last-child td {
+  border-bottom: none;
+}
+
+.ai-message.ai .message-text table tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+.ai-message.ai .message-text table tr:hover {
+  background: #f1f5f9;
+}
+
+/* Pre-formatted text and code blocks */
+.ai-message.ai .message-text pre {
+  background: #1a1a2e;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+.ai-message.ai .message-text pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
 }
 
 /* ===========================
@@ -7713,6 +7819,40 @@ td {
   transform: none;
 }
 }
+
+/* Large monitor fixes */
+@media (min-width: 1920px) {
+  .broker-ai-input button {
+    padding: 14px 28px;
+    font-size: 16px;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+  }
+  
+  .broker-ai-input button:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+  }
+  
+  .broker-ai-floating {
+    width: 420px;
+  }
+  
+  .message-text {
+    font-size: 16px;
+    padding: 1.125rem 1.5rem;
+  }
+  
+  .ai-message {
+    gap: 1.25rem;
+    margin-bottom: 1.75rem;
+  }
+  
+  .message-avatar {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* Smaller screens adjustment */
 @media (max-height: 700px) {
   .broker-ai-input {
@@ -7806,6 +7946,26 @@ td {
   overflow-y: auto;
   padding: 20px;
   background: #f8fafc;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.broker-ai-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.broker-ai-messages::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.broker-ai-messages::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.broker-ai-messages::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Suggested questions styling */
