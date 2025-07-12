@@ -1259,6 +1259,139 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
   );
 };
 
+// ===========================
+// DEAL ROOM SELECTOR MODAL
+// ===========================
+
+const DealRoomSelector = ({ isOpen, onClose, project, deals }) => {
+  const navigate = useNavigate();
+  const { user } = useApp();
+  const [loadingDeals, setLoadingDeals] = useState(false);
+  const [dealsList, setDealsList] = useState(deals || []);
+  const api = useApi();
+
+  useEffect(() => {
+    if (isOpen && !deals) {
+      fetchDeals();
+    } else if (deals) {
+      setDealsList(deals);
+    }
+  }, [isOpen, deals]);
+
+  const fetchDeals = async () => {
+    setLoadingDeals(true);
+    try {
+      const response = await api.getProjectDeals(project.id);
+      setDealsList(response);
+    } catch (err) {
+      console.error('Failed to fetch deals:', err);
+    } finally {
+      setLoadingDeals(false);
+    }
+  };
+
+  const handleDealSelect = (dealId) => {
+    navigate(`/project/${project.id}/deal/${dealId}`);
+    onClose();
+  };
+
+  const getStatusBadge = (deal) => {
+    if (deal.last_proposal_status === 'pending') {
+      return <span className="badge badge-warning">Pending Quote</span>;
+    }
+    if (deal.last_proposal_status === 'accepted') {
+      return <span className="badge badge-success">Quote Accepted</span>;
+    }
+    if (deal.unread_count > 0) {
+      return <span className="badge badge-info">{deal.unread_count} New</span>;
+    }
+    return null;
+  };
+
+  const formatLastActivity = (date) => {
+    if (!date) return 'No activity';
+    const d = new Date(date);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return d.toLocaleDateString();
+  };
+
+  return (
+    <Modal 
+      isOpen={isOpen} 
+      onClose={onClose} 
+      title={`Select Deal Room - ${project.title}`}
+      size="medium"
+    >
+      <div className="deal-selector-modal">
+        <p className="modal-subtitle">
+          You have {dealsList.length} active deal room{dealsList.length !== 1 ? 's' : ''} for this project.
+          Select one to continue:
+        </p>
+
+        {loadingDeals ? (
+          <div className="loading-spinner">Loading deal rooms...</div>
+        ) : (
+          <div className="deal-selector-list">
+            {dealsList.map(deal => (
+              <div 
+                key={deal.id} 
+                className="deal-selector-item"
+                onClick={() => handleDealSelect(deal.id)}
+              >
+                <div className="deal-selector-header">
+                  <div className="deal-selector-info">
+                    <h4 className="deal-selector-name">{deal.funder_name}</h4>
+                    <p className="deal-selector-company">{deal.funder_company || 'Independent Funder'}</p>
+                  </div>
+                  {getStatusBadge(deal)}
+                </div>
+                
+                <div className="deal-selector-details">
+                  <div className="deal-selector-stat">
+                    <span className="stat-label">Last Activity:</span>
+                    <span className="stat-value">{formatLastActivity(deal.last_activity_at)}</span>
+                  </div>
+                  {deal.last_proposal_amount && (
+                    <div className="deal-selector-stat">
+                      <span className="stat-label">Quote Amount:</span>
+                      <span className="stat-value">{formatCurrency(deal.last_proposal_amount)}</span>
+                    </div>
+                  )}
+                  {deal.last_message_preview && (
+                    <div className="deal-selector-message">
+                      <span className="message-preview">{deal.last_message_preview}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="deal-selector-actions">
+                  <button className="btn btn-primary btn-sm">
+                    Enter Deal Room
+                    <svg className="icon-arrow-right" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loadingDeals && dealsList.length === 0 && (
+          <div className="empty-state">
+            <p>No active deal rooms found for this project.</p>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};
 
 // ===========================
 // NAVIGATION COMPONENT
@@ -2801,6 +2934,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showDealSelector, setShowDealSelector] = useState(false);
   const [deals, setDeals] = useState([]);
   const [showDeals, setShowDeals] = useState(false);
   const [loadingDeals, setLoadingDeals] = useState(false);
@@ -2922,8 +3056,8 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                   onClick={() => {
                     if (project.deal_count === 1 && deals.length > 0) {
                       navigate(`/project/${project.id}/deal/${deals[0].id}`);
-                    } else {
-                      navigate(`/project/${project.id}`);
+                    } else if (project.deal_count > 1) {
+                      setShowDealSelector(true);
                     }
                   }}
                   className="btn-primary-small"
@@ -3025,6 +3159,15 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             setShowPaymentModal(false);
             if (onProjectUpdate) onProjectUpdate();
           }}
+        />
+      )}
+      
+      {showDealSelector && (
+        <DealRoomSelector
+          isOpen={showDealSelector}
+          onClose={() => setShowDealSelector(false)}
+          project={project}
+          deals={deals}
         />
       )}
     </>
@@ -8370,6 +8513,8 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [showCounterWizard, setShowCounterWizard] = useState(false);
+  const [showDeclineReason, setShowDeclineReason] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
   
   const handleAccept = async () => {
     setResponding(true);
@@ -8394,9 +8539,21 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
   };
   
   const handleDecline = async () => {
+    if (!declineReason.trim() && showDeclineReason) {
+      addNotification({
+        type: 'error',
+        title: 'Reason Required',
+        message: 'Please provide a reason for declining'
+      });
+      return;
+    }
+    
     setResponding(true);
     try {
-      await api.respondToProposal(proposal.id, { response: 'decline' });
+      await api.respondToProposal(proposal.id, { 
+        response: 'decline',
+        reason: declineReason.trim() 
+      });
       addNotification({
         type: 'info',
         title: 'Proposal Declined',
@@ -8412,6 +8569,8 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
     } finally {
       setResponding(false);
       setShowConfirmDialog(false);
+      setShowDeclineReason(false);
+      setDeclineReason('');
     }
   };
   
@@ -8584,7 +8743,10 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
       <ConfirmationDialog
         isOpen={showConfirmDialog}
         onClose={() => setShowConfirmDialog(false)}
-        onConfirm={confirmAction === 'accept' ? handleAccept : handleDecline}
+        onConfirm={confirmAction === 'accept' ? handleAccept : () => {
+          setShowConfirmDialog(false);
+          setShowDeclineReason(true);
+        }}
         title={confirmAction === 'accept' ? 'Accept Proposal' : 'Decline Proposal'}
         message={confirmAction === 'accept' 
           ? 'Are you sure you want to accept this funding proposal?' 
@@ -8592,23 +8754,66 @@ const ProposalSection = ({ deal, proposal, userRole, onShowQuoteWizard, onUpdate
         confirmText={confirmAction === 'accept' ? 'Accept' : 'Decline'}
         danger={confirmAction === 'decline'}
       />
+      
+      {showDeclineReason && (
+        <Modal 
+          isOpen={showDeclineReason} 
+          onClose={() => {
+            setShowDeclineReason(false);
+            setDeclineReason('');
+          }} 
+          title="Decline Proposal"
+          size="medium"
+        >
+          <div className="decline-reason-modal">
+            <p>Please provide a reason for declining this proposal:</p>
+            <textarea
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              placeholder="Enter your reason for declining..."
+              className="form-textarea"
+              rows={4}
+            />
+            <div className="modal-actions">
+              <button 
+                onClick={() => {
+                  setShowDeclineReason(false);
+                  setDeclineReason('');
+                }} 
+                className="btn btn-outline"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDecline} 
+                className="btn btn-danger"
+                disabled={!declineReason.trim() || responding}
+              >
+                {responding ? 'Declining...' : 'Confirm Decline'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
 
 // Add this component to your App.jsx file after the ProposalSection component
 
-const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
+const QuoteWizard = ({ dealId, projectId, onClose, onSuccess, existingProposal = null, mode = 'create' }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
-    loan_amount: '',
-    interest_rate: '',
-    loan_term: '',
-    establishment_fee: '',
-    other_fees: '',
-    conditions: ''
+    loan_amount: existingProposal?.loan_amount || '',
+    interest_rate: existingProposal?.interest_rate || '',
+    loan_term: existingProposal?.loan_term || '',
+    establishment_fee: existingProposal?.establishment_fee || '0',
+    other_fees: existingProposal?.other_fees || '0',
+    conditions: existingProposal?.conditions || '',
+    valid_until: existingProposal?.valid_until || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
   const api = useApi();
   const { addNotification } = useNotifications();
   
@@ -8630,38 +8835,83 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
   };
   
   const validateStep = (step) => {
+    const newErrors = {};
+    
     switch (step) {
       case 1:
-        if (!formData.loan_amount || !formData.interest_rate || !formData.loan_term) {
-          addNotification({
-            type: 'error',
-            title: 'Validation Error',
-            message: 'Please fill in all required fields'
-          });
-          return false;
+        if (!formData.loan_amount || parseFloat(formData.loan_amount) <= 0) {
+          newErrors.loan_amount = 'Loan amount is required and must be greater than 0';
         }
-        return true;
+        if (!formData.interest_rate || parseFloat(formData.interest_rate) <= 0) {
+          newErrors.interest_rate = 'Interest rate is required and must be greater than 0';
+        }
+        if (!formData.loan_term || parseInt(formData.loan_term) <= 0) {
+          newErrors.loan_term = 'Loan term is required and must be greater than 0';
+        }
+        break;
       case 2:
-        return true;
+        if (formData.establishment_fee && parseFloat(formData.establishment_fee) < 0) {
+          newErrors.establishment_fee = 'Establishment fee cannot be negative';
+        }
+        if (formData.other_fees && parseFloat(formData.other_fees) < 0) {
+          newErrors.other_fees = 'Other fees cannot be negative';
+        }
+        break;
       case 3:
-        return true;
-      default:
-        return true;
+        // Conditions are optional
+        break;
+      case 4:
+        // Review step - validate all
+        if (!formData.loan_amount || parseFloat(formData.loan_amount) <= 0) {
+          newErrors.loan_amount = 'Loan amount is required';
+        }
+        if (!formData.interest_rate || parseFloat(formData.interest_rate) <= 0) {
+          newErrors.interest_rate = 'Interest rate is required';
+        }
+        if (!formData.loan_term || parseInt(formData.loan_term) <= 0) {
+          newErrors.loan_term = 'Loan term is required';
+        }
+        break;
     }
+    
+    setErrors(newErrors);
+    
+    if (Object.keys(newErrors).length > 0) {
+      addNotification({
+        type: 'error',
+        title: 'Validation Error',
+        message: 'Please correct the errors before proceeding'
+      });
+      return false;
+    }
+    
+    return true;
   };
   
   const handleSubmit = async () => {
-    if (!validateStep(currentStep)) return;
+    if (!validateStep(4)) return; // Validate all fields
     
     setSubmitting(true);
     try {
-      await api.createProposal(dealId, formData);
+      // Format data for submission
+      const submissionData = {
+        loan_amount: parseFloat(formData.loan_amount),
+        interest_rate: parseFloat(formData.interest_rate),
+        loan_term: parseInt(formData.loan_term),
+        establishment_fee: parseFloat(formData.establishment_fee || 0),
+        other_fees: parseFloat(formData.other_fees || 0),
+        conditions: formData.conditions.trim(),
+        valid_until: formData.valid_until
+      };
+      
+      await api.createProposal(dealId, submissionData);
       onSuccess();
     } catch (err) {
+      console.error('Failed to submit proposal:', err);
       addNotification({
         type: 'error',
         title: 'Submission Failed',
-        message: 'Failed to submit indicative quote'
+        message: err.message || 'Failed to submit indicative quote. Please try again.'
       });
     } finally {
       setSubmitting(false);
@@ -8679,10 +8929,17 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
               <input
                 type="number"
                 value={formData.loan_amount}
-                onChange={(e) => setFormData(prev => ({ ...prev, loan_amount: e.target.value }))}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, loan_amount: e.target.value }));
+                  if (errors.loan_amount) {
+                    setErrors(prev => ({ ...prev, loan_amount: '' }));
+                  }
+                }}
                 placeholder="Enter loan amount"
+                className={errors.loan_amount ? 'error' : ''}
                 required
               />
+              {errors.loan_amount && <span className="error-message">{errors.loan_amount}</span>}
             </div>
             
             <div className="form-group">
@@ -8748,6 +9005,18 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess }) => {
                 placeholder="Enter any special conditions or requirements for this loan"
                 rows="5"
               />
+            </div>
+            
+            <div className="form-group">
+              <label>Quote Valid Until *</label>
+              <input
+                type="date"
+                value={formData.valid_until}
+                onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
+                min={new Date().toISOString().split('T')[0]}
+                required
+              />
+              <small>This quote will expire on the selected date</small>
             </div>
           </div>
         );
