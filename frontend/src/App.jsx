@@ -510,6 +510,48 @@ const AppProvider = ({ children }) => {
 const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
+  // Fetch notifications from API
+  const fetchNotifications = useCallback(async () => {
+    if (!isLoaded || !isSignedIn) return;
+    
+    try {
+      const response = await api.get('/notifications');
+      const notifs = response.data.map(n => ({
+        ...n,
+        timestamp: new Date(n.created_at),
+        title: getNotificationTitle(n.type),
+        read: n.read === 1
+      }));
+      setNotifications(notifs);
+      setUnreadCount(notifs.filter(n => !n.read).length);
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    }
+  }, [api, isLoaded, isSignedIn]);
+
+  // Fetch notifications on mount and periodically
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // Helper function to get notification title based on type
+  const getNotificationTitle = (type) => {
+    const titles = {
+      'project_approved': 'Project Approved',
+      'access_request': 'New Access Request',
+      'access_granted': 'Access Granted',
+      'deal_engagement': 'New Deal Engagement',
+      'proposal_received': 'New Proposal',
+      'proposal_response': 'Proposal Update',
+      'account_approved': 'Account Approved'
+    };
+    return titles[type] || 'Notification';
+  };
 
   const addNotification = (notification) => {
     const id = Date.now();
@@ -543,6 +585,11 @@ const NotificationProvider = ({ children }) => {
   };
 
   const markAllAsRead = () => {
+    // Mark all as read in the backend
+    notifications.filter(n => !n.read).forEach(n => {
+      api.put(`/notifications/${n.id}/read`).catch(console.error);
+    });
+    
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadCount(0);
   };
@@ -553,7 +600,8 @@ const NotificationProvider = ({ children }) => {
     addNotification,
     removeNotification,
     markAsRead,
-    markAllAsRead
+    markAllAsRead,
+    fetchNotifications
   };
 
   return (
@@ -1206,7 +1254,7 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
 const Navigation = () => {
   const api = useApi();
   const { user } = useApp();
-  const { notifications, unreadCount, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAllAsRead, markAsRead, fetchNotifications } = useNotifications();
   const { signOut } = useClerk();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1216,6 +1264,63 @@ const Navigation = () => {
   const profileRef = useRef(null);
   const notificationRef = useRef(null);
 
+  // Get notification icon based on type
+  const getNotificationIcon = (type) => {
+    const icons = {
+      'project_approved': '✓',
+      'access_request': '🔔',
+      'access_granted': '🔓',
+      'deal_engagement': '🤝',
+      'proposal_received': '📨',
+      'proposal_response': '📬',
+      'account_approved': '✅'
+    };
+    return (
+      <span className="notification-icon" style={{ marginRight: '0.5rem' }}>
+        {icons[type] || '📌'}
+      </span>
+    );
+  };
+
+  // Handle notification clicks
+  const handleNotificationClick = (notification) => {
+    // Mark notification as read locally and in backend
+    if (!notification.read) {
+      markAsRead(notification.id);
+      api.put(`/notifications/${notification.id}/read`)
+        .catch(err => console.error('Failed to mark notification as read:', err));
+    }
+    
+    // Navigate based on notification type
+    switch (notification.type) {
+      case 'project_approved':
+        navigate(`/projects/${notification.related_id}`);
+        break;
+      case 'access_request':
+        navigate('/access-requests');
+        break;
+      case 'access_granted':
+        navigate(`/projects/${notification.related_id}`);
+        break;
+      case 'deal_engagement':
+        navigate(`/deals/${notification.related_id}`);
+        break;
+      case 'proposal_received':
+        navigate(`/deals/${notification.related_id}`);
+        break;
+      case 'proposal_response':
+        navigate(`/deals/${notification.related_id}`);
+        break;
+      case 'account_approved':
+        navigate('/projects');
+        break;
+      default:
+        console.log('Unknown notification type:', notification.type);
+    }
+    
+    // Close notification dropdown
+    setShowNotifications(false);
+  };
 
   
    useEffect(() => {
@@ -1311,12 +1416,29 @@ const Navigation = () => {
               <div className="notification-dropdown">
                 <div className="notification-header">
                   <h3>Notifications</h3>
-                  <button onClick={() => {
-                    markAllAsRead();
-                    setShowNotifications(false);
-                  }}>
-                    Mark all read
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button 
+                      onClick={() => fetchNotifications()}
+                      title="Refresh notifications"
+                      style={{ 
+                        fontSize: '1.25rem',
+                        padding: '0.25rem',
+                        background: 'rgba(255, 255, 255, 0.2)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        color: 'white'
+                      }}
+                    >
+                      ↻
+                    </button>
+                    <button onClick={() => {
+                      markAllAsRead();
+                      setShowNotifications(false);
+                    }}>
+                      Mark all read
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="notification-list">
@@ -1329,9 +1451,15 @@ const Navigation = () => {
                       <div 
                         key={notification.id}
                         className={`notification-item ${notification.read ? 'read' : 'unread'}`}
+                        onClick={() => handleNotificationClick(notification)}
+                        style={{ cursor: 'pointer' }}
+                        data-type={notification.type}
                       >
                         <div className="notification-content">
-                          <strong>{notification.title}</strong>
+                          <strong>
+                            {getNotificationIcon(notification.type)}
+                            {notification.title}
+                          </strong>
                           <p>{notification.message}</p>
                           <span className="notification-time">
                             {formatTime(notification.timestamp)}
