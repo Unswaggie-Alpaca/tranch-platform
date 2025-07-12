@@ -22,10 +22,11 @@ db.all("PRAGMA table_info(projects)", (err, columns) => {
     process.exit(1);
   }
 
+  const hasCity = columns.some(col => col.name === 'city');
   const hasState = columns.some(col => col.name === 'state');
   const hasPostcode = columns.some(col => col.name === 'postcode');
 
-  if (hasState && hasPostcode) {
+  if (hasCity && hasState && hasPostcode) {
     console.log('Columns already exist, skipping migration');
     db.close();
     process.exit(0);
@@ -33,6 +34,18 @@ db.all("PRAGMA table_info(projects)", (err, columns) => {
 
   // Add columns if they don't exist
   const migrations = [];
+  
+  if (!hasCity) {
+    migrations.push(new Promise((resolve, reject) => {
+      db.run('ALTER TABLE projects ADD COLUMN city TEXT', (err) => {
+        if (err) reject(err);
+        else {
+          console.log('Added city column');
+          resolve();
+        }
+      });
+    }));
+  }
   
   if (!hasState) {
     migrations.push(new Promise((resolve, reject) => {
