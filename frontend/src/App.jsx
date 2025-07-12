@@ -12290,261 +12290,16 @@ const triggerHaptic = () => {
 const LandingPage = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isNavVisible, setIsNavVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
-
-  // Add swipe-away functionality for mobile only
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.innerWidth > 768) return; // Only on mobile
-      
-      const currentScrollY = window.scrollY;
-      
-      if (currentScrollY > lastScrollY && currentScrollY > 80) {
-        // Scrolling down
-        setIsNavVisible(false);
-      } else {
-        // Scrolling up
-        setIsNavVisible(true);
-      }
-      
-      setLastScrollY(currentScrollY);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, [lastScrollY]);
-
-  // Add this inside the LandingPage component, before the return statement
-  useEffect(() => {
-    // Handle swipe indicators
-    const handleScroll = (wrapper, indicators) => {
-      const scrollLeft = wrapper.scrollLeft;
-      const cardWidth = wrapper.firstChild.offsetWidth + 16; // card width + gap
-      const activeIndex = Math.round(scrollLeft / cardWidth);
-      
-      indicators.forEach((dot, index) => {
-        dot.classList.toggle('active', index === activeIndex);
-      });
-    };
-
-    const problemCards = document.querySelector('.problem-cards');
-    const problemDots = document.querySelectorAll('.problem-cards-wrapper .dot');
-    
-    const solutionCards = document.querySelector('.solution-cards');
-    const solutionDots = document.querySelectorAll('.solution-cards-wrapper .dot');
-    
-    if (problemCards && problemDots.length) {
-      problemCards.addEventListener('scroll', () => handleScroll(problemCards, problemDots));
-    }
-    
-    if (solutionCards && solutionDots.length) {
-      solutionCards.addEventListener('scroll', () => handleScroll(solutionCards, solutionDots));
-    }
-
-    // Add journey cards swipe functionality
-    const journeyContainer = document.querySelector('.user-journeys');
-    const journeyCards = document.querySelectorAll('.journey-path');
-    const indicators = document.querySelectorAll('.journey-indicators .indicator-dot');
-    
-    if (journeyContainer && journeyCards.length > 0) {
-      // Set initial active card
-      journeyCards[0]?.classList.add('active');
-      
-      const handleJourneyScroll = () => {
-        const containerRect = journeyContainer.getBoundingClientRect();
-        const containerCenter = containerRect.left + containerRect.width / 2;
-        
-        let closestCard = null;
-        let closestDistance = Infinity;
-        let activeIndex = 0;
-        
-        journeyCards.forEach((card, index) => {
-          const cardRect = card.getBoundingClientRect();
-          const cardCenter = cardRect.left + cardRect.width / 2;
-          const distance = Math.abs(containerCenter - cardCenter);
-          
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestCard = card;
-            activeIndex = index;
-          }
-          
-          card.classList.remove('active');
-        });
-        
-        if (closestCard) {
-          closestCard.classList.add('active');
-        }
-        
-        // Update indicators
-        indicators.forEach((dot, index) => {
-          dot.classList.toggle('active', index === activeIndex);
-        });
-      };
-      
-      // Snap to card on scroll end
-      let scrollTimeout;
-      journeyContainer.addEventListener('scroll', () => {
-        handleJourneyScroll();
-        
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          const activeCard = document.querySelector('.journey-path.active');
-          if (activeCard) {
-            activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-          }
-        }, 150);
-      });
-      
-      // Handle indicator clicks
-      indicators.forEach((dot, index) => {
-        dot.addEventListener('click', () => {
-          journeyCards[index]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-        });
-      });
-      
-      // Initial positioning
-      handleJourneyScroll();
-    }
-    
-    // Find this code in your useEffect and REPLACE it
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const targetId = this.getAttribute('href');
-        
-        // Special handling for pricing - scroll to journey section
-        if (targetId === '#pricing') {
-          const journeySection = document.querySelector('.user-journeys');
-          if (journeySection) {
-            const offset = window.innerWidth <= 768 ? 60 : 80;
-            const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
-            
-            window.scrollTo({
-              top: targetPosition,
-              behavior: 'smooth'
-            });
-            
-            // Highlight pricing after scroll
-            setTimeout(() => {
-              const pricingElements = document.querySelectorAll('.price-note');
-              pricingElements.forEach(el => {
-                el.style.animation = 'pulse 2s ease-out';
-              });
-            }, 500);
-          }
-        } else {
-          const target = document.querySelector(targetId);
-          if (target) {
-            const offset = window.innerWidth <= 768 ? 60 : 80;
-            const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
-            
-            window.scrollTo({
-              top: targetPosition,
-              behavior: 'smooth'
-            });
-          }
-        }
-        
-        // Trigger haptic feedback on mobile
-        if ('vibrate' in navigator) {
-          navigator.vibrate(10);
-        }
-      });
-    });
-  }, []);
 
   return (
     <div className="landing-page">
-      {/* Mobile Header with swipe-away */}
-      <div className={`mobile-header ${isNavVisible ? '' : 'hidden'}`}>
-        <div className="mobile-logo">Tranch</div>
-        <button 
-          className="mobile-menu-trigger"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Mobile Menu Dropdown */}
-      {mobileMenuOpen && (
-        <div className="landing-mobile-menu">
-          <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
-          <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
-          <a href="#pricing" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
-          <Link to="/login" className="btn btn-outline" onClick={() => setMobileMenuOpen(false)}>Sign In</Link>
-          <Link to="/register" className="btn btn-primary" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
-        </div>
-      )}
-
-      {/* Mobile Bottom Navigation */}
-      <nav className="mobile-bottom-nav">
-        <a href="#" className="nav-item active">
-          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-          <span className="nav-label">Home</span>
-        </a>
-        <a href="#features" className="nav-item">
-          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-          </svg>
-          <span className="nav-label">Features</span>
-        </a>
-        <a 
-          href="#pricing" 
-          className="nav-item"
-          onClick={(e) => {
-            e.preventDefault();
-            const journeySection = document.querySelector('.user-journeys');
-            if (journeySection) {
-              const offset = 60;
-              const targetPosition = journeySection.getBoundingClientRect().top + window.pageYOffset - offset;
-              window.scrollTo({
-                top: targetPosition,
-                behavior: 'smooth'
-              });
-            }
-          }}
-        >
-          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-          </svg>
-          <span className="nav-label">Pricing</span>
-        </a>
-        <Link to="/register" className="nav-item">
-          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="8.5" cy="7" r="4" />
-            <line x1="20" y1="8" x2="20" y2="14" />
-            <line x1="23" y1="11" x2="17" y2="11" />
-          </svg>
-          <span className="nav-label">Sign Up</span>
-        </Link>
-      </nav>
-
-      {/* Mobile Floating Action Button */}
-      <button className="mobile-fab">
-        <span>+</span>
-      </button>
-
       {/* Navigation */}
       <nav className="landing-nav">
         <div className="nav-container">
           <div className="nav-logo">
             <span className="logo-text">Tranch</span>
           </div>
-          <div className="nav-links desktop-only">
+          <div className="nav-links">
             <a href="#features">Features</a>
             <a href="#how-it-works">How it Works</a>
             <a href="#pricing">Pricing</a>
@@ -12577,20 +12332,19 @@ const LandingPage = () => {
         <div className="hero-container">
           <div className="hero-content">
             <h1 className="hero-title">
-              Connect Your Development<br />
-              <span className="gradient-text">With The Right Capital</span>
+              Connect Property Developers<br />
+              <span className="gradient-text">With Private Credit</span>
             </h1>
             <p className="hero-subtitle">
-              Tranch is Australia's premier marketplace connecting property developers 
-              with private credit funders. Streamline your funding process with our 
-              secure platform and intelligent matching system.
+              The intelligent marketplace transforming property finance in Australia. 
+              Secure funding faster with our verified network of private credit funders.
             </p>
             <div className="hero-actions">
               <Link to="/register" className="btn btn-primary btn-lg">
-                Start Your Project
+                List Your Project
               </Link>
               <Link to="/register?role=funder" className="btn btn-outline btn-lg">
-                Become a Funder
+                Access Deal Flow
               </Link>
             </div>
             <div className="hero-stats">
@@ -12604,322 +12358,136 @@ const LandingPage = () => {
               </div>
               <div className="stat">
                 <span className="stat-value">24-48hrs</span>
-                <span className="stat-label">Approval Time</span>
+                <span className="stat-label">Response Time</span>
               </div>
-            </div>
-          </div>
-          <div className="hero-visual">
-            <div className="floating-card card-1">
-              <h4>Luxury Apartments</h4>
-              <p>Brisbane CBD</p>
-              <span className="amount">$5.2M</span>
-            </div>
-            <div className="floating-card card-2">
-              <h4>Mixed Use Development</h4>
-              <p>Gold Coast</p>
-              <span className="amount">$8.7M</span>
-            </div>
-            <div className="floating-card card-3">
-              <h4>Townhouse Project</h4>
-              <p>Sunshine Coast</p>
-              <span className="amount">$3.4M</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Problem & Solution Section */}
-      <section id="features" className="problem-solution-section">
+      {/* Features Section */}
+      <section id="features" className="features-section">
         <div className="container">
-          <div style={{ textAlign: 'center', width: '100%', marginBottom: '60px' }}>
-            <h2 className="section-title" style={{ textAlign: 'center', width: '100%', margin: '0 auto 16px auto' }}>
-              The Property Finance Problem
-            </h2>
-            <p className="section-subtitle" style={{ textAlign: 'center', width: '100%', margin: '0 auto', maxWidth: '800px' }}>
-              Traditional funding takes months, lacks transparency, and wastes everyone's time
+          <div className="section-header">
+            <h2 className="section-title">Built for Modern Property Finance</h2>
+            <p className="section-subtitle">
+              Everything you need to connect, analyze, and close deals efficiently
             </p>
           </div>
           
-          {/* Problem Cards */}
-          <div className="problem-cards-wrapper">
-            <div className="problem-cards">
-              <div className="problem-card">
-                <div className="problem-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                  </svg>
-                </div>
-                <h3>Months of Delays</h3>
-                <p>Developers spend 3-6 months chasing funders through outdated channels</p>
-              </div>
-              <div className="problem-card">
-                <div className="problem-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <path d="m21 21-4.35-4.35"></path>
-                  </svg>
-                </div>
-                <h3>Hidden Networks</h3>
-                <p>Quality deals never reach the right funders due to closed networks</p>
-              </div>
-              <div className="problem-card">
-                <div className="problem-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                    <polyline points="22,6 12,13 2,6"></polyline>
-                  </svg>
-                </div>
-                <h3>Scattered Communication</h3>
-                <p>Critical documents lost in email chains and missed opportunities</p>
-              </div>
-            </div>
-            <div className="swipe-indicator">
-              <span className="dot active"></span>
-              <span className="dot"></span>
-              <span className="dot"></span>
-            </div>
-          </div>
-
-          {/* Transition */}
-          <div className="solution-transition">
-            <div className="transition-line"></div>
-            <button 
-              className="transition-text"
-              onClick={() => {
-                document.querySelector('.solution-overview').scrollIntoView({ 
-                  behavior: 'smooth',
-                  block: 'start'
-                });
-              }}
-              style={{ cursor: 'pointer', border: 'none', background: 'none' }}
-            >
-              Enter Tranch
-            </button>
-            <div className="transition-line"></div>
-          </div>
-
-          {/* Solution Overview */}
-          <div className="solution-overview">
-            <h2 className="solution-title">The Intelligent Marketplace</h2>
-            <p className="solution-subtitle">
-              We've built the infrastructure that property finance has been waiting for
-            </p>
-            
-            <div className="solution-cards-wrapper">
-              <div className="solution-cards">
-                <div className="solution-card">
-                  <div className="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                    </svg>
-                  </div>
-                  <h4>Instant Connections</h4>
-                  <p>Verified funders see your project within 24 hours of listing</p>
-                </div>
-                <div className="solution-card">
-                  <div className="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                      <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
-                    </svg>
-                  </div>
-                  <h4>Complete Transparency</h4>
-                  <p>Track every interaction, document, and decision in one place</p>
-                </div>
-                <div className="solution-card">
-                  <div className="solution-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 20h9"></path>
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                      <path d="m15 5 3 3"></path>
-                    </svg>
-                  </div>
-                  <h4>AI-Powered Intelligence</h4>
-                  <p>BrokerAI analyzes deals and provides instant feasibility insights</p>
-                </div>
-              </div>
-              <div className="swipe-indicator">
-                <span className="dot active"></span>
-                <span className="dot"></span>
-                <span className="dot"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works - Professional Redesign */}
-      <section id="how-it-works" className="how-it-works">
-        <div className="container">
-          <div className="section-header">
-            <h2 className="section-title">How Tranch Streamlines Property Finance</h2>
-            <p className="section-subtitle">
-              The intelligent marketplace connecting property developers with private credit funders
-            </p>
-          </div>
-
-          <div id="pricing" style={{ position: 'absolute', top: '-80px' }}></div>
-
-          {/* Value Props */}
-          <div className="value-props">
-            <div className="value-prop">
-              <div className="value-icon">
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
                 </svg>
               </div>
-              <h4>Rapid Execution</h4>
-              <p>Connect with funders in days, not months</p>
+              <h3>Instant Connections</h3>
+              <p>Get matched with verified funders in your market within 24 hours</p>
             </div>
-            <div className="value-prop">
-              <div className="value-icon">
+            
+            <div className="feature-card">
+              <div className="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M12 6v6l4 2"></path>
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <h4>Real-Time Intelligence</h4>
-              <p>BrokerAI analyzes deals and provides instant insights</p>
+              <h3>Secure Data Rooms</h3>
+              <p>Share sensitive documents with bank-level security and audit trails</p>
             </div>
-            <div className="value-prop">
-              <div className="value-icon">
+            
+            <div className="feature-card">
+              <div className="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                  <path d="M2 17l10 5 10-5"></path>
-                  <path d="M2 12l10 5 10-5"></path>
+                  <path d="M12 20h9"></path>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                  <path d="m15 5 3 3"></path>
                 </svg>
               </div>
-              <h4>Complete Transparency</h4>
-              <p>Track every interaction and document exchange</p>
+              <h3>AI-Powered Analysis</h3>
+              <p>BrokerAI provides instant feasibility insights and market intelligence</p>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* Split Paths */}
-          <div className="user-journeys">
-            {/* Developer Journey */}
-            <div className="journey-path developer-path">
-              <div className="journey-header">
-                <h3>For Property Developers</h3>
-                <p>Access capital markets with unprecedented efficiency</p>
-              </div>
-              
-              <div className="journey-steps">
-                <div className="journey-step">
-                  <div className="step-number">01</div>
-                  <div className="step-content">
-                    <h4>Upload Project Documentation</h4>
-                    <p>Feasibility studies, development applications, financial models - all secured in our institutional-grade vault</p>
-                  </div>
-                </div>
-                
-                <div className="journey-step">
-                  <div className="step-number">02</div>
-                  <div className="step-content">
-                    <h4>Gain Market Exposure</h4>
-                    <p>Your project becomes visible to our network of verified private credit funds and sophisticated investors</p>
-                  </div>
-                </div>
-                
-                <div className="journey-step">
-                  <div className="step-number">03</div>
-                  <div className="step-content">
-                    <h4>Manage Capital Raising</h4>
-                    <p>Field inquiries, compare terms, and progress multiple funding conversations simultaneously</p>
-                  </div>
-                </div>
-
-                <div className="journey-feature">
-                  <div className="feature-highlight">
-                    <h5>Powered by BrokerAI</h5>
-                    <p>Get instant answers on LVR calculations, feasibility metrics, and market comparables</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="journey-cta">
-                <Link to="/register" className="btn btn-primary">
-                  List Your Project
-                </Link>
-                <span className="price-note">$499 per project listing</span>
+      {/* How It Works Section */}
+      <section id="how-it-works" className="how-it-works-section">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Simple. Transparent. Efficient.</h2>
+          </div>
+          
+          <div className="process-steps">
+            <div className="process-step">
+              <div className="step-number">01</div>
+              <div className="step-content">
+                <h3>List Your Project</h3>
+                <p>Upload project details and documentation to our secure platform</p>
               </div>
             </div>
-
-            {/* Funder Journey */}
-            <div className="journey-path funder-path">
-              <div className="journey-header">
-                <h3>For Private Credit Funds</h3>
-                <p>Source and analyze deals with institutional-grade tools</p>
+            
+            <div className="process-step">
+              <div className="step-number">02</div>
+              <div className="step-content">
+                <h3>Get Matched</h3>
+                <p>Our system connects you with relevant funders in your market</p>
               </div>
-              
-              <div className="journey-steps">
-                <div className="journey-step">
-                  <div className="step-number">01</div>
-                  <div className="step-content">
-                    <h4>Access Curated Deal Flow</h4>
-                    <p>Filter opportunities by geography, asset class, deal size, and risk parameters</p>
-                  </div>
-                </div>
-                
-                <div className="journey-step">
-                  <div className="step-number">02</div>
-                  <div className="step-content">
-                    <h4>Conduct Due Diligence</h4>
-                    <p>Review comprehensive project documentation and financial analysis in our secure data room</p>
-                  </div>
-                </div>
-                
-                <div className="journey-step">
-                  <div className="step-number">03</div>
-                  <div className="step-content">
-                    <h4>Execute Efficiently</h4>
-                    <p>Communicate terms, negotiate directly, and track deal progression through to close</p>
-                  </div>
-                </div>
-
-                <div className="journey-feature">
-                  <div className="feature-highlight">
-                    <h5>BrokerAI Analytics</h5>
-                    <p>Leverage AI to assess project viability, market conditions, and comparative returns</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="journey-cta">
-                <Link to="/register?role=funder" className="btn btn-primary">
-                  Access Deal Flow
-                </Link>
-                <span className="price-note">$299/month professional access</span>
+            </div>
+            
+            <div className="process-step">
+              <div className="step-number">03</div>
+              <div className="step-content">
+                <h3>Close the Deal</h3>
+                <p>Negotiate terms and complete funding with built-in workflow tools</p>
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* Journey indicators for mobile */}
-          <div className="journey-indicators">
-            <span className="indicator-dot active"></span>
-            <span className="indicator-dot"></span>
+      {/* Pricing Section */}
+      <section id="pricing" className="pricing-section">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Transparent Pricing</h2>
+            <p className="section-subtitle">Simple, fair pricing for all users</p>
           </div>
-
-          {/* Platform Benefits */}
-          <div className="platform-benefits">
-            <h3>The Tranch Advantage</h3>
-            <div className="benefits-grid">
-              <div className="benefit">
-                <h4>Institutional-Grade Security</h4>
-                <p>Bank-level encryption and secure document management protect sensitive financial information</p>
+          
+          <div className="pricing-cards">
+            <div className="pricing-card">
+              <h3>For Developers</h3>
+              <div className="price">
+                <span className="amount">$499</span>
+                <span className="period">per project</span>
               </div>
-              <div className="benefit">
-                <h4>Intelligent Deal Analysis</h4>
-                <p>BrokerAI provides 24/7 expert guidance on deal structuring, market analysis, and financial metrics</p>
+              <ul className="features-list">
+                <li>Project listing for 12 months</li>
+                <li>Unlimited funder connections</li>
+                <li>Secure document sharing</li>
+                <li>BrokerAI analysis</li>
+              </ul>
+              <Link to="/register" className="btn btn-primary">
+                List Your Project
+              </Link>
+            </div>
+            
+            <div className="pricing-card featured">
+              <h3>For Funders</h3>
+              <div className="price">
+                <span className="amount">$299</span>
+                <span className="period">per month</span>
               </div>
-              <div className="benefit">
-                <h4>Verified Network</h4>
-                <p>All participants undergo comprehensive verification ensuring quality connections</p>
-              </div>
-              <div className="benefit">
-                <h4>Complete Audit Trail</h4>
-                <p>Every interaction, document exchange, and communication is tracked for compliance</p>
-              </div>
+              <ul className="features-list">
+                <li>Access to all projects</li>
+                <li>Advanced filtering tools</li>
+                <li>Priority deal notifications</li>
+                <li>Portfolio analytics</li>
+              </ul>
+              <Link to="/register?role=funder" className="btn btn-primary">
+                Access Deal Flow
+              </Link>
             </div>
           </div>
         </div>
@@ -12928,15 +12496,17 @@ const LandingPage = () => {
       {/* CTA Section */}
       <section className="cta-section">
         <div className="container">
-          <h2>Ready to Transform Your Property Finance?</h2>
-          <p>Join Australia's fastest-growing property finance platform</p>
-          <div className="cta-actions">
-            <Link to="/register" className="btn btn-primary btn-lg">
-              Get Started
-            </Link>
-            <a href="mailto:support@tranch.com.au" className="btn btn-outline btn-lg">
-              Contact Sales
-            </a>
+          <div className="cta-content">
+            <h2>Ready to Transform Your Property Finance?</h2>
+            <p>Join hundreds of developers and funders already using Tranch</p>
+            <div className="cta-actions">
+              <Link to="/register" className="btn btn-primary btn-lg">
+                Get Started Today
+              </Link>
+              <a href="mailto:support@tranch.com.au" className="btn btn-outline btn-lg">
+                Contact Sales
+              </a>
+            </div>
           </div>
         </div>
       </section>
@@ -12950,23 +12520,24 @@ const LandingPage = () => {
               <p>Connecting property developers with private credit</p>
             </div>
             <div className="footer-links">
-              <h4>Platform</h4>
-              <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
-              <a href="#how-it-works">How it Works</a>
-            </div>
-            <div className="footer-links">
-              <h4>Company</h4>
-              <a href="#">About</a>
-              <a href="#">Contact</a>
-              <Link to="/privacy">Privacy Policy</Link>
-              <Link to="/terms">Terms of Service</Link>
-              <Link to="/cookies">Cookie Policy</Link>
-            </div>
-            <div className="footer-contact">
-              <h4>Get in Touch</h4>
-              <p>support@tranch.com.au</p>
-              <p>1300 TRANCH</p>
+              <div className="link-group">
+                <h4>Platform</h4>
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How it Works</a>
+                <a href="#pricing">Pricing</a>
+              </div>
+              <div className="link-group">
+                <h4>Company</h4>
+                <a href="#">About</a>
+                <a href="#">Contact</a>
+                <Link to="/privacy">Privacy</Link>
+                <Link to="/terms">Terms</Link>
+              </div>
+              <div className="link-group">
+                <h4>Support</h4>
+                <p>support@tranch.com.au</p>
+                <p>1300 TRANCH</p>
+              </div>
             </div>
           </div>
           <div className="footer-bottom">
