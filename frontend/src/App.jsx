@@ -160,6 +160,9 @@ const createApiClient = (getToken) => {
       method: 'PUT',
       body: JSON.stringify(projectData),
     }),
+    resubmitProject: (id) => request(`/projects/${id}/resubmit`, {
+      method: 'POST',
+    }),
 
     // Document endpoints
     uploadDocuments: (projectId, formData) => request(`/projects/${projectId}/documents`, {
@@ -518,8 +521,8 @@ const NotificationProvider = ({ children }) => {
     if (!isLoaded || !isSignedIn) return;
     
     try {
-      const response = await api.get('/notifications');
-      const notifs = response.data.map(n => ({
+      const notifications = await api.getNotifications();
+      const notifs = notifications.map(n => ({
         ...n,
         timestamp: new Date(n.created_at),
         title: getNotificationTitle(n.type),
@@ -2934,7 +2937,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                 Under Admin Review
               </button>
             </>
-          ) : project.payment_status === 'paid' && !project.visible && project.submission_status === 'rejected' && (
+          ) : project.payment_status === 'paid' && !project.visible && project.submission_status === 'rejected' ? (
               <>
                 <button 
                   onClick={() => navigate(`/project/${project.id}/edit`)}
@@ -2945,17 +2948,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                 <button 
                   onClick={async () => {
                     try {
-                      await api.updateProjectStatus(project.id, {
-                        status: 'payment_pending',
-                        submission_status: 'pending_review',
-                        reason: 'Resubmitted after addressing feedback'
-                      });
-                      
-                      // Notify admin
-                      await api.sendEmailNotification('project_resubmitted', 'admin', {
-                        project_title: project.title,
-                        borrower_name: user.name
-                      });
+                      await api.resubmitProject(project.id);
                       
                       addNotification({
                         type: 'success',
@@ -2968,7 +2961,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                       addNotification({
                         type: 'error',
                         title: 'Resubmission Failed',
-                        message: err.message
+                        message: err.message || 'Failed to resubmit project'
                       });
                     }
                   }}
@@ -2977,7 +2970,21 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                   Submit for Re-review
                 </button>
               </>
-          )}
+          ) : project.payment_status === 'paid' && project.submission_status === 'pending_review' ? (
+            <>
+              <button 
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="btn-text"
+              >
+                View Details
+              </button>
+              <button 
+                disabled
+                className="btn-primary-small disabled"
+              >
+                Under Admin Review
+              </button>
+            </>
           ) : (
             <>
               <button 
