@@ -9471,15 +9471,18 @@ td {
 }
 
 /* Nuclear option - very specific */
-.dashboard-clean .dashboard-header-clean .header-content-clean .greeting {
+.dashboard-clean .dashboard-header-clean .header-content-clean .greeting,
+.projects-page .dashboard-header-clean .header-content-clean .greeting {
   color: white !important;
 }
 
-.dashboard-clean .dashboard-header-clean .header-content-clean .username {
+.dashboard-clean .dashboard-header-clean .header-content-clean .username,
+.projects-page .dashboard-header-clean .header-content-clean .username {
   color: white !important;
 }
 
-.dashboard-clean .dashboard-header-clean .header-content-clean .tagline {
+.dashboard-clean .dashboard-header-clean .header-content-clean .tagline,
+.projects-page .dashboard-header-clean .header-content-clean .tagline {
   color: white !important;
   opacity: 0.8;  /* Slightly transparent for subtitle */
 }

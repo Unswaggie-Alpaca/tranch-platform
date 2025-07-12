@@ -2934,7 +2934,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
                 Under Admin Review
               </button>
             </>
-          ) : project.payment_status === 'paid' && !project.visible && (
+          ) : project.payment_status === 'paid' && !project.visible && project.submission_status === 'rejected' && (
               <>
                 <button 
                   onClick={() => navigate(`/project/${project.id}/edit`)}
