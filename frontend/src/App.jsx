@@ -3929,19 +3929,41 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   };
 
   const handleSelectSuggestion = (suggestion) => {
-    // Parse the address to extract suburb
+    // Parse the address to extract suburb, state, and postcode
     const parts = suggestion.description.split(',');
     let suburb = '';
+    let state = '';
+    let postcode = '';
     
     // Australian address format typically: Street, Suburb State Postcode, Country
     if (parts.length >= 2) {
-      // Get the second part and clean it
-      suburb = parts[1].trim().split(' ')[0]; // Takes first word which is usually suburb
+      // Get the second part which contains suburb, state, and postcode
+      const suburbStatePart = parts[1].trim();
+      
+      // Extract postcode (4 digits at the end)
+      const postcodeMatch = suburbStatePart.match(/\b(\d{4})\b$/);
+      if (postcodeMatch) {
+        postcode = postcodeMatch[1];
+      }
+      
+      // Extract state (abbreviation before postcode)
+      const stateMatch = suburbStatePart.match(/\b(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\b/i);
+      if (stateMatch) {
+        state = stateMatch[1].toUpperCase();
+      }
+      
+      // Extract suburb (everything before state)
+      const suburbEndIndex = stateMatch ? suburbStatePart.indexOf(stateMatch[0]) : 
+                            postcodeMatch ? suburbStatePart.indexOf(postcodeMatch[0]) : 
+                            suburbStatePart.length;
+      suburb = suburbStatePart.substring(0, suburbEndIndex).trim();
     }
     
     onSelect({
       location: suggestion.description,
       suburb: suburb,
+      state: state,
+      postcode: postcode,
       place_id: suggestion.place_id
     });
     
@@ -4002,6 +4024,8 @@ const CreateProject = () => {
     description: '',
     location: '',
     suburb: '',
+    state: '',
+    postcode: '',
     property_type: 'Residential',
     development_stage: 'Planning',
     
@@ -4322,7 +4346,9 @@ const CreateProject = () => {
       onSelect={(addressData) => setFormData({ 
         ...formData, 
         location: addressData.location,
-        suburb: addressData.suburb 
+        suburb: addressData.suburb,
+        state: addressData.state,
+        postcode: addressData.postcode
       })}
     />
     {validationErrors.location && (
@@ -4349,6 +4375,60 @@ const CreateProject = () => {
     {validationErrors.suburb && (
       <span className="field-error">{validationErrors.suburb}</span>
     )}
+  </div>
+  
+  <div className="form-row">
+    <div className="form-group">
+      <label htmlFor="state">
+        State *
+        <Tooltip content="Auto-filled from address selection">
+          <span className="help-icon">?</span>
+        </Tooltip>
+      </label>
+      <select
+        id="state"
+        value={formData.state}
+        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+        required
+        className={`form-input ${validationErrors.state ? 'error' : ''}`}
+      >
+        <option value="">Select State</option>
+        <option value="NSW">NSW</option>
+        <option value="VIC">VIC</option>
+        <option value="QLD">QLD</option>
+        <option value="WA">WA</option>
+        <option value="SA">SA</option>
+        <option value="TAS">TAS</option>
+        <option value="ACT">ACT</option>
+        <option value="NT">NT</option>
+      </select>
+      {validationErrors.state && (
+        <span className="field-error">{validationErrors.state}</span>
+      )}
+    </div>
+    
+    <div className="form-group">
+      <label htmlFor="postcode">
+        Postcode *
+        <Tooltip content="Auto-filled from address selection">
+          <span className="help-icon">?</span>
+        </Tooltip>
+      </label>
+      <input
+        type="text"
+        id="postcode"
+        value={formData.postcode}
+        onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
+        required
+        pattern="[0-9]{4}"
+        maxLength="4"
+        className={`form-input ${validationErrors.postcode ? 'error' : ''}`}
+        placeholder="e.g. 2000"
+      />
+      {validationErrors.postcode && (
+        <span className="field-error">{validationErrors.postcode}</span>
+      )}
+    </div>
   </div>
 </div>
 
