@@ -5042,6 +5042,8 @@ label .required {
   border-right: 1px solid var(--gray-200);
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Update the no-conversations styling */
@@ -5265,6 +5267,8 @@ label .required {
   display: flex;
   flex-direction: column;
   background: white;
+  height: 100%;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -5310,8 +5314,12 @@ label .required {
 .messages-area {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--gray-50);
   padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .no-messages {
@@ -5345,6 +5353,8 @@ label .required {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  flex: 1;
+  overflow-y: visible;
 }
 
 .message-bubble {
