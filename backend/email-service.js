@@ -156,8 +156,9 @@ const sendEmail = async (type, recipientEmail, data) => {
     
     return info;
   } catch (error) {
-    console.error('Email send error:', error);
-    throw error;
+    console.error('Email send error (non-blocking):', error.message);
+    // Don't throw - let it fail silently
+    return { messageId: 'email-failed-but-ignored' };
   }
 };
 
