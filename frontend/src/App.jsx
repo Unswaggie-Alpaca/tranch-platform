@@ -3929,43 +3929,128 @@ const AddressAutocomplete = ({ api, value, onChange, onSelect }) => {
   };
 
   const handleSelectSuggestion = (suggestion) => {
-    // Parse the address to extract suburb, state, and postcode
-    const parts = suggestion.description.split(',');
+    // Parse the address to extract components
+    const parts = suggestion.description.split(',').map(part => part.trim());
     let suburb = '';
+    let city = '';
     let state = '';
     let postcode = '';
     
-    // Australian address format typically: Street, Suburb State Postcode, Country
-    if (parts.length >= 2) {
-      // Get the second part which contains suburb, state, and postcode
-      const suburbStatePart = parts[1].trim();
+    // Australian address format from OpenStreetMap typically:
+    // "Street Number, Street Name, Suburb, City/Region, State [Postcode]"
+    // Example: "10, Marne Road, Albion, Greater Brisbane, Queensland"
+    
+    if (parts.length >= 3) {
+      // Skip first 1-2 parts (street number and street name)
+      // Parts[0] = Street number (if separate) or full street
+      // Parts[1] = Street name (if street number was separate) or suburb
+      // Parts[2] = Suburb (usually) or city
+      // Parts[3] = City/Region (usually)
+      // Parts[4] = State (usually)
       
-      // Extract postcode (4 digits at the end)
-      const postcodeMatch = suburbStatePart.match(/\b(\d{4})\b$/);
-      if (postcodeMatch) {
-        postcode = postcodeMatch[1];
+      // Determine where street ends and suburb begins
+      let startIndex = 1; // Default: assume first part is full street
+      
+      // If first part is just a number, then street is parts 0+1
+      if (parts[0] && /^\d+[a-zA-Z]?$/.test(parts[0])) {
+        startIndex = 2; // Street is parts[0] + parts[1]
       }
       
-      // Extract state (abbreviation before postcode)
-      const stateMatch = suburbStatePart.match(/\b(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\b/i);
-      if (stateMatch) {
-        state = stateMatch[1].toUpperCase();
+      // Extract components based on remaining parts
+      const remainingParts = parts.slice(startIndex);
+      
+      if (remainingParts.length >= 1) {
+        suburb = remainingParts[0]; // First part after street
       }
       
-      // Extract suburb (everything before state)
-      const suburbEndIndex = stateMatch ? suburbStatePart.indexOf(stateMatch[0]) : 
-                            postcodeMatch ? suburbStatePart.indexOf(postcodeMatch[0]) : 
-                            suburbStatePart.length;
-      suburb = suburbStatePart.substring(0, suburbEndIndex).trim();
+      if (remainingParts.length >= 2) {
+        city = remainingParts[1]; // Second part after street
+      }
+      
+      // Look for state in remaining parts
+      for (let i = 2; i < remainingParts.length; i++) {
+        const part = remainingParts[i];
+        
+        // Check for state names (full or abbreviated)
+        const stateMap = {
+          'Queensland': 'QLD',
+          'New South Wales': 'NSW',
+          'Victoria': 'VIC',
+          'South Australia': 'SA',
+          'Western Australia': 'WA',
+          'Tasmania': 'TAS',
+          'Northern Territory': 'NT',
+          'Australian Capital Territory': 'ACT',
+          'QLD': 'QLD',
+          'NSW': 'NSW',
+          'VIC': 'VIC',
+          'SA': 'SA',
+          'WA': 'WA',
+          'TAS': 'TAS',
+          'NT': 'NT',
+          'ACT': 'ACT'
+        };
+        
+        // Check if this part contains a state
+        for (const [stateName, stateCode] of Object.entries(stateMap)) {
+          if (part.toLowerCase().includes(stateName.toLowerCase())) {
+            state = stateCode;
+            
+            // Check if postcode is in the same part
+            const postcodeMatch = part.match(/\b(\d{4})\b/);
+            if (postcodeMatch) {
+              postcode = postcodeMatch[1];
+            }
+            break;
+          }
+        }
+        
+        // If no state found, check if this part is just a postcode
+        if (!state && /^\d{4}$/.test(part)) {
+          postcode = part;
+        }
+      }
     }
     
-    onSelect({
-      location: suggestion.description,
-      suburb: suburb,
-      state: state,
-      postcode: postcode,
-      place_id: suggestion.place_id
-    });
+    // For the example "10, Marne Road, Albion, Greater Brisbane, Queensland"
+    // This should extract: suburb="Albion", city="Greater Brisbane", state="QLD"
+    
+    // If we don't have a postcode, try to fetch it using place details
+    if (!postcode && suggestion.place_id) {
+      api.request('/geocode/place-details', {
+        method: 'POST',
+        body: JSON.stringify({ place_id: suggestion.place_id })
+      }).then(details => {
+        onSelect({
+          location: suggestion.description,
+          suburb: suburb || details.suburb,
+          city: city || details.city,
+          state: state || details.state,
+          postcode: details.postcode || postcode,
+          place_id: suggestion.place_id
+        });
+      }).catch(err => {
+        console.error('Failed to fetch place details:', err);
+        // Fallback to what we already parsed
+        onSelect({
+          location: suggestion.description,
+          suburb: suburb,
+          city: city,
+          state: state,
+          postcode: postcode,
+          place_id: suggestion.place_id
+        });
+      });
+    } else {
+      onSelect({
+        location: suggestion.description,
+        suburb: suburb,
+        city: city,
+        state: state,
+        postcode: postcode,
+        place_id: suggestion.place_id
+      });
+    }
     
     setShowSuggestions(false);
     setSuggestions([]);
@@ -4024,6 +4109,7 @@ const CreateProject = () => {
     description: '',
     location: '',
     suburb: '',
+    city: '',
     state: '',
     postcode: '',
     property_type: 'Residential',
@@ -4347,6 +4433,7 @@ const CreateProject = () => {
         ...formData, 
         location: addressData.location,
         suburb: addressData.suburb,
+        city: addressData.city,
         state: addressData.state,
         postcode: addressData.postcode
       })}
@@ -4356,25 +4443,47 @@ const CreateProject = () => {
     )}
   </div>
 
-  <div className="form-group">
-    <label htmlFor="suburb">
-      Suburb *
-      <Tooltip content="Auto-filled from address selection">
-        <span className="help-icon">?</span>
-      </Tooltip>
-    </label>
-    <input
-      type="text"
-      id="suburb"
-      value={formData.suburb}
-      onChange={(e) => setFormData({ ...formData, suburb: e.target.value })}
-      required
-      className={`form-input ${validationErrors.suburb ? 'error' : ''}`}
-      placeholder="Auto-filled from address"
-    />
-    {validationErrors.suburb && (
-      <span className="field-error">{validationErrors.suburb}</span>
-    )}
+  <div className="form-row">
+    <div className="form-group">
+      <label htmlFor="suburb">
+        Suburb *
+        <Tooltip content="Auto-filled from address selection">
+          <span className="help-icon">?</span>
+        </Tooltip>
+      </label>
+      <input
+        type="text"
+        id="suburb"
+        value={formData.suburb}
+        onChange={(e) => setFormData({ ...formData, suburb: e.target.value })}
+        required
+        className={`form-input ${validationErrors.suburb ? 'error' : ''}`}
+        placeholder="Auto-filled from address"
+      />
+      {validationErrors.suburb && (
+        <span className="field-error">{validationErrors.suburb}</span>
+      )}
+    </div>
+    
+    <div className="form-group">
+      <label htmlFor="city">
+        City/Region
+        <Tooltip content="Auto-filled from address selection">
+          <span className="help-icon">?</span>
+        </Tooltip>
+      </label>
+      <input
+        type="text"
+        id="city"
+        value={formData.city}
+        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+        className={`form-input ${validationErrors.city ? 'error' : ''}`}
+        placeholder="e.g. Greater Brisbane"
+      />
+      {validationErrors.city && (
+        <span className="field-error">{validationErrors.city}</span>
+      )}
+    </div>
   </div>
   
   <div className="form-row">
