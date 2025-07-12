@@ -185,13 +185,18 @@ updateProjectStatus: (projectId, data) => request(`/admin/update-project-status/
     async downloadDocument(filePath) {
       const token = await getToken();
       const filename = filePath.split('/').pop();
-      const response = await fetch(`${API_BASE_URL.replace('/api', '')}/uploads/${filename}`, {
+      // Use the base URL without /api, as uploads is served from root
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const response = await fetch(`${baseUrl}/uploads/${filename}`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
       
-      if (!response.ok) throw new Error('Download failed');
+      if (!response.ok) {
+        console.error('Download failed:', response.status, response.statusText);
+        throw new Error('Download failed');
+      }
       return response.blob();
     },
 
@@ -513,12 +518,20 @@ const AppProvider = ({ children }) => {
 const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [lastFetch, setLastFetch] = useState(0);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
 
-  // Fetch notifications from API
+  // Fetch notifications from API with rate limiting
   const fetchNotifications = useCallback(async () => {
     if (!isLoaded || !isSignedIn) return;
+    
+    // Prevent fetching more than once every 30 seconds
+    const now = Date.now();
+    if (now - lastFetch < 30000) {
+      return;
+    }
+    setLastFetch(now);
     
     try {
       const notifications = await api.getNotifications();
@@ -531,16 +544,24 @@ const NotificationProvider = ({ children }) => {
       setNotifications(notifs);
       setUnreadCount(notifs.filter(n => !n.read).length);
     } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+      // Only log non-rate-limit errors
+      if (!error.message || !error.message.includes('Too many requests')) {
+        console.error('Failed to fetch notifications:', error);
+      }
     }
-  }, [api, isLoaded, isSignedIn]);
+  }, [api, isLoaded, isSignedIn, lastFetch]);
 
   // Fetch notifications on mount and periodically
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    
+    // Initial fetch
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // Refresh every 30 seconds
+    
+    // Set up interval - use 60 seconds to be safe
+    const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [isLoaded, isSignedIn]); // Remove fetchNotifications from deps
 
   // Helper function to get notification title based on type
   const getNotificationTitle = (type) => {
@@ -2867,13 +2888,13 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
                   onClick={() => {
                     if (project.deal_count === 1 && deals.length > 0) {
                       navigate(`/project/${project.id}/deal/${deals[0].id}`);
-                    } else {
-                      navigate(`/project/${project.id}`);
+                    } else if (project.deal_count > 1) {
+                      setShowDealSelector(true);
                     }
                   }}
                   className="btn-primary-clean"
                 >
-                  Deal Room
+                  Deal Room{project.deal_count > 1 ? 's' : ''}
                 </button>
               )}
             </>
@@ -7784,7 +7805,12 @@ const DealRoom = () => {
       // Then try to get optional data, but don't fail if these don't work
       try {
         const proposalData = await api.getDealProposal(dealId);
-        setProposal(proposalData);
+        // Check if proposal data is empty object or has actual data
+        if (proposalData && Object.keys(proposalData).length > 0) {
+          setProposal(proposalData);
+        } else {
+          setProposal(null);
+        }
       } catch (err) {
         console.log('No proposal yet:', err);
         setProposal(null);
@@ -8893,15 +8919,15 @@ const QuoteWizard = ({ dealId, projectId, onClose, onSuccess, existingProposal =
     
     setSubmitting(true);
     try {
-      // Format data for submission
+      // Format data for submission - match backend expectations
       const submissionData = {
         loan_amount: parseFloat(formData.loan_amount),
         interest_rate: parseFloat(formData.interest_rate),
         loan_term: parseInt(formData.loan_term),
         establishment_fee: parseFloat(formData.establishment_fee || 0),
-        other_fees: parseFloat(formData.other_fees || 0),
-        conditions: formData.conditions.trim(),
-        valid_until: formData.valid_until
+        other_fees: formData.other_fees || '', // Backend expects string or null
+        conditions: formData.conditions.trim()
+        // Note: valid_until is set by backend, not sent from frontend
       };
       
       await api.createProposal(dealId, submissionData);
