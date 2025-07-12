@@ -4881,7 +4881,7 @@ app.post('/api/deals/:id/proposals', authenticateToken, requireRole(['funder']),
 // Respond to proposal
 app.put('/api/proposals/:id/respond', authenticateToken, requireRole(['borrower']), (req, res) => {
   const proposalId = req.params.id;
-  const { response } = req.body;
+  const { response, reason } = req.body;
 
   if (!['accept', 'decline', 'counter'].includes(response)) {
     return res.status(400).json({ error: 'Invalid response type' });
@@ -4917,11 +4917,29 @@ app.put('/api/proposals/:id/respond', authenticateToken, requireRole(['borrower'
             );
           }
 
+          // If declined with reason, add it to the deal comments
+          if (status === 'declined' && reason) {
+            db.run(
+              'INSERT INTO deal_comments (deal_id, user_id, user_name, comment, created_at) VALUES (?, ?, ?, ?, ?)',
+              [
+                proposal.deal_id,
+                req.user.id,
+                req.user.name,
+                `Declined proposal with reason: ${reason}`,
+                new Date().toISOString()
+              ]
+            );
+          }
+
           // Create notification for funder
+          const notificationMessage = status === 'declined' && reason 
+            ? `Your offer has been declined. Reason: ${reason}`
+            : `Your offer has been ${status}`;
+            
           createNotification(
             proposal.funder_id,
             'proposal_response',
-            `Your offer has been ${status}`,
+            notificationMessage,
             proposal.deal_id
           ).catch(err => console.error('Failed to create notification:', err));
 
