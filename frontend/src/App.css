@@ -5016,10 +5016,19 @@ label .required {
 /* ===========================
    Messages Page - Premium Chat
    =========================== */
+.messages-page {
+  padding: 20px;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
 .messages-container {
   display: grid;
   grid-template-columns: 380px 1fr;
-  height: calc(100vh - 140px);
+  flex: 1;
+  min-height: 0;
   background: white;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2xl);
@@ -6921,6 +6930,10 @@ td {
    Responsive Design
    =========================== */
 @media (max-width: 1024px) {
+  .messages-page {
+    padding: 15px;
+  }
+  
   .messages-container {
     grid-template-columns: 320px 1fr;
   }
@@ -7004,9 +7017,12 @@ td {
   }
   
   /* Messages */
+  .messages-page {
+    padding: 10px;
+  }
+  
   .messages-container {
     grid-template-columns: 1fr;
-    height: calc(100vh - 120px);
   }
   
   .conversations-sidebar {
