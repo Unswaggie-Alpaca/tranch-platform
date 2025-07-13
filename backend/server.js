@@ -4393,6 +4393,7 @@ app.get('/api/deals/:id/documents', authenticateToken, (req, res) => {
 // Upload deal documents
 app.post('/api/deals/:id/documents', authenticateToken, upload.array('documents', 10), (req, res) => {
   const dealId = req.params.id;
+  const requestId = req.body.request_id;
 
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'No files uploaded' });
@@ -4410,8 +4411,8 @@ app.post('/api/deals/:id/documents', authenticateToken, upload.array('documents'
       const documentPromises = req.files.map((file) => {
         return new Promise((resolve, reject) => {
           db.run(
-            'INSERT INTO deal_documents (deal_id, uploader_id, file_name, file_path, file_size, mime_type) VALUES (?, ?, ?, ?, ?, ?)',
-            [dealId, req.user.id, file.originalname, file.path, file.size, file.mimetype],
+            'INSERT INTO deal_documents (deal_id, uploader_id, file_name, file_path, file_size, mime_type, request_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [dealId, req.user.id, file.originalname, file.path, file.size, file.mimetype, requestId || null],
             function(err) {
               if (err) {
                 reject(err);
@@ -4983,6 +4984,67 @@ app.get('/api/deals/:dealId/documents/:documentId', authenticateToken, (req, res
 
           const filePath = path.join(__dirname, document.file_path);
           res.download(filePath, document.file_name);
+        }
+      );
+    }
+  );
+});
+
+// View deal document (inline viewing for PDFs)
+app.get('/api/deals/:dealId/documents/:documentId/view', authenticateToken, (req, res) => {
+  const { dealId, documentId } = req.params;
+
+  db.get(
+    'SELECT * FROM deals WHERE id = ? AND (borrower_id = ? OR funder_id = ?)',
+    [dealId, req.user.id, req.user.id],
+    (err, deal) => {
+      if (err || !deal) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      db.get(
+        'SELECT * FROM deal_documents WHERE id = ? AND deal_id = ?',
+        [documentId, dealId],
+        (err, document) => {
+          if (err || !document) {
+            return res.status(404).json({ error: 'Document not found' });
+          }
+
+          // Extract just the filename from the stored path
+          const filename = path.basename(document.file_path);
+          
+          // Use the same secure file serving logic as the /uploads endpoint
+          // Security check for path traversal
+          if (!filename || 
+              filename.includes('..') || 
+              filename.includes('/') || 
+              filename.includes('\\') ||
+              filename.includes('\0') ||
+              filename.length > 255) {
+            return res.status(400).send('Invalid filename');
+          }
+          
+          const filepath = path.join(uploadsDir, filename);
+          
+          // Check if file exists and is within uploads directory
+          if (!filepath.startsWith(uploadsDir)) {
+            return res.status(403).send('Access denied');
+          }
+          
+          // Send file for inline viewing
+          res.sendFile(filepath, {
+            headers: {
+              'Content-Type': document.mime_type || 'application/octet-stream',
+              'Content-Disposition': 'inline'
+            }
+          }, (err) => {
+            if (err) {
+              console.error('File send error:', err);
+              if (!res.headersSent) {
+                res.status(404).send('File not found');
+              }
+            }
+          });
         }
       );
     }
