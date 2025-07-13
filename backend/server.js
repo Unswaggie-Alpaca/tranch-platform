@@ -4241,6 +4241,233 @@ app.post('/api/admin/reject-project/:id', authenticateToken, requireRole(['admin
   });
 });
 
+// ===========================
+// ADMIN MESSAGING ROUTES
+// ===========================
+
+// Send message from admin to any user
+app.post('/api/admin/messages/send', authenticateToken, requireRole(['admin']), (req, res) => {
+  const { user_id, message } = req.body;
+  
+  if (!user_id || !message || !message.trim()) {
+    return res.status(400).json({ error: 'User ID and message are required' });
+  }
+  
+  // Create admin_messages table if it doesn't exist
+  db.run(`
+    CREATE TABLE IF NOT EXISTS admin_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      message TEXT NOT NULL,
+      sender_role TEXT NOT NULL,
+      sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      read_at TIMESTAMP,
+      FOREIGN KEY (admin_id) REFERENCES users (id),
+      FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+  `, (err) => {
+    if (err) console.error('Error creating admin_messages table:', err);
+  });
+  
+  // Insert the message
+  db.run(
+    'INSERT INTO admin_messages (admin_id, user_id, message, sender_role) VALUES (?, ?, ?, ?)',
+    [req.user.id, user_id, message.trim(), 'admin'],
+    function(err) {
+      if (err) {
+        console.error('Admin message creation error:', err);
+        return res.status(500).json({ error: 'Failed to send message' });
+      }
+      
+      // Create notification for the user
+      db.run(
+        `INSERT INTO notifications (user_id, type, message, related_id)
+         VALUES (?, 'admin_message', 'You have a new message from admin', ?)`,
+        [user_id, this.lastID],
+        (notifErr) => {
+          if (notifErr) console.error('Failed to create notification:', notifErr);
+        }
+      );
+      
+      res.status(201).json({ 
+        message: 'Message sent successfully',
+        message_id: this.lastID 
+      });
+    }
+  );
+});
+
+// Get all admin conversations
+app.get('/api/admin/messages', authenticateToken, requireRole(['admin']), (req, res) => {
+  db.all(
+    `SELECT DISTINCT 
+      u.id as user_id,
+      u.name as user_name,
+      u.email as user_email,
+      u.role as user_role,
+      (SELECT COUNT(*) FROM admin_messages am 
+       WHERE (am.admin_id = ? AND am.user_id = u.id) 
+       OR (am.user_id = ? AND am.admin_id = u.id AND am.sender_role = 'user')
+       AND am.read_at IS NULL AND am.sender_role = 'user') as unread_count,
+      (SELECT message FROM admin_messages am2 
+       WHERE (am2.admin_id = ? AND am2.user_id = u.id) 
+       OR (am2.user_id = ? AND am2.admin_id = u.id)
+       ORDER BY am2.sent_at DESC LIMIT 1) as last_message,
+      (SELECT sent_at FROM admin_messages am3 
+       WHERE (am3.admin_id = ? AND am3.user_id = u.id) 
+       OR (am3.user_id = ? AND am3.admin_id = u.id)
+       ORDER BY am3.sent_at DESC LIMIT 1) as last_message_time
+     FROM users u
+     WHERE EXISTS (
+       SELECT 1 FROM admin_messages am 
+       WHERE (am.admin_id = ? AND am.user_id = u.id) 
+       OR (am.user_id = ? AND am.admin_id = u.id)
+     )
+     ORDER BY last_message_time DESC`,
+    [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id],
+    (err, conversations) => {
+      if (err) {
+        console.error('Admin conversations fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch conversations' });
+      }
+      res.json(conversations || []);
+    }
+  );
+});
+
+// Get messages with a specific user
+app.get('/api/admin/messages/:userId', authenticateToken, (req, res) => {
+  const userId = parseInt(req.params.userId);
+  
+  // Check if user is admin or the user themselves
+  if (req.user.role !== 'admin' && req.user.id !== userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  
+  db.all(
+    `SELECT am.*, 
+      sender.name as sender_name,
+      receiver.name as receiver_name
+     FROM admin_messages am
+     JOIN users sender ON (am.sender_role = 'admin' AND sender.id = am.admin_id) 
+                      OR (am.sender_role = 'user' AND sender.id = am.user_id)
+     JOIN users receiver ON (am.sender_role = 'admin' AND receiver.id = am.user_id) 
+                        OR (am.sender_role = 'user' AND receiver.id = am.admin_id)
+     WHERE (am.admin_id = ? AND am.user_id = ?) 
+        OR (am.user_id = ? AND req.user.role = 'admin')
+        OR (am.user_id = ? AND am.admin_id IN (SELECT id FROM users WHERE role = 'admin'))
+     ORDER BY am.sent_at ASC`,
+    [req.user.id, userId, req.user.id, req.user.id],
+    (err, messages) => {
+      if (err) {
+        console.error('Admin messages fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch messages' });
+      }
+      
+      // Mark messages as read
+      if (messages.length > 0) {
+        const messageIds = messages
+          .filter(m => m.sender_role !== req.user.role && !m.read_at)
+          .map(m => m.id);
+        
+        if (messageIds.length > 0) {
+          db.run(
+            `UPDATE admin_messages 
+             SET read_at = CURRENT_TIMESTAMP 
+             WHERE id IN (${messageIds.map(() => '?').join(',')})`,
+            messageIds,
+            (err) => {
+              if (err) console.error('Failed to mark messages as read:', err);
+            }
+          );
+        }
+      }
+      
+      res.json(messages || []);
+    }
+  );
+});
+
+// Send message from user to admin (reply)
+app.post('/api/messages/admin/reply', authenticateToken, (req, res) => {
+  const { message } = req.body;
+  
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  
+  // Get any admin ID (for simplicity, we'll use the first admin)
+  db.get(
+    "SELECT id FROM users WHERE role = 'admin' LIMIT 1",
+    (err, admin) => {
+      if (err || !admin) {
+        return res.status(500).json({ error: 'No admin found' });
+      }
+      
+      db.run(
+        'INSERT INTO admin_messages (admin_id, user_id, message, sender_role) VALUES (?, ?, ?, ?)',
+        [admin.id, req.user.id, message.trim(), 'user'],
+        function(err) {
+          if (err) {
+            console.error('User message creation error:', err);
+            return res.status(500).json({ error: 'Failed to send message' });
+          }
+          
+          // Create notification for admin
+          db.run(
+            `INSERT INTO notifications (user_id, type, message, related_id)
+             VALUES (?, 'admin_message', ?, ?)`,
+            [admin.id, `New message from ${req.user.name}`, req.user.id],
+            (notifErr) => {
+              if (notifErr) console.error('Failed to create notification:', notifErr);
+            }
+          );
+          
+          res.status(201).json({ 
+            message: 'Message sent successfully',
+            message_id: this.lastID 
+          });
+        }
+      );
+    }
+  );
+});
+
+// Get user's admin messages (for regular users)
+app.get('/api/messages/admin', authenticateToken, (req, res) => {
+  db.all(
+    `SELECT am.*, 
+      u.name as admin_name
+     FROM admin_messages am
+     JOIN users u ON u.id = am.admin_id
+     WHERE am.user_id = ?
+     ORDER BY am.sent_at ASC`,
+    [req.user.id],
+    (err, messages) => {
+      if (err) {
+        console.error('User admin messages fetch error:', err);
+        return res.status(500).json({ error: 'Failed to fetch messages' });
+      }
+      
+      // Mark admin messages as read
+      if (messages.length > 0) {
+        db.run(
+          `UPDATE admin_messages 
+           SET read_at = CURRENT_TIMESTAMP 
+           WHERE user_id = ? AND sender_role = 'admin' AND read_at IS NULL`,
+          [req.user.id],
+          (err) => {
+            if (err) console.error('Failed to mark messages as read:', err);
+          }
+        );
+      }
+      
+      res.json(messages || []);
+    }
+  );
+});
+
 
 app.post('/api/geocode/autocomplete', authenticateToken, async (req, res) => {
   const { input } = req.body;
