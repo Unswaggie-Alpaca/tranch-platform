@@ -7585,7 +7585,12 @@ const MessagesPage = () => {
                     {messages.map((message) => (
                       <div
                         key={message.id}
-                        className={`message-bubble ${message.sender_role === user.role ? 'own' : 'other'}`}
+                        className={`message-bubble ${(
+                          (selectedConversation.type === 'admin_message' && 
+                           ((user.role === 'admin' && message.sender_role === 'admin') ||
+                            (user.role !== 'admin' && message.sender_role === 'user'))) ||
+                          (selectedConversation.type !== 'admin_message' && message.sender_role === user.role)
+                        ) ? 'own' : 'other'}`}
                       >
                         <div className="message-header">
                           <span className="sender-name">{message.sender_name}</span>
