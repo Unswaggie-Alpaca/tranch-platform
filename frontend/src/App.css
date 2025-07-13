@@ -10438,3 +10438,45 @@ td {
   color: #6c757d;
   font-size: 14px;
 }
+
+/* Document Request Styles */
+.request-item {
+  background: var(--warning-50);
+  border-color: var(--warning-200);
+}
+
+.request-item:hover {
+  background: var(--warning-100);
+  border-color: var(--warning-300);
+}
+
+.request-description {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  line-height: 1.5;
+}
+
+/* Document Preview Modal */
+.document-iframe {
+  width: 100%;
+  height: 600px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--gray-100);
+}
+
+.preview-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  text-align: center;
+  color: var(--gray-600);
+}
+
+.preview-unavailable p {
+  margin-bottom: 1.5rem;
+  font-size: 1.125rem;
+}

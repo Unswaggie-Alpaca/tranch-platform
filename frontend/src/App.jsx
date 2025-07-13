@@ -227,6 +227,17 @@ updateProjectStatus: (projectId, data) => request(`/admin/update-project-status/
       if (!response.ok) throw new Error('Download failed');
       return response.blob();
     },
+    viewDealDocument: async (dealId, documentId) => {
+      const token = await getToken();
+      const response = await fetch(`${API_BASE_URL}/deals/${dealId}/documents/${documentId}/view`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('View failed');
+      return response.blob();
+    },
 
     // Document requests
     getDocumentRequests: (dealId) => request(`/deals/${dealId}/document-requests`),
@@ -8225,11 +8236,16 @@ const DealOverview = ({ deal, project }) => {
 const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRole, onUpdate }) => {
   const [dealDocuments, setDealDocuments] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState(null);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [documentRequests, setDocumentRequests] = useState([]);
   const api = useApi();
   const { addNotification } = useNotifications();
+  const { user } = useApp();
   
   useEffect(() => {
     fetchDealDocuments();
+    fetchDocumentRequests();
   }, [dealId]);
   
   const fetchDealDocuments = async () => {
@@ -8238,6 +8254,15 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
       setDealDocuments(docs || []);
     } catch (err) {
       console.error('Failed to fetch deal documents:', err);
+    }
+  };
+  
+  const fetchDocumentRequests = async () => {
+    try {
+      const requests = await api.getDocumentRequests(dealId);
+      setDocumentRequests(requests || []);
+    } catch (err) {
+      console.error('Failed to fetch document requests:', err);
     }
   };
   
@@ -8290,6 +8315,38 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
       });
     }
   };
+  
+  const handleDealDocumentView = async (document) => {
+    if (document.mime_type?.includes('pdf')) {
+      setPreviewDocument({ ...document, isDealDocument: true });
+    } else {
+      // For non-PDF files, download them
+      try {
+        const blob = await api.downloadDealDocument(dealId, document.id);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = document.file_name;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        addNotification({
+          type: 'error',
+          title: 'Download Failed',
+          message: 'Unable to download document'
+        });
+      }
+    }
+  };
+  
+  const handleProjectDocumentView = async (document) => {
+    if (document.mime_type?.includes('pdf')) {
+      setPreviewDocument({ ...document, isDealDocument: false });
+    } else {
+      // For non-PDF files, download them
+      await handleDownload(document);
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -8325,6 +8382,12 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
                 </div>
                 <div className="document-actions">
                   <button 
+                    onClick={() => handleProjectDocumentView(doc)} 
+                    className="btn btn-sm btn-outline"
+                  >
+                    View
+                  </button>
+                  <button 
                     onClick={() => handleDownload(doc)} 
                     className="btn btn-sm btn-outline"
                   >
@@ -8347,6 +8410,12 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
           <h4>Deal Documents <span className="document-count">{dealDocuments.length}</span></h4>
           <span className="section-subtitle">Documents specific to this deal</span>
           <div className="section-actions">
+            <button 
+              onClick={() => setShowRequestModal(true)}
+              className="btn btn-sm btn-outline"
+            >
+              Request Document
+            </button>
             <FileUpload
               onUpload={handleUploadDealDocument}
               accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
@@ -8376,7 +8445,26 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
                 </div>
                 <div className="document-actions">
                   <button 
-                    onClick={() => handleDownload(doc)} 
+                    onClick={() => handleDealDocumentView(doc)} 
+                    className="btn btn-sm btn-outline"
+                  >
+                    View
+                  </button>
+                  <button 
+                    onClick={() => api.downloadDealDocument(dealId, doc.id).then(blob => {
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = doc.file_name;
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                    }).catch(() => {
+                      addNotification({
+                        type: 'error',
+                        title: 'Download Failed',
+                        message: 'Unable to download document'
+                      });
+                    })} 
                     className="btn btn-sm btn-outline"
                   >
                     Download
@@ -8391,6 +8479,107 @@ const DealDocumentManager = ({ dealId, projectId, projectDocuments = [], userRol
           )}
         </div>
       </div>
+      
+      {/* Document Requests Section */}
+      {documentRequests.length > 0 && (
+        <div className="document-section">
+          <div className="section-header">
+            <h4>Document Requests <span className="document-count">{documentRequests.filter(r => r.status === 'pending').length}</span></h4>
+            <span className="section-subtitle">Pending document requests</span>
+          </div>
+          
+          <div className="document-list">
+            {documentRequests.map(request => (
+              <div key={`request-${request.id}`} className="document-item request-item">
+                <div className="document-info">
+                  <div className="document-icon">📋</div>
+                  <div className="document-details">
+                    <h5>{request.document_name}</h5>
+                    <div className="document-meta">
+                      Requested by {request.requester_name} • {formatDate(request.requested_at)}
+                      {request.description && <p className="request-description">{request.description}</p>}
+                    </div>
+                  </div>
+                </div>
+                <div className="document-actions">
+                  <span className={`status-badge ${request.status}`}>
+                    {request.status === 'pending' ? 'Pending' : 'Fulfilled'}
+                  </span>
+                  {request.status === 'pending' && request.requester_id !== user?.id && (
+                    <FileUpload
+                      onUpload={async (files) => {
+                        // Mark this specific request as the one being fulfilled
+                        const formData = new FormData();
+                        for (let file of files) {
+                          formData.append('documents', file);
+                        }
+                        formData.append('request_id', request.id);
+                        
+                        setUploading(true);
+                        try {
+                          await api.uploadDealDocuments(dealId, formData);
+                          await api.fulfillDocumentRequest(request.id);
+                          
+                          addNotification({
+                            type: 'success',
+                            title: 'Request Fulfilled',
+                            message: 'Document uploaded and request marked as fulfilled'
+                          });
+                          
+                          await fetchDealDocuments();
+                          await fetchDocumentRequests();
+                        } catch (err) {
+                          addNotification({
+                            type: 'error',
+                            title: 'Upload Failed',
+                            message: err.message || 'Failed to fulfill request'
+                          });
+                        } finally {
+                          setUploading(false);
+                        }
+                      }}
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                      maxSize={10 * 1024 * 1024}
+                      multiple={false}
+                      disabled={uploading}
+                    >
+                      <button className="btn btn-sm btn-primary" disabled={uploading}>
+                        Upload to Fulfill
+                      </button>
+                    </FileUpload>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Modals */}
+      {showRequestModal && (
+        <DocumentRequestModal 
+          dealId={dealId}
+          onClose={() => setShowRequestModal(false)}
+          onSuccess={async () => {
+            setShowRequestModal(false);
+            await fetchDocumentRequests();
+            addNotification({
+              type: 'success',
+              title: 'Request Sent',
+              message: 'Document request has been sent'
+            });
+          }}
+        />
+      )}
+      
+      {previewDocument && (
+        <DealDocumentPreviewModal 
+          document={previewDocument}
+          dealId={dealId}
+          api={api}
+          onClose={() => setPreviewDocument(null)}
+        />
+      )}
     </div>
   );
 };
@@ -12040,6 +12229,94 @@ const DocumentPreviewModal = ({ document, onClose }) => {
   const handleDownload = async () => {
     try {
       const blob = await api.downloadDocument(document.file_path);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = document.file_name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Download Failed',
+        message: 'Unable to download document'
+      });
+    }
+  };
+
+  if (!document) return null;
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title={document.file_name} size="large">
+      {loading ? (
+        <LoadingSpinner />
+      ) : document.mime_type?.includes('pdf') ? (
+        <iframe 
+          src={previewUrl} 
+          className="document-iframe"
+          title={document.file_name}
+        />
+      ) : (
+        <div className="preview-unavailable">
+          <p>Preview not available for this file type</p>
+          <button onClick={handleDownload} className="btn btn-primary">
+            Download to View
+          </button>
+        </div>
+      )}
+      
+      <div className="modal-actions">
+        <button onClick={handleDownload} className="btn btn-primary">
+          Download
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
+const DealDocumentPreviewModal = ({ document, dealId, api, onClose }) => {
+  const [loading, setLoading] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const { addNotification } = useNotifications();
+
+  useEffect(() => {
+    if (document && document.mime_type?.includes('pdf')) {
+      loadDocument();
+    }
+  }, [document]);
+
+  const loadDocument = async () => {
+    try {
+      let blob;
+      if (document.isDealDocument) {
+        // Deal document - use the view endpoint
+        blob = await api.viewDealDocument(dealId, document.id);
+      } else {
+        // Project document - use the regular download endpoint
+        blob = await api.downloadDocument(document.file_path);
+      }
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch (err) {
+      console.error('Failed to load document:', err);
+      addNotification({
+        type: 'error',
+        title: 'Preview Failed',
+        message: 'Unable to preview document'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      let blob;
+      if (document.isDealDocument) {
+        blob = await api.downloadDealDocument(dealId, document.id);
+      } else {
+        blob = await api.downloadDocument(document.file_path);
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
