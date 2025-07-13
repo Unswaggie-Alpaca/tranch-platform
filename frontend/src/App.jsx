@@ -11140,6 +11140,7 @@ const AdminPanel = () => {
   const [overrideReason, setOverrideReason] = useState('');
 const [denialReason, setDenialReason] = useState('');
   const [paymentNotReceived, setPaymentNotReceived] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
 
   const handleProjectStateChange = async (projectId, newStatus) => {
     const reason = prompt(`Reason for changing to ${newStatus}:`);
