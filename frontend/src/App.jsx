@@ -1379,27 +1379,22 @@ const DealRoomSelector = ({ isOpen, onClose, project, deals }) => {
                 <div className="deal-selector-header">
                   <div className="deal-selector-info">
                     <h4 className="deal-selector-name">{deal.funder_name}</h4>
-                    <p className="deal-selector-company">{deal.funder_company || 'Independent Funder'}</p>
+                    <p className="deal-selector-email">{deal.funder_email}</p>
                   </div>
-                  {getStatusBadge(deal)}
+                  {deal.proposal_status === 'accepted' && (
+                    <span className="badge badge-success">Quote Accepted</span>
+                  )}
                 </div>
                 
                 <div className="deal-selector-details">
                   <div className="deal-selector-stat">
-                    <span className="stat-label">Last Activity:</span>
-                    <span className="stat-value">{formatLastActivity(deal.last_activity_at)}</span>
+                    <span className="stat-label">Created:</span>
+                    <span className="stat-value">{formatLastActivity(deal.created_at)}</span>
                   </div>
-                  {deal.last_proposal_amount && (
-                    <div className="deal-selector-stat">
-                      <span className="stat-label">Quote Amount:</span>
-                      <span className="stat-value">{formatCurrency(deal.last_proposal_amount)}</span>
-                    </div>
-                  )}
-                  {deal.last_message_preview && (
-                    <div className="deal-selector-message">
-                      <span className="message-preview">{deal.last_message_preview}</span>
-                    </div>
-                  )}
+                  <div className="deal-selector-stat">
+                    <span className="stat-label">Deal ID:</span>
+                    <span className="stat-value">#{deal.id}</span>
+                  </div>
                 </div>
 
                 <div className="deal-selector-actions">
