@@ -299,6 +299,19 @@ updateProjectStatus: (projectId, data) => request(`/admin/update-project-status/
       body: JSON.stringify({ project_id: projectId, initial_message: initialMessage }),
     }),
     getAccessRequests: () => request('/access-requests'),
+    
+    // Admin messaging
+    sendAdminMessage: (userId, message) => request('/admin/messages/send', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, message })
+    }),
+    getAdminConversations: () => request('/admin/messages'),
+    getAdminMessages: (userId) => request(`/admin/messages/${userId}`),
+    getUserAdminMessages: () => request('/messages/admin'),
+    replyToAdmin: (message) => request('/messages/admin/reply', {
+      method: 'POST',
+      body: JSON.stringify({ message })
+    }),
     approveAccessRequest: (requestId) => request(`/access-requests/${requestId}/approve`, {
       method: 'PUT',
     }),
@@ -1526,7 +1539,7 @@ const Navigation = () => {
     { path: '/dashboard', label: 'Dashboard', roles: ['borrower', 'funder', 'admin'] },
     { path: '/projects', label: 'Projects', roles: ['funder'] },
     { path: '/my-projects', label: 'My Projects', roles: ['borrower'] },
-    { path: '/messages', label: 'Messages', roles: ['borrower', 'funder'] },
+    { path: '/messages', label: 'Messages', roles: ['borrower', 'funder', 'admin'] },
     { path: '/portfolio', label: 'Portfolio', roles: ['funder'] },
     { path: '/admin', label: 'Admin', roles: ['admin'] },
   ];
@@ -7252,10 +7265,46 @@ const MessagesPage = () => {
 
   const fetchConversations = async () => {
     try {
-      const data = await api.getAccessRequests();
-      setConversations(data);
-      if (data.length > 0 && !selectedConversation) {
-        setSelectedConversation(data[0]);
+      let conversations = [];
+      
+      if (user.role === 'admin') {
+        // Admin sees all conversations with users
+        const adminConvos = await api.getAdminConversations();
+        conversations = adminConvos.map(conv => ({
+          id: `admin-${conv.user_id}`,
+          user_id: conv.user_id,
+          user_name: conv.user_name,
+          user_email: conv.user_email,
+          user_role: conv.user_role,
+          last_message: conv.last_message,
+          last_message_time: conv.last_message_time,
+          unread_count: conv.unread_count,
+          type: 'admin_message'
+        }));
+      } else {
+        // Regular users see access requests + admin messages
+        const accessRequests = await api.getAccessRequests();
+        conversations = accessRequests;
+        
+        // Check for admin messages
+        const adminMessages = await api.getUserAdminMessages();
+        if (adminMessages.length > 0) {
+          // Add admin conversation at the top
+          const lastAdminMsg = adminMessages[adminMessages.length - 1];
+          conversations.unshift({
+            id: 'admin-conversation',
+            admin_name: lastAdminMsg.admin_name || 'Admin',
+            last_message: lastAdminMsg.message,
+            last_message_time: lastAdminMsg.sent_at,
+            unread_count: adminMessages.filter(m => m.sender_role === 'admin' && !m.read_at).length,
+            type: 'admin_message'
+          });
+        }
+      }
+      
+      setConversations(conversations);
+      if (conversations.length > 0 && !selectedConversation) {
+        setSelectedConversation(conversations[0]);
       }
     } catch (err) {
       console.error('Failed to fetch conversations:', err);
@@ -7264,23 +7313,37 @@ const MessagesPage = () => {
     }
   };
 
-  const fetchMessages = async (requestId) => {
+  const fetchMessages = async (conversationId) => {
     try {
-      const conversation = conversations.find(c => c.id === requestId);
-      const data = await api.getMessages(requestId);
+      const conversation = conversations.find(c => c.id === conversationId);
       
-      // If there's an initial message and no other messages, add it
-      if (conversation?.initial_message && data.length === 0) {
-        const initialMsg = {
-          id: 'initial-' + requestId,
-          sender_role: 'funder',
-          sender_name: conversation.funder_name,
-          message: conversation.initial_message,
-          sent_at: conversation.requested_at
-        };
-        setMessages([initialMsg]);
+      if (conversation?.type === 'admin_message') {
+        // Fetch admin messages
+        if (user.role === 'admin') {
+          const userId = conversation.user_id || conversationId.replace('admin-', '');
+          const data = await api.getAdminMessages(userId);
+          setMessages(data);
+        } else {
+          const data = await api.getUserAdminMessages();
+          setMessages(data);
+        }
       } else {
-        setMessages(data);
+        // Regular access request messages
+        const data = await api.getMessages(conversationId);
+        
+        // If there's an initial message and no other messages, add it
+        if (conversation?.initial_message && data.length === 0) {
+          const initialMsg = {
+            id: 'initial-' + conversationId,
+            sender_role: 'funder',
+            sender_name: conversation.funder_name,
+            message: conversation.initial_message,
+            sent_at: conversation.requested_at
+          };
+          setMessages([initialMsg]);
+        } else {
+          setMessages(data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch messages:', err);
@@ -7292,7 +7355,20 @@ const MessagesPage = () => {
     
     setSending(true);
     try {
-      await api.sendMessage(selectedConversation.id, newMessage.trim());
+      if (selectedConversation.type === 'admin_message') {
+        // Send admin message
+        if (user.role === 'admin') {
+          const userId = selectedConversation.user_id || selectedConversation.id.replace('admin-', '');
+          await api.sendAdminMessage(userId, newMessage.trim());
+        } else {
+          // User replying to admin
+          await api.replyToAdmin(newMessage.trim());
+        }
+      } else {
+        // Regular access request message
+        await api.sendMessage(selectedConversation.id, newMessage.trim());
+      }
+      
       setNewMessage('');
       // Refresh messages
       fetchMessages(selectedConversation.id);
@@ -7395,31 +7471,43 @@ const MessagesPage = () => {
                   onClick={() => setSelectedConversation(conversation)}
                 >
                   <div className="conversation-avatar">
-                    {user.role === 'borrower' 
-                      ? conversation.funder_name.charAt(0).toUpperCase()
-                      : conversation.project_title.charAt(0).toUpperCase()
+                    {conversation.type === 'admin_message' 
+                      ? (user.role === 'admin' ? conversation.user_name?.charAt(0).toUpperCase() : 'A')
+                      : (user.role === 'borrower' 
+                          ? conversation.funder_name?.charAt(0).toUpperCase()
+                          : conversation.project_title?.charAt(0).toUpperCase()
+                        )
                     }
                   </div>
                   
                   <div className="conversation-info">
                     <div className="conversation-header">
                       <div className="conversation-name">
-                        {user.role === 'borrower' 
-                          ? conversation.funder_name 
-                          : conversation.project_title
+                        {conversation.type === 'admin_message'
+                          ? (user.role === 'admin' ? conversation.user_name : 'Admin Support')
+                          : (user.role === 'borrower' 
+                              ? conversation.funder_name 
+                              : conversation.project_title
+                            )
                         }
                       </div>
                       <div className="conversation-time">
-                        {formatTime(conversation.requested_at)}
+                        {formatTime(conversation.last_message_time || conversation.requested_at)}
                       </div>
                     </div>
                     
                     <div className="conversation-preview">
-                      {conversation.initial_message || 'Access request'}
+                      {conversation.last_message || conversation.initial_message || 'Access request'}
                     </div>
                     
                     <div className="conversation-meta">
-                      <StatusBadge status={conversation.status} />
+                      {conversation.type === 'admin_message' ? (
+                        conversation.unread_count > 0 && (
+                          <span className="unread-badge">{conversation.unread_count}</span>
+                        )
+                      ) : (
+                        <StatusBadge status={conversation.status} />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -7437,17 +7525,30 @@ const MessagesPage = () => {
                 <div className="chat-participant">
                   <div className="participant-info">
                     <div className="participant-name">
-                      {user.role === 'borrower' 
-                        ? selectedConversation.funder_name 
-                        : selectedConversation.project_title
+                      {selectedConversation.type === 'admin_message'
+                        ? (user.role === 'admin' ? selectedConversation.user_name : 'Admin Support')
+                        : (user.role === 'borrower' 
+                            ? selectedConversation.funder_name 
+                            : selectedConversation.project_title
+                          )
                       }
                     </div>
                     <div className="participant-details">
-                      {user.role === 'borrower' && selectedConversation.company_name && (
-                        <span>{selectedConversation.company_name} • {selectedConversation.company_type}</span>
-                      )}
-                      {user.role === 'funder' && (
-                        <span>Loan Amount: {formatCurrency(selectedConversation.loan_amount)}</span>
+                      {selectedConversation.type === 'admin_message' ? (
+                        user.role === 'admin' ? (
+                          <span>{selectedConversation.user_email} • {selectedConversation.user_role}</span>
+                        ) : (
+                          <span>Platform Administrator</span>
+                        )
+                      ) : (
+                        <>
+                          {user.role === 'borrower' && selectedConversation.company_name && (
+                            <span>{selectedConversation.company_name} • {selectedConversation.company_type}</span>
+                          )}
+                          {user.role === 'funder' && (
+                            <span>Loan Amount: {formatCurrency(selectedConversation.loan_amount)}</span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -10936,6 +11037,87 @@ const OverrideHistory = ({ api }) => {
   );
 };
 
+// Admin Message Modal Component
+const AdminMessageModal = ({ isOpen, onClose, user, onSend }) => {
+  const api = useApi();
+  const { addNotification } = useNotifications();
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  
+  const handleSend = async () => {
+    if (!message.trim()) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Please enter a message'
+      });
+      return;
+    }
+    
+    setSending(true);
+    try {
+      await api.sendAdminMessage(user.id, message);
+      addNotification({
+        type: 'success',
+        title: 'Message Sent',
+        message: `Message sent to ${user.name}`
+      });
+      setMessage('');
+      onClose();
+      if (onSend) onSend();
+    } catch (err) {
+      addNotification({
+        type: 'error',
+        title: 'Send Failed',
+        message: err.message
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+  
+  if (!isOpen || !user) return null;
+  
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Message ${user.name}`}>
+      <div className="admin-message-modal">
+        <div className="user-info">
+          <p><strong>Email:</strong> {user.email}</p>
+          <p><strong>Role:</strong> {user.role}</p>
+        </div>
+        
+        <div className="message-input">
+          <label>Message</label>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type your message here..."
+            rows={6}
+            className="form-control"
+          />
+        </div>
+        
+        <div className="modal-actions">
+          <button 
+            onClick={onClose} 
+            className="btn btn-outline"
+            disabled={sending}
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={handleSend} 
+            className="btn btn-primary"
+            disabled={sending || !message.trim()}
+          >
+            {sending ? 'Sending...' : 'Send Message'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 // Now the corrected AdminPanel component
 const AdminPanel = () => {
   const api = useApi();
@@ -11439,6 +11621,16 @@ const [denialReason, setDenialReason] = useState('');
                             Approve
                           </button>
                         )}
+                        <button 
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setShowMessageModal(true);
+                          }}
+                          className="btn btn-sm btn-secondary"
+                          style={{ marginLeft: '8px' }}
+                        >
+                          Message
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -12086,6 +12278,23 @@ const [denialReason, setDenialReason] = useState('');
           </div>
         )}
       </Modal>
+      
+      {/* Admin Message Modal */}
+      <AdminMessageModal 
+        isOpen={showMessageModal}
+        onClose={() => {
+          setShowMessageModal(false);
+          setSelectedUser(null);
+        }}
+        user={selectedUser}
+        onSend={() => {
+          addNotification({
+            type: 'success',
+            title: 'Message Sent',
+            message: 'User will receive notification'
+          });
+        }}
+      />
     </div>
   );
 };
@@ -13678,7 +13887,7 @@ const AppLayout = () => {
             </ProtectedRoute>
           } />
           <Route path="/messages" element={
-            <ProtectedRoute roles={['borrower', 'funder']}>
+            <ProtectedRoute roles={['borrower', 'funder', 'admin']}>
               <MessagesPage />
             </ProtectedRoute>
           } />

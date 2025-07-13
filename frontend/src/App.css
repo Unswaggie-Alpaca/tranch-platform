@@ -10634,3 +10634,81 @@ td {
   padding-top: 0.75rem;
   border-top: 1px solid var(--warning-200);
 }
+
+/* ===========================
+   Admin Messaging Styles
+   =========================== */
+
+/* Admin Message Modal */
+.admin-message-modal {
+  padding: 1.5rem;
+}
+
+.admin-message-modal .user-info {
+  background: var(--gray-50);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-message-modal .user-info p {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+.admin-message-modal .message-input {
+  margin-bottom: 1.5rem;
+}
+
+.admin-message-modal .message-input label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.admin-message-modal .message-input textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+}
+
+.admin-message-modal .modal-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+/* Unread Badge for Admin Messages */
+.conversation-meta .unread-badge {
+  background: var(--error);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-full);
+  min-width: 1.25rem;
+  text-align: center;
+  display: inline-block;
+}
+
+/* Admin Conversation Styles */
+.conversation-item[data-type="admin_message"] {
+  border-left: 3px solid var(--primary-500);
+}
+
+.conversation-item[data-type="admin_message"] .conversation-avatar {
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+
+/* Admin Message Button in Users Table */
+.btn.btn-secondary {
+  background: var(--gray-600);
+  color: white;
+  border: 1px solid var(--gray-600);
+}
+
+.btn.btn-secondary:hover {
+  background: var(--gray-700);
+  border-color: var(--gray-700);
+}
