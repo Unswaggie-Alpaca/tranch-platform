@@ -6110,6 +6110,31 @@ const tabs = [
        </div>
      </div>
 
+     {/* Rejection Feedback Notice */}
+     {project.last_rejection_reason && (project.payment_status === 'paid' && !project.visible) && (
+       <div className="rejection-notice" style={{ margin: '20px 0' }}>
+         <div className="rejection-header">
+           <svg className="rejection-icon" viewBox="0 0 20 20" fill="currentColor">
+             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+           </svg>
+           <span className="rejection-label">Admin Feedback</span>
+         </div>
+         <div className="rejection-reason">
+           {project.last_rejection_reason}
+         </div>
+         {project.rejection_date && (
+           <div className="rejection-date">
+             Received: {new Date(project.rejection_date).toLocaleDateString()}
+           </div>
+         )}
+         {project.payment_status === 'paid' && (
+           <div className="rejection-note">
+             Note: You have already paid for this project. Please address the feedback and submit for re-review.
+           </div>
+         )}
+       </div>
+     )}
+
      {/* Tabs */}
      <div className="tabs-container">
        <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />

@@ -43,6 +43,17 @@
   --error: #ef4444;
   --info: #3b82f6;
   
+  /* Warning Color Scale */
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-200: #fde68a;
+  --warning-300: #fcd34d;
+  --warning-400: #fbbf24;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+  --warning-800: #92400e;
+  
   /* Glass Effects */
   --glass-bg: rgba(255, 255, 255, 0.1);
   --glass-border: rgba(255, 255, 255, 0.2);
@@ -10573,4 +10584,53 @@ td {
 .icon-arrow-right {
   width: 1rem;
   height: 1rem;
+}
+
+/* Rejection Notice Styles */
+.rejection-notice {
+  background: var(--warning-50);
+  border: 1px solid var(--warning-200);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  margin: 1rem 0;
+}
+
+.rejection-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.rejection-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--warning-600);
+}
+
+.rejection-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--warning-800);
+}
+
+.rejection-reason {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--gray-800);
+  margin-bottom: 0.75rem;
+}
+
+.rejection-date {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  margin-bottom: 0.75rem;
+}
+
+.rejection-note {
+  font-size: 0.875rem;
+  color: var(--warning-700);
+  font-style: italic;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--warning-200);
 }
