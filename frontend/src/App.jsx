@@ -6111,7 +6111,13 @@ const tabs = [
      </div>
 
      {/* Rejection Feedback Notice */}
-     {project.last_rejection_reason && (project.payment_status === 'paid' && !project.visible) && (
+     {console.log('Project rejection debug:', {
+       last_rejection_reason: project.last_rejection_reason,
+       payment_status: project.payment_status,
+       visible: project.visible,
+       submission_status: project.submission_status
+     })}
+     {project.last_rejection_reason && (project.payment_status === 'unpaid' || (project.payment_status === 'paid' && !project.visible)) && (
        <div className="rejection-notice" style={{ margin: '20px 0' }}>
          <div className="rejection-header">
            <svg className="rejection-icon" viewBox="0 0 20 20" fill="currentColor">
