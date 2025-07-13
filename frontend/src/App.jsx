@@ -6046,7 +6046,7 @@ const tabs = [
                        title: 'Submit for Re-review',
                        message: 'Please address the admin feedback and save your changes to submit for re-review.'
                      });
-                     navigate(`/project/${project.id}/edit`);
+                     navigate(`/project/${project.id}/edit?resubmit=true`);
                    }}
                    className="btn btn-primary"
                  >
@@ -6424,6 +6424,7 @@ const tabs = [
 
 const EditProject = () => {
   const { id } = useParams();
+  const location = useLocation();
   const api = useApi();
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
@@ -6437,6 +6438,10 @@ const EditProject = () => {
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
+  
+  // Check if we're in resubmit flow
+  const searchParams = new URLSearchParams(location.search);
+  const isResubmitFlow = searchParams.get('resubmit') === 'true';
 
   useEffect(() => {
     fetchData();
@@ -6535,11 +6540,22 @@ const EditProject = () => {
         await uploadDocuments();
       }
 
-      addNotification({
-        type: 'success',
-        title: 'Project Updated',
-        message: 'Your project has been updated successfully!'
-      });
+      // If this is a resubmit flow and project is rejected, call resubmit API
+      if (isResubmitFlow && project.submission_status === 'rejected') {
+        await api.resubmitProject(id);
+        
+        addNotification({
+          type: 'success',
+          title: 'Resubmitted for Review',
+          message: 'Your project has been updated and resubmitted for admin review.'
+        });
+      } else {
+        addNotification({
+          type: 'success',
+          title: 'Project Updated',
+          message: 'Your project has been updated successfully!'
+        });
+      }
       
       navigate(`/project/${id}`);
     } catch (err) {
@@ -7154,7 +7170,7 @@ const EditProject = () => {
               disabled={saving || uploadingDocs}
               className="btn btn-primary"
             >
-              {saving ? 'Saving Changes...' : 'Save All Changes'}
+              {saving ? 'Saving Changes...' : (isResubmitFlow && project?.submission_status === 'rejected' ? 'Save and Submit for Re-review' : 'Save All Changes')}
             </button>
           )}
         </div>
