@@ -4253,23 +4253,6 @@ app.post('/api/admin/messages/send', authenticateToken, requireRole(['admin']), 
     return res.status(400).json({ error: 'User ID and message are required' });
   }
   
-  // Create admin_messages table if it doesn't exist
-  db.run(`
-    CREATE TABLE IF NOT EXISTS admin_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_id INTEGER NOT NULL,
-      user_id INTEGER NOT NULL,
-      message TEXT NOT NULL,
-      sender_role TEXT NOT NULL,
-      sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      read_at TIMESTAMP,
-      FOREIGN KEY (admin_id) REFERENCES users (id),
-      FOREIGN KEY (user_id) REFERENCES users (id)
-    )
-  `, (err) => {
-    if (err) console.error('Error creating admin_messages table:', err);
-  });
-  
   // Insert the message
   db.run(
     'INSERT INTO admin_messages (admin_id, user_id, message, sender_role) VALUES (?, ?, ?, ?)',
@@ -4345,48 +4328,76 @@ app.get('/api/admin/messages/:userId', authenticateToken, (req, res) => {
     return res.status(403).json({ error: 'Access denied' });
   }
   
-  db.all(
-    `SELECT am.*, 
-      sender.name as sender_name,
-      receiver.name as receiver_name
-     FROM admin_messages am
-     JOIN users sender ON (am.sender_role = 'admin' AND sender.id = am.admin_id) 
-                      OR (am.sender_role = 'user' AND sender.id = am.user_id)
-     JOIN users receiver ON (am.sender_role = 'admin' AND receiver.id = am.user_id) 
-                        OR (am.sender_role = 'user' AND receiver.id = am.admin_id)
-     WHERE (am.admin_id = ? AND am.user_id = ?) 
-        OR (am.user_id = ? AND req.user.role = 'admin')
-        OR (am.user_id = ? AND am.admin_id IN (SELECT id FROM users WHERE role = 'admin'))
-     ORDER BY am.sent_at ASC`,
-    [req.user.id, userId, req.user.id, req.user.id],
-    (err, messages) => {
-      if (err) {
-        console.error('Admin messages fetch error:', err);
-        return res.status(500).json({ error: 'Failed to fetch messages' });
-      }
-      
-      // Mark messages as read
-      if (messages.length > 0) {
-        const messageIds = messages
-          .filter(m => m.sender_role !== req.user.role && !m.read_at)
-          .map(m => m.id);
+  // Simplified query for admin viewing messages with a specific user
+  if (req.user.role === 'admin') {
+    db.all(
+      `SELECT am.*, 
+        CASE 
+          WHEN am.sender_role = 'admin' THEN admin_user.name 
+          ELSE regular_user.name 
+        END as sender_name
+       FROM admin_messages am
+       LEFT JOIN users admin_user ON admin_user.id = am.admin_id
+       LEFT JOIN users regular_user ON regular_user.id = am.user_id
+       WHERE am.user_id = ?
+       ORDER BY am.sent_at ASC`,
+      [userId],
+      (err, messages) => {
+        if (err) {
+          console.error('Admin messages fetch error:', err);
+          return res.status(500).json({ error: 'Failed to fetch messages' });
+        }
         
-        if (messageIds.length > 0) {
+        // Mark user messages as read (messages from user that admin hasn't read)
+        if (messages.length > 0) {
           db.run(
             `UPDATE admin_messages 
              SET read_at = CURRENT_TIMESTAMP 
-             WHERE id IN (${messageIds.map(() => '?').join(',')})`,
-            messageIds,
+             WHERE user_id = ? AND sender_role = 'user' AND read_at IS NULL`,
+            [userId],
             (err) => {
               if (err) console.error('Failed to mark messages as read:', err);
             }
           );
         }
+        
+        res.json(messages || []);
       }
-      
-      res.json(messages || []);
-    }
-  );
+    );
+  } else {
+    // For regular users viewing their admin messages
+    db.all(
+      `SELECT am.*, 
+        u.name as sender_name
+       FROM admin_messages am
+       JOIN users u ON (am.sender_role = 'admin' AND u.id = am.admin_id) 
+                    OR (am.sender_role = 'user' AND u.id = am.user_id)
+       WHERE am.user_id = ?
+       ORDER BY am.sent_at ASC`,
+      [req.user.id],
+      (err, messages) => {
+        if (err) {
+          console.error('Admin messages fetch error:', err);
+          return res.status(500).json({ error: 'Failed to fetch messages' });
+        }
+        
+        // Mark admin messages as read
+        if (messages.length > 0) {
+          db.run(
+            `UPDATE admin_messages 
+             SET read_at = CURRENT_TIMESTAMP 
+             WHERE user_id = ? AND sender_role = 'admin' AND read_at IS NULL`,
+            [req.user.id],
+            (err) => {
+              if (err) console.error('Failed to mark messages as read:', err);
+            }
+          );
+        }
+        
+        res.json(messages || []);
+      }
+    );
+  }
 });
 
 // Send message from user to admin (reply)
