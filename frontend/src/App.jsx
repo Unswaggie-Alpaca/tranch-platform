@@ -2831,6 +2831,7 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showDealSelector, setShowDealSelector] = useState(false);
   const [deals, setDeals] = useState([]);
 
   useEffect(() => {
@@ -2954,6 +2955,15 @@ const ProjectCardClean = ({ project, onProjectUpdate }) => {
             setShowPaymentModal(false);
             if (onProjectUpdate) onProjectUpdate();
           }}
+        />
+      )}
+      
+      {showDealSelector && (
+        <DealRoomSelector
+          isOpen={showDealSelector}
+          onClose={() => setShowDealSelector(false)}
+          project={project}
+          deals={deals}
         />
       )}
     </>
