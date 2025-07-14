@@ -1616,7 +1616,7 @@ db.serialize(() => {
   
   // Project indexes
   db.run('CREATE INDEX IF NOT EXISTS idx_projects_borrower_id ON projects(borrower_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_submission_status ON projects(submission_status)');
   db.run('CREATE INDEX IF NOT EXISTS idx_projects_payment_status ON projects(payment_status)');
   
   // Access request indexes
@@ -5573,7 +5573,7 @@ app.put('/api/deals/:id/complete', authenticateToken, (req, res) => {
 
           // Update project status
           db.run(
-            'UPDATE projects SET status = ? WHERE id = ?',
+            'UPDATE projects SET submission_status = ? WHERE id = ?',
             ['closed', deal.project_id],
             (err) => {
               if (err) console.error('Project update error:', err);
