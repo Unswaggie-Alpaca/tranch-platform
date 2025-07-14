@@ -1211,7 +1211,6 @@ const PaymentForm = ({ amount, projectId, onSuccess, processing, setProcessing }
       }
 
       // 4. Confirm the payment
-      console.log('Confirming payment with client secret:', data.client_secret);
       
       const result = await stripe.confirmCardPayment(data.client_secret, {
         payment_method: {
