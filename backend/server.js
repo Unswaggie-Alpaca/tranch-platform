@@ -1274,7 +1274,7 @@ app.get('/uploads/:filename', authenticateToken, async (req, res) => {
 db.serialize(() => {
   // Users table with Clerk integration
   // In server.js, update the users table creation
-db.run(`CREATE TABLE IF NOT EXISTS users (
+  db.run(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   clerk_user_id TEXT UNIQUE,
   name TEXT NOT NULL,
@@ -1446,7 +1446,7 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
   )`);
   // Add these tables after your existing tables
 // Update the deals table creation (add this after your existing table creation)
-db.run(`CREATE TABLE IF NOT EXISTS deals (
+  db.run(`CREATE TABLE IF NOT EXISTS deals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL,
   access_request_id INTEGER NOT NULL,
@@ -1462,7 +1462,7 @@ db.run(`CREATE TABLE IF NOT EXISTS deals (
   UNIQUE(project_id, funder_id) -- This ensures one deal per funder per project
 )`);
 
-db.run(`CREATE TABLE IF NOT EXISTS deal_documents (
+  db.run(`CREATE TABLE IF NOT EXISTS deal_documents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deal_id INTEGER NOT NULL,
   uploader_id INTEGER NOT NULL,
@@ -1476,7 +1476,7 @@ db.run(`CREATE TABLE IF NOT EXISTS deal_documents (
   FOREIGN KEY (uploader_id) REFERENCES users (id)
 )`);
 
-db.run(`CREATE TABLE IF NOT EXISTS document_requests (
+  db.run(`CREATE TABLE IF NOT EXISTS document_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deal_id INTEGER NOT NULL,
   requester_id INTEGER NOT NULL,
@@ -1489,7 +1489,7 @@ db.run(`CREATE TABLE IF NOT EXISTS document_requests (
   FOREIGN KEY (requester_id) REFERENCES users (id)
 )`);
 
-db.run(`CREATE TABLE IF NOT EXISTS deal_comments (
+  db.run(`CREATE TABLE IF NOT EXISTS deal_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deal_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
@@ -1499,7 +1499,7 @@ db.run(`CREATE TABLE IF NOT EXISTS deal_comments (
   FOREIGN KEY (user_id) REFERENCES users (id)
 )`);
 
-db.run(`CREATE TABLE IF NOT EXISTS indicative_quotes (
+  db.run(`CREATE TABLE IF NOT EXISTS indicative_quotes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deal_id INTEGER NOT NULL,
   funder_id INTEGER NOT NULL,
@@ -1516,7 +1516,7 @@ db.run(`CREATE TABLE IF NOT EXISTS indicative_quotes (
   FOREIGN KEY (funder_id) REFERENCES users (id)
 )`);
 
-db.run(`CREATE TABLE IF NOT EXISTS notifications (
+  db.run(`CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   type TEXT NOT NULL,
@@ -1528,7 +1528,7 @@ db.run(`CREATE TABLE IF NOT EXISTS notifications (
 )`);
 
 // Webhook events table for replay protection
-db.run(`CREATE TABLE IF NOT EXISTS webhook_events (
+  db.run(`CREATE TABLE IF NOT EXISTS webhook_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT UNIQUE NOT NULL,
   event_type TEXT NOT NULL,
@@ -1537,7 +1537,7 @@ db.run(`CREATE TABLE IF NOT EXISTS webhook_events (
 )`);
 
 // Security events logging table
-db.run(`CREATE TABLE IF NOT EXISTS security_events (
+  db.run(`CREATE TABLE IF NOT EXISTS security_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_type TEXT NOT NULL,
   severity TEXT NOT NULL,
@@ -1550,7 +1550,7 @@ db.run(`CREATE TABLE IF NOT EXISTS security_events (
 )`);
 
 // Sessions table for tracking active sessions
-db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
+  db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   session_token TEXT UNIQUE NOT NULL,
@@ -1606,6 +1606,47 @@ db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (admin_id) REFERENCES users (id)
   )`);
+
+  // Create indexes for better query performance
+  // User indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_clerk_user_id ON users(clerk_user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
+  
+  // Project indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_borrower_id ON projects(borrower_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_payment_status ON projects(payment_status)');
+  
+  // Access request indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_access_requests_project_funder ON access_requests(project_id, funder_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status)');
+  
+  // Document indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_documents_project_id ON documents(project_id)');
+  
+  // Deal indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_deals_project_id ON deals(project_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_deals_borrower_funder ON deals(borrower_id, funder_id)');
+  
+  // Webhook event index
+  db.run('CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id)');
+  
+  // Proposal indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_proposals_deal_id ON proposals(deal_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status)');
+  
+  // Security event indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events(user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events(created_at)');
+  
+  // Session indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(session_token)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)');
+  
+  console.log('Database tables and indexes initialized');
     
 });
 
@@ -1697,50 +1738,6 @@ db.run(`ALTER TABLE projects ADD COLUMN rejection_date DATETIME`, (err) => {
     console.error('Failed to add rejection_date column:', err);
   }
 });
-
-// Create indexes for better query performance
-// Note: These are created after tables to avoid SQLite syntax errors
-setTimeout(() => {
-  // User indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_users_clerk_user_id ON users(clerk_user_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
-  
-  // Project indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_projects_borrower_id ON projects(borrower_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_projects_payment_status ON projects(payment_status)');
-  
-  // Access request indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_access_requests_project_funder ON access_requests(project_id, funder_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status)');
-  
-  // Document indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_documents_project_id ON documents(project_id)');
-  
-  // Deal indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_deals_project_id ON deals(project_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_deals_borrower_funder ON deals(borrower_id, funder_id)');
-  
-  // Webhook event index
-  db.run('CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id)');
-  
-  // Proposal indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_proposals_deal_id ON proposals(deal_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status)');
-  
-  // Security event indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events(user_id)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events(created_at)');
-  
-  // Session indexes
-  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(session_token)');
-  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)');
-  
-  console.log('Database indexes created successfully');
-}, 1000); // Delay to ensure tables are created first
 
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
