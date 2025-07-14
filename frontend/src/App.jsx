@@ -3096,7 +3096,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn btn-outline"
               >
                 View Details
               </button>
@@ -3119,7 +3119,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn btn-outline"
               >
                 View Details
               </button>
@@ -3167,7 +3167,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn btn-outline"
               >
                 View Details
               </button>
@@ -3182,7 +3182,7 @@ const BorrowerProjectCard = ({ project, onProjectUpdate }) => {
             <>
               <button 
                 onClick={() => navigate(`/project/${project.id}`)}
-                className="btn-text"
+                className="btn btn-outline"
               >
                 View Details
               </button>
@@ -13138,16 +13138,16 @@ const LandingPage = () => {
             </div>
             <div className="hero-stats">
               <div className="stat">
-                <span className="stat-value">$100M+</span>
-                <span className="stat-label">Projects Listed</span>
+                <span className="stat-value">Pre-Qualified</span>
+                <span className="stat-label">Funders Ready Now</span>
               </div>
               <div className="stat">
-                <span className="stat-value">50+</span>
-                <span className="stat-label">Active Funders</span>
+                <span className="stat-value">Your Terms</span>
+                <span className="stat-label">Multiple Offers</span>
               </div>
               <div className="stat">
-                <span className="stat-value">24-48hrs</span>
-                <span className="stat-label">Approval Time</span>
+                <span className="stat-value">Deal Certainty</span>
+                <span className="stat-label">Full Transparency</span>
               </div>
             </div>
           </div>
@@ -13509,7 +13509,7 @@ const LandingPage = () => {
             <div className="footer-contact">
               <h4>Get in Touch</h4>
               <p>support@tranch.com.au</p>
-              <p>1300 TRANCH</p>
+              <p>0428 990 498</p>
             </div>
           </div>
           <div className="footer-bottom">
