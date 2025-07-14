@@ -21,6 +21,277 @@ app.set('trust proxy', 1);
 // ===========================
 // DATABASE CONFIGURATION
 // ===========================
+
+// Helper function for database transactions with retry logic
+const runTransaction = (callback) => {
+  return new Promise((resolve, reject) => {
+    const attemptTransaction = (retries = 3) => {
+      db.serialize(() => {
+        db.run('BEGIN EXCLUSIVE TRANSACTION', (err) => {
+          if (err) {
+            if (retries > 0 && err.code === 'SQLITE_BUSY') {
+              setTimeout(() => attemptTransaction(retries - 1), 100);
+              return;
+            }
+            return reject(err);
+          }
+          
+          callback((err, result) => {
+            if (err) {
+              db.run('ROLLBACK', () => reject(err));
+            } else {
+              db.run('COMMIT', (commitErr) => {
+                if (commitErr) reject(commitErr);
+                else resolve(result);
+              });
+            }
+          });
+        });
+      });
+    };
+    
+    attemptTransaction();
+  });
+};
+
+// Data sanitization helpers to prevent sensitive data exposure
+const sanitizeUser = (user) => {
+  if (!user) return null;
+  const { password, stripe_customer_id, clerk_user_id, ...safeUser } = user;
+  return safeUser;
+};
+
+const sanitizeProject = (project) => {
+  if (!project) return null;
+  const { stripe_payment_intent_id, ...safeProject } = project;
+  return safeProject;
+};
+
+const sanitizePayment = (payment) => {
+  if (!payment) return null;
+  const { stripe_payment_intent_id, stripe_checkout_session_id, ...safePayment } = payment;
+  return safePayment;
+};
+
+// Error handler that doesn't expose sensitive information
+const safeErrorHandler = (err, res, message = 'An error occurred') => {
+  console.error('Error:', err); // Log full error server-side
+  
+  // Don't expose database or system errors to client
+  if (err.code === 'SQLITE_CONSTRAINT') {
+    return res.status(400).json({ error: 'This operation violates a constraint' });
+  }
+  
+  if (err.code === 'SQLITE_BUSY') {
+    return res.status(503).json({ error: 'Service temporarily unavailable' });
+  }
+  
+  // Generic error for production
+  return res.status(500).json({ error: message });
+};
+
+// Security event logging
+const logSecurityEvent = (eventType, severity, req, details = {}) => {
+  const event = {
+    event_type: eventType,
+    severity: severity, // 'info', 'warning', 'critical'
+    user_id: req.user ? req.user.id : null,
+    ip_address: req.ip || req.connection.remoteAddress,
+    user_agent: req.headers['user-agent'] || 'Unknown',
+    endpoint: `${req.method} ${req.path}`,
+    details: JSON.stringify(details)
+  };
+  
+  db.run(
+    `INSERT INTO security_events (event_type, severity, user_id, ip_address, user_agent, endpoint, details) 
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [event.event_type, event.severity, event.user_id, event.ip_address, event.user_agent, event.endpoint, event.details],
+    (err) => {
+      if (err) {
+        console.error('Failed to log security event:', err);
+      }
+    }
+  );
+};
+
+// Common security events to log
+const SecurityEvents = {
+  LOGIN_ATTEMPT: 'login_attempt',
+  LOGIN_FAILED: 'login_failed',
+  LOGIN_SUCCESS: 'login_success',
+  ADMIN_ACTION: 'admin_action',
+  PAYMENT_ATTEMPT: 'payment_attempt',
+  PAYMENT_FAILED: 'payment_failed',
+  UNAUTHORIZED_ACCESS: 'unauthorized_access',
+  RATE_LIMIT_EXCEEDED: 'rate_limit_exceeded',
+  INVALID_FILE_UPLOAD: 'invalid_file_upload',
+  CSRF_VIOLATION: 'csrf_violation',
+  SUSPICIOUS_ACTIVITY: 'suspicious_activity',
+  SESSION_EXPIRED: 'session_expired',
+  SESSION_CREATED: 'session_created'
+};
+
+// Session management
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const SESSION_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+// Clean up expired sessions periodically
+setInterval(() => {
+  db.run(
+    'DELETE FROM user_sessions WHERE expires_at < datetime("now")',
+    (err) => {
+      if (err) console.error('Session cleanup error:', err);
+    }
+  );
+}, SESSION_CLEANUP_INTERVAL);
+
+// Create a new session
+const createSession = (userId, req) => {
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + SESSION_TIMEOUT);
+  
+  db.run(
+    `INSERT INTO user_sessions (user_id, session_token, ip_address, user_agent, expires_at) 
+     VALUES (?, ?, ?, ?, ?)`,
+    [userId, sessionToken, req.ip, req.headers['user-agent'], expiresAt.toISOString()],
+    (err) => {
+      if (err) console.error('Session creation error:', err);
+      else {
+        logSecurityEvent(SecurityEvents.SESSION_CREATED, 'info', req, { userId });
+      }
+    }
+  );
+  
+  return sessionToken;
+};
+
+// Validate and update session activity
+const validateSession = async (sessionToken) => {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT * FROM user_sessions 
+       WHERE session_token = ? AND expires_at > datetime("now")`,
+      [sessionToken],
+      (err, session) => {
+        if (err) return reject(err);
+        
+        if (!session) {
+          return resolve(null);
+        }
+        
+        // Update last activity and extend expiration
+        const newExpiry = new Date(Date.now() + SESSION_TIMEOUT);
+        db.run(
+          `UPDATE user_sessions 
+           SET last_activity = CURRENT_TIMESTAMP, expires_at = ? 
+           WHERE id = ?`,
+          [newExpiry.toISOString(), session.id],
+          (err) => {
+            if (err) console.error('Session update error:', err);
+          }
+        );
+        
+        resolve(session);
+      }
+    );
+  });
+};
+
+// Field-level encryption for sensitive data
+let ENCRYPTION_KEY;
+
+if (process.env.FIELD_ENCRYPTION_KEY) {
+  ENCRYPTION_KEY = Buffer.from(process.env.FIELD_ENCRYPTION_KEY, 'hex');
+} else if (process.env.NODE_ENV === 'production') {
+  // CRITICAL: Refuse to start in production without encryption key
+  console.error('FATAL: FIELD_ENCRYPTION_KEY environment variable is required in production!');
+  console.error('Generate a key with: openssl rand -hex 32');
+  process.exit(1);
+} else {
+  // Development only - use consistent key
+  console.warn('WARNING: Using development encryption key. Never use in production!');
+  ENCRYPTION_KEY = Buffer.from('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 'hex');
+}
+
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
+// Encrypt sensitive field
+const encryptField = (text) => {
+  if (!text) return null;
+  
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY, iv);
+  
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  
+  const authTag = cipher.getAuthTag();
+  
+  // Return iv:authTag:encrypted format
+  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+};
+
+// Decrypt sensitive field
+const decryptField = (encryptedText) => {
+  if (!encryptedText) return null;
+  
+  try {
+    const parts = encryptedText.split(':');
+    if (parts.length !== 3) return encryptedText; // Not encrypted
+    
+    const iv = Buffer.from(parts[0], 'hex');
+    const authTag = Buffer.from(parts[1], 'hex');
+    const encrypted = parts[2];
+    
+    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  } catch (err) {
+    console.error('Decryption error:', err);
+    return null;
+  }
+};
+
+// List of fields to encrypt
+const ENCRYPTED_FIELDS = [
+  'abn', // Australian Business Number
+  'bank_account_number',
+  'bank_routing_number',
+  'tax_file_number',
+  'driver_license',
+  'passport_number'
+];
+
+// Middleware to encrypt sensitive fields in requests
+const encryptSensitiveFields = (data) => {
+  if (!data || typeof data !== 'object') return data;
+  
+  const encrypted = { ...data };
+  for (const field of ENCRYPTED_FIELDS) {
+    if (encrypted[field]) {
+      encrypted[field] = encryptField(encrypted[field]);
+    }
+  }
+  return encrypted;
+};
+
+// Decrypt sensitive fields in responses
+const decryptSensitiveFields = (data) => {
+  if (!data || typeof data !== 'object') return data;
+  
+  const decrypted = { ...data };
+  for (const field of ENCRYPTED_FIELDS) {
+    if (decrypted[field]) {
+      decrypted[field] = decryptField(decrypted[field]);
+    }
+  }
+  return decrypted;
+};
+
 const dbPath = process.env.NODE_ENV === 'production' 
   ? '/var/data/tranch.db'
   : './tranch.db';
@@ -47,7 +318,31 @@ const db = new sqlite3.Database(dbPath);
 // ===========================
 // MIDDLEWARE SETUP
 // ===========================
-app.use(helmet());
+// Configure comprehensive security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "https://js.stripe.com", "https://maps.googleapis.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      connectSrc: ["'self'", "https://api.stripe.com", "https://maps.googleapis.com"],
+      frameSrc: ["'self'", "https://js.stripe.com"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  noSniff: true,
+  xssFilter: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  permittedCrossDomainPolicies: false
+}));
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://tranch-platform.onrender.com', 'https://tranch.com.au', 'https://www.tranch.com.au']
@@ -57,18 +352,176 @@ app.use(cors({
 
 app.options('*', cors());
 
-// Rate limiting
+// Rate limiting - general API limits
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 30 : 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests, please try again later.',
   handler: (req, res) => {
+    console.warn(`Rate limit exceeded for IP: ${req.ip}`);
+    logSecurityEvent(SecurityEvents.RATE_LIMIT_EXCEEDED, 'warning', req, {
+      ip: req.ip,
+      endpoint: req.originalUrl
+    });
     res.status(429).json({ error: 'Too many requests, please try again later.' });
   }
 });
+
+// Strict rate limiting for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window
+  skipSuccessfulRequests: true, // Don't count successful requests
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many authentication attempts, please try again later.'
+});
+
+// Payment endpoints rate limiting
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 payment attempts per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many payment attempts, please try again later.'
+});
+
+// File upload rate limiting
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // 20 uploads per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many file uploads, please try again later.'
+});
+
 app.use('/api/', limiter);
+
+// ===========================
+// INPUT VALIDATION AND SANITIZATION
+// ===========================
+
+// HTML sanitization helper
+const sanitizeHtml = (input) => {
+  if (typeof input !== 'string') return input;
+  // Remove any HTML tags and scripts
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+};
+
+// Recursive sanitization for objects
+const sanitizeInput = (input) => {
+  if (input === null || input === undefined) return input;
+  
+  if (typeof input === 'string') {
+    return sanitizeHtml(input);
+  }
+  
+  if (Array.isArray(input)) {
+    return input.map(sanitizeInput);
+  }
+  
+  if (typeof input === 'object') {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(input)) {
+      // Skip sensitive fields from sanitization
+      if (['password', 'token', 'secret'].includes(key.toLowerCase())) {
+        sanitized[key] = value;
+      } else {
+        sanitized[key] = sanitizeInput(value);
+      }
+    }
+    return sanitized;
+  }
+  
+  return input;
+};
+
+// Input validation middleware
+const validateInput = (req, res, next) => {
+  // Sanitize all input
+  if (req.body) {
+    req.body = sanitizeInput(req.body);
+  }
+  
+  if (req.query) {
+    req.query = sanitizeInput(req.query);
+  }
+  
+  if (req.params) {
+    req.params = sanitizeInput(req.params);
+  }
+  
+  next();
+};
+
+// Specific validators for common fields
+const validators = {
+  email: (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  },
+  
+  amount: (amount) => {
+    const num = parseInt(amount);
+    return !isNaN(num) && num > 0 && num < 100000000; // Max $1M in cents
+  },
+  
+  id: (id) => {
+    const num = parseInt(id);
+    return !isNaN(num) && num > 0;
+  },
+  
+  role: (role) => {
+    return ['borrower', 'funder', 'admin'].includes(role);
+  }
+};
+
+// ===========================
+// CSRF PROTECTION MIDDLEWARE
+// ===========================
+
+// CSRF token generation and validation
+const generateCSRFToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+const csrfProtection = (req, res, next) => {
+  // Skip CSRF for webhooks and GET requests
+  if (req.path.includes('/webhooks/') || req.method === 'GET') {
+    return next();
+  }
+  
+  // Get token from header or body
+  const token = req.headers['x-csrf-token'] || req.body._csrf;
+  const sessionToken = req.headers['x-csrf-session'];
+  
+  // For authenticated requests, validate CSRF token
+  if (req.user) {
+    if (!token || !sessionToken || token !== sessionToken) {
+      logSecurityEvent(SecurityEvents.CSRF_VIOLATION, 'critical', req, {
+        hasToken: !!token,
+        hasSessionToken: !!sessionToken
+      });
+      return res.status(403).json({ error: 'Invalid CSRF token' });
+    }
+  }
+  
+  next();
+};
+
+// Middleware to generate CSRF token for authenticated users
+const generateCSRFMiddleware = (req, res, next) => {
+  if (req.user && !req.csrfToken) {
+    req.csrfToken = generateCSRFToken();
+    res.setHeader('X-CSRF-Token', req.csrfToken);
+  }
+  next();
+};
 
 // ===========================
 // AUTHENTICATION MIDDLEWARE (DEFINE BEFORE USE!)
@@ -212,14 +665,39 @@ const requireRole = (roles) => {
 // ===========================
 // FILE UPLOAD CONFIGURATION
 // ===========================
+// Import crypto for secure file naming, CSRF tokens, and encryption
+const crypto = require('crypto');
+
+// Magic byte validation for file types
+const MAGIC_BYTES = {
+  'jpg': { bytes: [0xFF, 0xD8, 0xFF], mime: 'image/jpeg' },
+  'png': { bytes: [0x89, 0x50, 0x4E, 0x47], mime: 'image/png' },
+  'pdf': { bytes: [0x25, 0x50, 0x44, 0x46], mime: 'application/pdf' },
+  'doc': { bytes: [0xD0, 0xCF, 0x11, 0xE0], mime: 'application/msword' },
+  'docx': { bytes: [0x50, 0x4B, 0x03, 0x04], mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+  'xls': { bytes: [0xD0, 0xCF, 0x11, 0xE0], mime: 'application/vnd.ms-excel' },
+  'xlsx': { bytes: [0x50, 0x4B, 0x03, 0x04], mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+};
+
+// Validate file magic bytes
+const validateMagicBytes = (buffer) => {
+  for (const [ext, info] of Object.entries(MAGIC_BYTES)) {
+    const match = info.bytes.every((byte, index) => buffer[index] === byte);
+    if (match) return { valid: true, ext, mime: info.mime };
+  }
+  return { valid: false };
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, `${file.fieldname}-${uniqueSuffix}-${sanitizedName}`);
+    // Generate secure random filename to prevent path traversal
+    const fileId = crypto.randomBytes(16).toString('hex');
+    const ext = path.extname(file.originalname).toLowerCase();
+    const secureFilename = `${fileId}${ext}`;
+    cb(null, secureFilename);
   }
 });
 
@@ -229,18 +707,35 @@ const upload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB
     files: 10
   },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|xls|xlsx|csv|txt/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype) || 
-                     file.mimetype.includes('document') || 
-                     file.mimetype.includes('spreadsheet');
+  fileFilter: async (req, file, cb) => {
+    // First check extension
+    const allowedExtensions = /^(jpeg|jpg|png|pdf|doc|docx|xls|xlsx|csv|txt)$/i;
+    const ext = path.extname(file.originalname).toLowerCase().substring(1);
     
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only documents, images, and spreadsheets are allowed'));
+    if (!allowedExtensions.test(ext)) {
+      return cb(new Error('Invalid file type. Only documents, images, and spreadsheets are allowed'));
     }
+    
+    // Check MIME type against whitelist
+    const allowedMimeTypes = [
+      'image/jpeg', 'image/png', 'application/pdf',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv', 'text/plain'
+    ];
+    
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid MIME type'));
+    }
+    
+    // Store original filename securely in request for later use
+    if (!req.uploadedFiles) req.uploadedFiles = [];
+    req.uploadedFiles.push({
+      originalName: file.originalname,
+      fieldname: file.fieldname
+    });
+    
+    cb(null, true);
   }
 });
 
@@ -389,6 +884,44 @@ app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'applic
   }
 
   console.log('Stripe webhook received:', event.type);
+  
+  // Check for replay attacks - prevent duplicate event processing
+  try {
+    const existingEvent = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT id FROM webhook_events WHERE event_id = ?',
+        [event.id],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (existingEvent) {
+      console.log('Webhook event already processed, skipping:', event.id);
+      return res.json({ received: true, status: 'already_processed' });
+    }
+    
+    // Store event to prevent replay
+    await new Promise((resolve, reject) => {
+      db.run(
+        'INSERT INTO webhook_events (event_id, event_type, payload) VALUES (?, ?, ?)',
+        [event.id, event.type, JSON.stringify(event)],
+        (err) => {
+          if (err && err.code !== 'SQLITE_CONSTRAINT') {
+            // Ignore constraint errors (duplicate event_id)
+            reject(err);
+          } else {
+            resolve();
+          }
+        }
+      );
+    });
+  } catch (err) {
+    console.error('Error checking webhook replay:', err);
+    // Continue processing even if replay check fails
+  }
 
   // Database operation with retry
   const executeDbOperation = async (operation) => {
@@ -418,74 +951,78 @@ app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'applic
         if (paymentIntent.metadata.payment_type === 'project_listing') {
           const projectId = paymentIntent.metadata.project_id;
           
-          await executeDbOperation(async () => {
-            return new Promise((resolve, reject) => {
-              db.serialize(() => {
-                db.run('BEGIN TRANSACTION');
+          // Use the transaction helper with proper locking
+          await runTransaction(async (done) => {
+            // First check if already processed (idempotency)
+            db.get(
+              'SELECT payment_status FROM projects WHERE id = ?',
+              [projectId],
+              (err, project) => {
+                if (err) return done(err);
                 
-                // Update project to payment_pending state (NOT visible)
+                if (project && project.payment_status === 'payment_pending') {
+                  // Already processed, skip
+                  return done(null, { status: 'already_processed' });
+                }
+                
+                // Update project status with row locking
                 db.run(
-                  'UPDATE projects SET payment_status = ?, visible = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND payment_status != ?',
-                  ['payment_pending', projectId, 'payment_pending'],
+                  'UPDATE projects SET payment_status = ?, visible = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND payment_status = ?',
+                  ['payment_pending', projectId, 'unpaid'],
                   function(err) {
-                    if (err) {
-                      db.run('ROLLBACK');
-                      reject(err);
-                      return;
+                    if (err) return done(err);
+                    
+                    if (this.changes === 0) {
+                      // No rows updated, likely race condition
+                      return done(null, { status: 'no_update' });
                     }
                     
+                    // Update payment record
                     db.run(
-                      'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ?',
-                      ['completed', paymentIntent.id],
+                      'UPDATE payments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_payment_intent_id = ? AND status = ?',
+                      ['completed', paymentIntent.id, 'pending'],
                       function(err2) {
-                        if (err2) {
-                          db.run('ROLLBACK');
-                          reject(err2);
-                          return;
-                        }
-                        
-                        db.run('COMMIT');
-                        console.log('Transaction committed successfully');
-                        
-                        // Get project and admin details for notification
-                        db.get(
-                          `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
-                           FROM projects p 
-                           JOIN users u ON p.borrower_id = u.id 
-                           WHERE p.id = ?`,
-                          [projectId],
-                          (err, project) => {
-                            if (!err && project) {
-                              // Send notifications to all admin users
-                              db.all(
-                                'SELECT email FROM users WHERE role = ?',
-                                ['admin'],
-                                (err, admins) => {
-                                  if (!err && admins) {
-                                    admins.forEach(admin => {
-                                      sendEmail('admin_review_required', admin.email, {
-                                        project_title: project.title,
-                                        project_id: project.id,
-                                        borrower_name: project.borrower_name,
-                                        loan_amount: project.loan_amount,
-                                        suburb: project.suburb
-                                      });
-                                    });
-                                  }
-                                }
-                              );
-                            }
-                          }
-                        );
-                        
-                        resolve();
+                        if (err2) return done(err2);
+                        done(null, { status: 'success', changes: this.changes });
                       }
                     );
                   }
                 );
-              });
-            });
+              }
+            );
           });
+          
+          // Send admin notifications after successful transaction
+          if (paymentIntent.metadata.project_id) {
+            db.get(
+              `SELECT p.*, u.name as borrower_name, u.email as borrower_email 
+               FROM projects p 
+               JOIN users u ON p.borrower_id = u.id 
+               WHERE p.id = ?`,
+              [projectId],
+              (err, project) => {
+                if (!err && project) {
+                  db.all(
+                    'SELECT email FROM users WHERE role = ?',
+                    ['admin'],
+                    (err, admins) => {
+                      if (!err && admins) {
+                        admins.forEach(admin => {
+                          sendEmail('admin_review_required', admin.email, {
+                            project_title: project.title,
+                            project_id: project.id,
+                            borrower_name: project.borrower_name,
+                            loan_amount: project.loan_amount,
+                            suburb: project.suburb
+                          });
+                        });
+                      }
+                    }
+                  );
+                }
+              }
+            );
+          }
         }
         break;
 
@@ -642,6 +1179,13 @@ app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'applic
 // BODY PARSING MIDDLEWARE (AFTER WEBHOOKS)
 // ===========================
 app.use(express.json({ limit: '50mb' }));
+
+// Apply input validation to all routes
+app.use(validateInput);
+
+// Apply CSRF protection to all routes except webhooks
+app.use('/api', generateCSRFMiddleware);
+app.use('/api', csrfProtection);
 
 // ===========================
 // AUTHENTICATED FILE SERVING
@@ -983,6 +1527,46 @@ db.run(`CREATE TABLE IF NOT EXISTS notifications (
   FOREIGN KEY (user_id) REFERENCES users (id)
 )`);
 
+// Webhook events table for replay protection
+db.run(`CREATE TABLE IF NOT EXISTS webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT UNIQUE NOT NULL,
+  event_type TEXT NOT NULL,
+  processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  payload TEXT
+)`);
+
+// Security events logging table
+db.run(`CREATE TABLE IF NOT EXISTS security_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  user_id INTEGER,
+  ip_address TEXT,
+  user_agent TEXT,
+  endpoint TEXT,
+  details TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_security_events_type (event_type),
+  INDEX idx_security_events_user (user_id),
+  INDEX idx_security_events_created (created_at)
+)`);
+
+// Sessions table for tracking active sessions
+db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  session_token TEXT UNIQUE NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id),
+  INDEX idx_sessions_token (session_token),
+  INDEX idx_sessions_expires (expires_at)
+)`);
+
   // System settings table
   db.run(`CREATE TABLE IF NOT EXISTS system_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1115,23 +1699,13 @@ app.use('/api/geocode', geocodingRoutes);
 
 // Get current user
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-  res.json({
-    user: {
-      id: req.user.id,
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role,
-      approved: req.user.approved,
-      verification_status: req.user.verification_status,
-      subscription_status: req.user.subscription_status,
-      company_name: req.user.company_name,
-      company_type: req.user.company_type
-    }
-  });
+  // Use sanitized user data
+  const safeUser = sanitizeUser(req.user);
+  res.json({ user: safeUser });
 });
 
 // Update user role
-app.post('/api/auth/set-role', authenticateToken, async (req, res) => {
+app.post('/api/auth/set-role', authLimiter, authenticateToken, async (req, res) => {
   const { role } = req.body;
   
   if (!['borrower', 'funder'].includes(role)) {
@@ -1365,7 +1939,9 @@ if (req.user.role === 'borrower') {
         console.error('Projects fetch error:', err);
         return res.status(500).json({ error: 'Failed to fetch projects' });
       }
-      res.json(projects);
+      // Sanitize project data before sending
+      const safeProjects = projects.map(sanitizeProject);
+      res.json(safeProjects);
        }
 );
 }
@@ -1390,7 +1966,9 @@ if (req.user.role === 'borrower') {
           console.error('Projects fetch error:', err);
           return res.status(500).json({ error: 'Failed to fetch projects' });
         }
-        res.json(projects);
+        // Sanitize project data before sending
+      const safeProjects = projects.map(sanitizeProject);
+      res.json(safeProjects);
       }
     );
   } else {
@@ -1524,7 +2102,17 @@ app.put('/api/projects/:id', authenticateToken, requireRole(['borrower']), (req,
 
   const fields = Object.keys(filteredFields);
   const values = Object.values(filteredFields);
-  const placeholders = fields.map(field => `${field} = ?`).join(', ');
+  
+  // Validate all fields are in whitelist to prevent SQL injection
+  const safeFields = fields.filter(field => 
+    allowedFields.includes(field) || field === 'updated_at'
+  );
+  
+  if (safeFields.length !== fields.length) {
+    return res.status(400).json({ error: 'Invalid fields in request' });
+  }
+  
+  const placeholders = safeFields.map(field => `${field} = ?`).join(', ');
 
   db.run(
     `UPDATE projects SET ${placeholders} WHERE id = ? AND borrower_id = ?`,
@@ -1604,7 +2192,7 @@ const REQUIRED_DOCUMENT_TYPES = [
 ];
 
 // Upload documents
-app.post('/api/projects/:id/documents', authenticateToken, requireRole(['borrower']), upload.array('documents', 10), (req, res) => {
+app.post('/api/projects/:id/documents', uploadLimiter, authenticateToken, requireRole(['borrower']), upload.array('documents', 10), (req, res) => {
   const projectId = req.params.id;
   const { document_types } = req.body;
 
@@ -2086,7 +2674,7 @@ app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
 // SERVER CHANGES - Replace your existing endpoint
 // ================================================
 
-app.post('/api/payments/create-project-payment', authenticateToken, requireRole(['borrower']), async (req, res) => {
+app.post('/api/payments/create-project-payment', paymentLimiter, authenticateToken, requireRole(['borrower']), async (req, res) => {
   const { project_id } = req.body;
   
   try {
@@ -2258,7 +2846,7 @@ app.post('/api/payments/create-project-payment', authenticateToken, requireRole(
 // SERVER SIDE - Update your create-subscription endpoint
 // ================================================
 
-app.post('/api/payments/create-subscription', authenticateToken, requireRole(['funder']), async (req, res) => {
+app.post('/api/payments/create-subscription', paymentLimiter, authenticateToken, requireRole(['funder']), async (req, res) => {
   try {
     const { payment_method_id } = req.body;
     
@@ -2733,7 +3321,9 @@ app.get('/api/admin/unpaid-projects', authenticateToken, requireRole(['admin']),
         console.error('Failed to fetch unpaid projects:', err);
         return res.status(500).json({ error: 'Failed to fetch projects' });
       }
-      res.json(projects);
+      // Sanitize project data before sending
+      const safeProjects = projects.map(sanitizeProject);
+      res.json(safeProjects);
     }
   );
 });
@@ -5392,4 +5982,18 @@ app.listen(PORT, () => {
 });
 
 
-module.exports = app;
+// Export app and middleware for use in other modules
+module.exports = {
+  app,
+  authenticateToken,
+  requireRole,
+  uploadLimiter,
+  authLimiter,
+  paymentLimiter,
+  logSecurityEvent,
+  SecurityEvents,
+  sanitizeUser,
+  sanitizeProject,
+  encryptField,
+  decryptField
+};
