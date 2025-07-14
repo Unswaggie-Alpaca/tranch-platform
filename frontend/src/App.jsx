@@ -13138,32 +13138,16 @@ const LandingPage = () => {
             </div>
             <div className="hero-stats">
               <div className="stat">
-                <svg className="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                </svg>
-                <div>
-                  <span className="stat-value">Get Funded in Days</span>
-                  <span className="stat-label">Pre-qualify in minutes, not months</span>
-                </div>
+                <span className="stat-value">$100M+</span>
+                <span className="stat-label">Projects Listed</span>
               </div>
               <div className="stat">
-                <svg className="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                </svg>
-                <div>
-                  <span className="stat-value">Direct Lender Access</span>
-                  <span className="stat-label">Connect with verified private credit funds</span>
-                </div>
+                <span className="stat-value">50+</span>
+                <span className="stat-label">Active Funders</span>
               </div>
               <div className="stat">
-                <svg className="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="10" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0110 0v4"></path>
-                </svg>
-                <div>
-                  <span className="stat-value">Bank-Grade Security</span>
-                  <span className="stat-label">256-bit encryption, SOC 2 compliant</span>
-                </div>
+                <span className="stat-value">24-48hrs</span>
+                <span className="stat-label">Approval Time</span>
               </div>
             </div>
           </div>
