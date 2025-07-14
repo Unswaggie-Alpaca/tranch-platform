@@ -1546,10 +1546,7 @@ db.run(`CREATE TABLE IF NOT EXISTS security_events (
   user_agent TEXT,
   endpoint TEXT,
   details TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_security_events_type (event_type),
-  INDEX idx_security_events_user (user_id),
-  INDEX idx_security_events_created (created_at)
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
 
 // Sessions table for tracking active sessions
@@ -1562,9 +1559,7 @@ db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
   last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
   expires_at DATETIME NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users (id),
-  INDEX idx_sessions_token (session_token),
-  INDEX idx_sessions_expires (expires_at)
+  FOREIGN KEY (user_id) REFERENCES users (id)
 )`);
 
   // System settings table
@@ -1581,6 +1576,25 @@ db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
     ('monthly_subscription_fee', '29900'),
     ('max_file_upload_size', '10485760'),
     ('ai_chat_enabled', 'true')`);
+// Proposals table
+  db.run(`CREATE TABLE IF NOT EXISTS proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id INTEGER NOT NULL,
+    funder_id INTEGER NOT NULL,
+    loan_amount REAL NOT NULL,
+    interest_rate REAL NOT NULL,
+    loan_term INTEGER NOT NULL,
+    repayment_frequency TEXT NOT NULL,
+    establishment_fee REAL,
+    other_fees TEXT,
+    conditions TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (deal_id) REFERENCES deals (id),
+    FOREIGN KEY (funder_id) REFERENCES users (id)
+  )`);
+
 // Admin overrides tracking table
   db.run(`CREATE TABLE IF NOT EXISTS admin_overrides (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1684,6 +1698,49 @@ db.run(`ALTER TABLE projects ADD COLUMN rejection_date DATETIME`, (err) => {
   }
 });
 
+// Create indexes for better query performance
+// Note: These are created after tables to avoid SQLite syntax errors
+setTimeout(() => {
+  // User indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_clerk_user_id ON users(clerk_user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
+  
+  // Project indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_borrower_id ON projects(borrower_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_projects_payment_status ON projects(payment_status)');
+  
+  // Access request indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_access_requests_project_funder ON access_requests(project_id, funder_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status)');
+  
+  // Document indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_documents_project_id ON documents(project_id)');
+  
+  // Deal indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_deals_project_id ON deals(project_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_deals_borrower_funder ON deals(borrower_id, funder_id)');
+  
+  // Webhook event index
+  db.run('CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id)');
+  
+  // Proposal indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_proposals_deal_id ON proposals(deal_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status)');
+  
+  // Security event indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events(user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events(created_at)');
+  
+  // Session indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(session_token)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)');
+  
+  console.log('Database indexes created successfully');
+}, 1000); // Delay to ensure tables are created first
 
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
