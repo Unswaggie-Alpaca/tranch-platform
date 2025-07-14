@@ -694,6 +694,170 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
+// Custom hook for ripple effect
+const useRipple = () => {
+  const createRipple = (event) => {
+    const button = event.currentTarget;
+    const ripple = document.createElement('span');
+    const rect = button.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const x = event.clientX - rect.left - size / 2;
+    const y = event.clientY - rect.top - size / 2;
+    
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = x + 'px';
+    ripple.style.top = y + 'px';
+    ripple.classList.add('ripple-effect');
+    
+    button.appendChild(ripple);
+    
+    setTimeout(() => {
+      ripple.remove();
+    }, 600);
+  };
+  
+  return createRipple;
+};
+
+// Custom hook for parallax scrolling effect
+const useParallax = (speed = 0.5) => {
+  const ref = useRef(null);
+  
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!ref.current) return;
+      const scrolled = window.pageYOffset;
+      const rate = scrolled * -speed;
+      ref.current.style.transform = `translateY(${rate}px)`;
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [speed]);
+  
+  return ref;
+};
+
+// Custom hook for intersection observer animations
+const useIntersectionAnimation = (options = {}) => {
+  const ref = useRef(null);
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsIntersecting(entry.isIntersecting);
+    }, {
+      threshold: 0.1,
+      rootMargin: '50px',
+      ...options
+    });
+    
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+    
+    return () => {
+      if (ref.current) {
+        observer.unobserve(ref.current);
+      }
+    };
+  }, [options]);
+  
+  return [ref, isIntersecting];
+};
+
+// Custom hook for smooth counter animation
+const useCountAnimation = (end, duration = 2000, start = 0) => {
+  const [count, setCount] = useState(start);
+  const countRef = useRef(start);
+  
+  useEffect(() => {
+    const startTime = Date.now();
+    const endTime = startTime + duration;
+    
+    const updateCount = () => {
+      const now = Date.now();
+      const remaining = Math.max(endTime - now, 0);
+      const progress = 1 - remaining / duration;
+      
+      const currentCount = Math.round(start + (end - start) * progress);
+      setCount(currentCount);
+      countRef.current = currentCount;
+      
+      if (remaining > 0) {
+        requestAnimationFrame(updateCount);
+      }
+    };
+    
+    requestAnimationFrame(updateCount);
+  }, [end, duration, start]);
+  
+  return count;
+};
+
+// Custom hook for hover 3D tilt effect
+const useTilt = (maxTilt = 10) => {
+  const ref = useRef(null);
+  
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    
+    const handleMouseMove = (e) => {
+      const rect = element.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      const rotateX = ((y - centerY) / centerY) * -maxTilt;
+      const rotateY = ((x - centerX) / centerX) * maxTilt;
+      
+      element.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+    };
+    
+    const handleMouseLeave = () => {
+      element.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1)';
+    };
+    
+    element.addEventListener('mousemove', handleMouseMove);
+    element.addEventListener('mouseleave', handleMouseLeave);
+    
+    return () => {
+      element.removeEventListener('mousemove', handleMouseMove);
+      element.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [maxTilt]);
+  
+  return ref;
+};
+
+// Custom hook for typewriter effect
+const useTypewriter = (text, speed = 50) => {
+  const [displayText, setDisplayText] = useState('');
+  const [isTyping, setIsTyping] = useState(true);
+  
+  useEffect(() => {
+    let i = 0;
+    setIsTyping(true);
+    setDisplayText('');
+    
+    const timer = setInterval(() => {
+      if (i < text.length) {
+        setDisplayText(prev => prev + text.charAt(i));
+        i++;
+      } else {
+        setIsTyping(false);
+        clearInterval(timer);
+      }
+    }, speed);
+    
+    return () => clearInterval(timer);
+  }, [text, speed]);
+  
+  return [displayText, isTyping];
+};
+
 // ===========================
 // UTILITY FUNCTIONS
 // ===========================
@@ -12835,6 +12999,26 @@ const LandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isNavVisible, setIsNavVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  
+  // Animation hooks
+  const heroParallaxRef = useParallax(0.3);
+  const [titleText] = useTypewriter("Connect. Fund. Grow.", 100);
+  const fundingCount = useCountAnimation(500, 2500);
+  const projectCount = useCountAnimation(1200, 2500);
+  const successRate = useCountAnimation(95, 2500);
+  
+  // Intersection animations
+  const [featuresRef, featuresVisible] = useIntersectionAnimation();
+  const [statsRef, statsVisible] = useIntersectionAnimation();
+  const [ctaRef, ctaVisible] = useIntersectionAnimation();
+  
+  // Tilt effects for cards
+  const card1TiltRef = useTilt(15);
+  const card2TiltRef = useTilt(15);
+  const card3TiltRef = useTilt(15);
+  
+  // Ripple effect
+  const createRipple = useRipple();
 
   // Add swipe-away functionality for mobile only
   useEffect(() => {
@@ -13117,23 +13301,36 @@ const LandingPage = () => {
 
       {/* Hero Section */}
       <section className="hero-section">
+        <div className="hero-background" ref={heroParallaxRef}>
+          <div className="gradient-mesh"></div>
+        </div>
         <div className="hero-container">
           <div className="hero-content">
-            <h1 className="hero-title">
-              Connect Your Development<br />
+            <h1 className="hero-title fade-in">
+              {titleText}<br />
               <span className="gradient-text">With The Right Capital</span>
             </h1>
-            <p className="hero-subtitle">
+            <p className="hero-subtitle fade-in-delay">
               Tranch is Australia's premier marketplace connecting property developers 
               with private credit funders. Streamline your funding process with our 
               secure platform and intelligent matching system.
             </p>
-            <div className="hero-actions">
-              <Link to="/register" className="btn btn-primary btn-lg">
+            <div className="hero-actions fade-in-delay-2">
+              <Link 
+                to="/register" 
+                className="btn btn-primary btn-lg ripple"
+                onClick={createRipple}
+              >
                 Start Your Project
+                <span className="btn-arrow">→</span>
               </Link>
-              <Link to="/register?role=funder" className="btn btn-outline btn-lg">
+              <Link 
+                to="/register?role=funder" 
+                className="btn btn-outline btn-lg ripple"
+                onClick={createRipple}
+              >
                 Become a Funder
+                <span className="btn-arrow">→</span>
               </Link>
             </div>
             <div className="hero-stats">
