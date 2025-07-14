@@ -1446,21 +1446,8 @@ const Navigation = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('theme') || 'light';
-  });
   const profileRef = useRef(null);
   const notificationRef = useRef(null);
-
-  // Theme toggle effect
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
 
   // Get notification icon based on type
   const getNotificationIcon = (type) => {
@@ -1592,30 +1579,6 @@ const Navigation = () => {
         
         {/* User Section */}
         <div className="nav-user-section">
-          {/* Theme Toggle */}
-          <button 
-            className="theme-toggle"
-            onClick={toggleTheme}
-            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-          >
-            {theme === 'light' ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-            )}
-          </button>
           {/* Notifications */}
           <div className="notification-area" ref={notificationRef}>
             <button 
@@ -13153,70 +13116,56 @@ const LandingPage = () => {
       </nav>
 
       {/* Hero Section */}
-      <section className="hero">
-        <div className="hero-background"></div>
-        <div className="hero-content">
-          <h1 className="hero-title fade-in">
-            Connect Your Development<br />
-            <span className="gradient-text">With The Right Capital</span>
-          </h1>
-          <p className="hero-subtitle fade-in" style={{ animationDelay: '0.2s' }}>
-            Australia's premier marketplace connecting property developers 
-            with private credit funders. Streamline your funding process with our 
-            secure platform and intelligent matching system.
-          </p>
-          <div className="hero-cta fade-in" style={{ animationDelay: '0.4s' }}>
-            <Link to="/register" className="btn btn-primary btn-lg hover-lift ripple">
-              Start Your Project
-              <span className="btn-arrow">→</span>
-            </Link>
-            <Link to="/register?role=funder" className="btn-secondary btn-lg hover-lift">
-              Become a Funder
-            </Link>
-          </div>
-          <div className="stats-grid fade-in" style={{ animationDelay: '0.6s' }}>
-            <div className="stat-card glass hover-lift">
-              <div className="stat-value gradient-text">$100M+</div>
-              <div className="stat-label">Projects Listed</div>
+      <section className="hero-section">
+        <div className="hero-container">
+          <div className="hero-content">
+            <h1 className="hero-title">
+              Connect Your Development<br />
+              <span className="gradient-text">With The Right Capital</span>
+            </h1>
+            <p className="hero-subtitle">
+              Tranch is Australia's premier marketplace connecting property developers 
+              with private credit funders. Streamline your funding process with our 
+              secure platform and intelligent matching system.
+            </p>
+            <div className="hero-actions">
+              <Link to="/register" className="btn btn-primary btn-lg">
+                Start Your Project
+              </Link>
+              <Link to="/register?role=funder" className="btn btn-outline btn-lg">
+                Become a Funder
+              </Link>
             </div>
-            <div className="stat-card glass hover-lift">
-              <div className="stat-value gradient-text">50+</div>
-              <div className="stat-label">Active Funders</div>
-            </div>
-            <div className="stat-card glass hover-lift">
-              <div className="stat-value gradient-text">24-48hrs</div>
-              <div className="stat-label">Approval Time</div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Floating Cards Animation */}
-        <div className="floating-cards">
-          <div className="glass-card floating-card parallax" data-speed="0.5">
-            <div className="project-status active">FUNDED</div>
-            <h4>Luxury Apartments</h4>
-            <p className="text-muted">Brisbane CBD</p>
-            <div className="amount gradient-text">$5.2M</div>
-            <div className="progress-bar">
-              <div className="progress-bar-fill" style={{ width: '85%' }}></div>
+            <div className="hero-stats">
+              <div className="stat">
+                <span className="stat-value">$100M+</span>
+                <span className="stat-label">Projects Listed</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">50+</span>
+                <span className="stat-label">Active Funders</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">24-48hrs</span>
+                <span className="stat-label">Approval Time</span>
+              </div>
             </div>
           </div>
-          <div className="glass-card floating-card parallax" data-speed="0.7">
-            <div className="project-status pending">FUNDING</div>
-            <h4>Mixed Use Development</h4>
-            <p className="text-muted">Gold Coast</p>
-            <div className="amount gradient-text">$8.7M</div>
-            <div className="progress-bar">
-              <div className="progress-bar-fill" style={{ width: '60%' }}></div>
+          <div className="hero-visual">
+            <div className="floating-card card-1">
+              <h4>Luxury Apartments</h4>
+              <p>Brisbane CBD</p>
+              <span className="amount">$5.2M</span>
             </div>
-          </div>
-          <div className="glass-card floating-card parallax" data-speed="0.3">
-            <div className="project-status completed">COMPLETED</div>
-            <h4>Townhouse Project</h4>
-            <p className="text-muted">Sunshine Coast</p>
-            <div className="amount gradient-text">$3.4M</div>
-            <div className="progress-bar">
-              <div className="progress-bar-fill" style={{ width: '100%' }}></div>
+            <div className="floating-card card-2">
+              <h4>Mixed Use Development</h4>
+              <p>Gold Coast</p>
+              <span className="amount">$8.7M</span>
+            </div>
+            <div className="floating-card card-3">
+              <h4>Townhouse Project</h4>
+              <p>Sunshine Coast</p>
+              <span className="amount">$3.4M</span>
             </div>
           </div>
         </div>
@@ -13807,82 +13756,7 @@ const NotificationPreferences = () => {
 // MAIN APP COMPONENT
 // ===========================
 
-// Ripple Effect Hook
-const useRipple = () => {
-  useEffect(() => {
-    const createRipple = (event) => {
-      const button = event.currentTarget;
-      
-      if (!button.classList.contains('ripple')) return;
-      
-      const circle = document.createElement('span');
-      const diameter = Math.max(button.clientWidth, button.clientHeight);
-      const radius = diameter / 2;
-      
-      circle.style.width = circle.style.height = `${diameter}px`;
-      circle.style.left = `${event.clientX - button.offsetLeft - radius}px`;
-      circle.style.top = `${event.clientY - button.offsetTop - radius}px`;
-      circle.classList.add('ripple-effect');
-      
-      const ripple = button.getElementsByClassName('ripple-effect')[0];
-      
-      if (ripple) {
-        ripple.remove();
-      }
-      
-      button.appendChild(circle);
-      
-      setTimeout(() => {
-        circle.remove();
-      }, 600);
-    };
-    
-    const buttons = document.querySelectorAll('.ripple');
-    buttons.forEach(btn => {
-      btn.addEventListener('click', createRipple);
-    });
-    
-    return () => {
-      buttons.forEach(btn => {
-        btn.removeEventListener('click', createRipple);
-      });
-    };
-  });
-};
-
-// Parallax Effect Hook
-const useParallax = () => {
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrolled = window.pageYOffset;
-      const parallaxElements = document.querySelectorAll('.parallax');
-      
-      parallaxElements.forEach(el => {
-        const speed = el.dataset.speed || 0.5;
-        const yPos = -(scrolled * speed);
-        el.style.transform = `translateY(${yPos}px)`;
-      });
-    };
-    
-    window.addEventListener('scroll', handleScroll);
-    
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, []);
-};
-
 function App() {
-  // Initialize theme on app load
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-  }, []);
-
-  // Initialize effects
-  useRipple();
-  useParallax();
-
   return (
     <ClerkProvider 
       publishableKey={CLERK_PUBLISHABLE_KEY}
