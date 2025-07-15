@@ -670,6 +670,59 @@ const NotificationProvider = ({ children }) => {
 };
 
 // ===========================
+// TOAST CONTEXT
+// ===========================
+
+const ToastContext = createContext();
+
+const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within ToastProvider');
+  }
+  return context;
+};
+
+const ToastProvider = ({ children }) => {
+  const [toasts, setToasts] = useState([]);
+
+  const showToast = (message, type = 'success', duration = 4000) => {
+    const id = Date.now();
+    const newToast = { id, message, type };
+    
+    setToasts(prev => [...prev, newToast]);
+    
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, duration);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  return (
+    <ToastContext.Provider value={{ showToast, removeToast }}>
+      {children}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast-notification toast-${toast.type}`}>
+            <span className="toast-message">{toast.message}</span>
+            <button 
+              onClick={() => removeToast(toast.id)} 
+              className="toast-close"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+};
+
+// ===========================
 // HOOKS
 // ===========================
 
@@ -735,7 +788,15 @@ const formatDateTime = (dateString) => {
 
 const formatTime = (dateString) => {
   if (!dateString) return '-';
+  
   const date = new Date(dateString);
+  
+  // Check if date is invalid
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid date string:', dateString);
+    return '-';
+  }
+  
   const now = new Date();
   const diffInHours = (now - date) / (1000 * 60 * 60);
   
@@ -1617,10 +1678,19 @@ const Navigation = () => {
                     >
                       ↻
                     </button>
-                    <button onClick={() => {
-                      markAllAsRead();
-                      setShowNotifications(false);
-                    }}>
+                    <button 
+                      onClick={() => {
+                        markAllAsRead();
+                        setShowNotifications(false);
+                      }}
+                      style={{
+                        width: 'auto',
+                        height: 'auto',
+                        padding: '0.375rem 0.75rem',
+                        fontSize: '0.875rem',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
                       Mark all read
                     </button>
                   </div>
@@ -4459,6 +4529,7 @@ const CreateProject = () => {
   const api = useApi();
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
+  const { showToast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -4651,11 +4722,7 @@ const CreateProject = () => {
         await uploadDocuments(response.project_id);
       }
       
-      addNotification({
-        type: 'success',
-        title: 'Project Created',
-        message: 'Your project has been created successfully!'
-      });
+      showToast('Your project has been created successfully!', 'success');
       
       navigate(`/project/${response.project_id}`);
     } catch (err) {
@@ -5553,11 +5620,7 @@ const CreateProject = () => {
               type="button" 
               onClick={() => {
                 localStorage.setItem('project_draft', JSON.stringify(formData));
-                addNotification({
-                  type: 'success',
-                  title: 'Draft Saved',
-                  message: 'Your project has been saved as a draft'
-                });
+                showToast('Your project has been saved as a draft', 'success');
               }}
               className="btn btn-outline"
             >
@@ -6496,6 +6559,7 @@ const EditProject = () => {
   const api = useApi();
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
+  const { showToast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -6612,17 +6676,9 @@ const EditProject = () => {
       if (isResubmitFlow && project.submission_status === 'rejected') {
         await api.resubmitProject(id);
         
-        addNotification({
-          type: 'success',
-          title: 'Resubmitted for Review',
-          message: 'Your project has been updated and resubmitted for admin review.'
-        });
+        showToast('Your project has been updated and resubmitted for admin review.', 'success');
       } else {
-        addNotification({
-          type: 'success',
-          title: 'Project Updated',
-          message: 'Your project has been updated successfully!'
-        });
+        showToast('Your project has been updated successfully!', 'success');
       }
       
       navigate(`/project/${id}`);
@@ -13812,7 +13868,8 @@ function App() {
     >
       <NotificationProvider>
         <AppProvider>
-          <Router>
+          <ToastProvider>
+            <Router>
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<LandingPage />} />
@@ -13853,6 +13910,7 @@ function App() {
               />
             </Routes>
           </Router>
+          </ToastProvider>
         </AppProvider>
       </NotificationProvider>
     </ClerkProvider>
