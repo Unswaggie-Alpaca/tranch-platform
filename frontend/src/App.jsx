@@ -1507,6 +1507,7 @@ const Navigation = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showMobileSlideMenu, setShowMobileSlideMenu] = useState(false);
   const profileRef = useRef(null);
   const notificationRef = useRef(null);
 
@@ -1607,8 +1608,9 @@ const Navigation = () => {
   const filteredLinks = navLinks.filter(link => link.roles.includes(user.role));
 
   return (
+    <>
     <nav className="navbar">
-      <div className="nav-container">
+        <div className="nav-container">
         <Link to="/dashboard" className="nav-logo">
           <span className="logo-text">Tranch</span>
         </Link>
@@ -1779,6 +1781,7 @@ const Navigation = () => {
           </div>
         </div>
       </div>
+    </nav>
       
       {/* Mobile Menu */}
       {showMobileMenu && (
@@ -1813,9 +1816,135 @@ const Navigation = () => {
           </button>
         </div>
       )}
+
+    {/* Mobile Bottom Navigation */}
+    <nav className="mobile-bottom-nav">
+      <Link 
+        to="/dashboard" 
+        className={`mobile-bottom-nav-item ${isActive('/dashboard') ? 'active' : ''}`}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span className="mobile-bottom-nav-label">Home</span>
+      </Link>
+      
+      {user.role === 'funder' && (
+        <Link 
+          to="/projects" 
+          className={`mobile-bottom-nav-item ${isActive('/projects') ? 'active' : ''}`}
+        >
+          <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          </svg>
+          <span className="mobile-bottom-nav-label">Projects</span>
+        </Link>
+      )}
+      
+      {user.role === 'borrower' && (
+        <Link 
+          to="/my-projects" 
+          className={`mobile-bottom-nav-item ${isActive('/my-projects') ? 'active' : ''}`}
+        >
+          <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <span className="mobile-bottom-nav-label">My Projects</span>
+        </Link>
+      )}
+      
+      <Link 
+        to="/messages" 
+        className={`mobile-bottom-nav-item ${isActive('/messages') ? 'active' : ''}`}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        <span className="mobile-bottom-nav-label">Messages</span>
+      </Link>
+      
+      <button 
+        className="mobile-bottom-nav-item"
+        onClick={() => setShowMobileSlideMenu(true)}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+        <span className="mobile-bottom-nav-label">More</span>
+      </button>
     </nav>
 
+    {/* Mobile Slide Menu */}
+    <div className={`mobile-menu-overlay ${showMobileSlideMenu ? 'open' : ''}`} 
+         onClick={() => setShowMobileSlideMenu(false)} />
     
+    <div className={`mobile-slide-menu ${showMobileSlideMenu ? 'open' : ''}`}>
+      <div className="mobile-slide-menu-header">
+        <div className="mobile-slide-menu-user">
+          <div className="mobile-slide-menu-avatar">
+            {user.name?.charAt(0)?.toUpperCase() || 'U'}
+          </div>
+          <div>
+            <div className="mobile-slide-menu-name">{user.name}</div>
+            <div className="mobile-slide-menu-role">{user.role}</div>
+          </div>
+        </div>
+      </div>
+      
+      <nav className="mobile-slide-menu-nav">
+        {filteredLinks.map(link => (
+          <Link 
+            key={link.path}
+            to={link.path} 
+            className={`mobile-slide-menu-link ${isActive(link.path) ? 'active' : ''}`}
+            onClick={() => setShowMobileSlideMenu(false)}
+          >
+            {link.label}
+          </Link>
+        ))}
+        
+        <div className="mobile-slide-menu-divider" />
+        
+        <Link 
+          to="/broker-ai" 
+          className="mobile-slide-menu-link"
+          onClick={() => setShowMobileSlideMenu(false)}
+        >
+          BrokerAI Assistant
+        </Link>
+        
+        <Link 
+          to="/profile" 
+          className="mobile-slide-menu-link"
+          onClick={() => setShowMobileSlideMenu(false)}
+        >
+          My Profile
+        </Link>
+        
+        <Link 
+          to="/settings" 
+          className="mobile-slide-menu-link"
+          onClick={() => setShowMobileSlideMenu(false)}
+        >
+          Settings
+        </Link>
+        
+        <div className="mobile-slide-menu-divider" />
+        
+        <button 
+          onClick={handleLogout} 
+          className="mobile-slide-menu-link"
+          style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none' }}
+        >
+          Logout
+        </button>
+      </nav>
+    </div>
+    </>
   );
 };
 
@@ -7317,6 +7446,7 @@ const MessagesPage = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -7338,6 +7468,15 @@ const MessagesPage = () => {
       return () => clearTimeout(timeout);
     }
   }, [messages.length]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -7525,7 +7664,7 @@ const MessagesPage = () => {
     <div className="messages-page">
       <div className="messages-container">
         {/* Conversations Sidebar */}
-        <div className="conversations-sidebar">
+        <div className={`conversations-sidebar ${isMobile && selectedConversation ? 'mobile-hidden' : ''}`}>
           <div className="sidebar-header">
             <h3>Conversations</h3>
             <span className="conversation-count">{conversations.length}</span>
@@ -7597,11 +7736,21 @@ const MessagesPage = () => {
         </div>
 
         {/* Chat Area */}
-        <div className="chat-area">
+        <div className={`chat-area ${isMobile && selectedConversation ? 'mobile-active' : ''}`}>
           {selectedConversation ? (
             <>
               {/* Chat Header */}
               <div className="chat-header">
+                {isMobile && (
+                  <button 
+                    className="mobile-back-button"
+                    onClick={() => setSelectedConversation(null)}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M19 12H5M5 12l7 7m-7-7l7-7" />
+                    </svg>
+                  </button>
+                )}
                 <div className="chat-participant">
                   <div className="participant-info">
                     <div className="participant-name">
@@ -10667,6 +10816,33 @@ const SettingsPage = () => {
 };
 
 // ===========================
+// MOBILE TABLE WRAPPER
+// ===========================
+
+const MobileTableWrapper = ({ children, data, renderCard, className = '' }) => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  if (isMobile && data && renderCard) {
+    return (
+      <div className={`mobile-cards ${className}`}>
+        {data.map((item, index) => renderCard(item, index))}
+      </div>
+    );
+  }
+
+  return <div className={`desktop-table-view ${className}`}>{children}</div>;
+};
+
+// ===========================
 // ADMIN PANEL
 // ===========================
 
@@ -10992,7 +11168,7 @@ const revertToDraft = async (project) => {
                         <button
                           onClick={() => {
                             setSelectedProject(project);
-                            setShowRejectModal(true);
+                            setShowReviewModal(true);
                           }}
                           className="btn btn-sm btn-danger"
                           title="Reject and move back to draft"
@@ -11533,45 +11709,119 @@ const [denialReason, setDenialReason] = useState('');
               </div>
             )}
 
-            <div className="projects-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Borrower</th>
-                    <th>Loan Amount</th>
-                    <th>Status</th>
-                    <th>Payment</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map(project => (
-                    <tr key={project.id} className={project.payment_status === 'payment_pending' ? 'highlight-row' : ''}>
-                      <td>{project.title}</td>
-                      <td>
-                        <div>
-                          <div>{project.borrower_name}</div>
-                          <small>{project.borrower_email}</small>
-                        </div>
-                      </td>
-                      <td>{formatCurrency(project.loan_amount)}</td>
-                      <td>
-                        <StatusBadge 
-                          status={
-                            project.payment_status === 'payment_pending' ? 'Pending Review' :
-                            project.visible ? 'Published' : 
-                            project.submission_status === 'rejected' ? 'Rejected' : 'Draft'
-                          } 
-                        />
-                      </td>
-                      <td>
-                        <StatusBadge status={project.payment_status} />
-                        {project.payment_intent_id && (
-                          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                            {project.payment_intent_id}
+            <MobileTableWrapper 
+              data={projects}
+              renderCard={(project) => (
+                <div key={project.id} className={`admin-card ${project.payment_status === 'payment_pending' ? 'highlight-card' : ''}`}>
+                  <div className="admin-card-header">
+                    <div>
+                      <h4 className="admin-card-title">{project.title}</h4>
+                      <div className="admin-card-meta">
+                        <span>{project.borrower_name}</span>
+                        <span>{project.borrower_email}</span>
+                      </div>
+                    </div>
+                    <StatusBadge 
+                      status={
+                        project.payment_status === 'payment_pending' ? 'Pending Review' :
+                        project.visible ? 'Published' : 
+                        project.submission_status === 'rejected' ? 'Rejected' : 'Draft'
+                      } 
+                    />
+                  </div>
+                  
+                  <div className="admin-card-details">
+                    <div className="admin-card-row">
+                      <span>Loan Amount</span>
+                      <span>{formatCurrency(project.loan_amount)}</span>
+                    </div>
+                    <div className="admin-card-row">
+                      <span>Payment Status</span>
+                      <StatusBadge status={project.payment_status} />
+                    </div>
+                    <div className="admin-card-row">
+                      <span>Created</span>
+                      <span>{formatDate(project.created_at)}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="admin-card-actions">
+                    <button 
+                      onClick={() => window.open(`/project/${project.id}`, '_blank')}
+                      className="btn btn-sm btn-outline"
+                    >
+                      View
+                    </button>
+                    {project.payment_status === 'payment_pending' && (
+                      <>
+                        <button 
+                          onClick={async () => {
+                            await api.approveProject(project.id);
+                            fetchProjects();
+                            addNotification({
+                              type: 'success',
+                              title: 'Project Approved',
+                              message: 'Project has been published successfully'
+                            });
+                          }}
+                          className="btn btn-sm btn-primary"
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setSelectedProject(project);
+                            setShowReviewModal(true);
+                          }}
+                          className="btn btn-sm btn-danger"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            >
+              <div className="projects-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Borrower</th>
+                      <th>Loan Amount</th>
+                      <th>Status</th>
+                      <th>Payment</th>
+                      <th>Created</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.map(project => (
+                      <tr key={project.id} className={project.payment_status === 'payment_pending' ? 'highlight-row' : ''}>
+                        <td>{project.title}</td>
+                        <td>
+                          <div>
+                            <div>{project.borrower_name}</div>
+                            <small>{project.borrower_email}</small>
                           </div>
+                        </td>
+                        <td>{formatCurrency(project.loan_amount)}</td>
+                        <td>
+                          <StatusBadge 
+                            status={
+                              project.payment_status === 'payment_pending' ? 'Pending Review' :
+                              project.visible ? 'Published' : 
+                              project.submission_status === 'rejected' ? 'Rejected' : 'Draft'
+                            } 
+                          />
+                        </td>
+                        <td>
+                          <StatusBadge status={project.payment_status} />
+                          {project.payment_intent_id && (
+                            <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                              {project.payment_intent_id}
+                            </div>
                         )}
                       </td>
                       <td>{formatDate(project.created_at)}</td>
@@ -11647,6 +11897,7 @@ const [denialReason, setDenialReason] = useState('');
                 </tbody>
               </table>
             </div>
+          </MobileTableWrapper>
           </div>
         )}
 
