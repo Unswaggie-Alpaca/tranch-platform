@@ -8040,14 +8040,14 @@ td {
 @media (max-width: 768px) {
   .broker-ai-floating {
     width: calc(100vw - 32px);
-    height: calc(100vh - 100px);
-    bottom: 16px;
+    height: calc(100vh - 140px); /* Account for bottom nav */
+    bottom: 76px; /* Above bottom nav */
     right: 16px;
     left: 16px;
   }
   
   .broker-ai-floating-button {
-    bottom: 20px;
+    bottom: 76px; /* Above bottom nav */
     right: 20px;
   }
 }
@@ -10830,7 +10830,16 @@ td {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* Landing Page Bottom Navigation - Always visible on mobile */
+.landing-bottom-nav {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .landing-bottom-nav {
+    display: flex !important;
+  }
+
   .mobile-bottom-nav {
     display: flex;
     justify-content: space-around;
@@ -11016,8 +11025,11 @@ td {
 /* Mobile Header Adjustments */
 @media (max-width: 768px) {
   .navbar {
-    padding: 0;
-    height: 60px;
+    display: none !important;
+  }
+  
+  .main-content {
+    padding-top: 0 !important;
   }
   
   .nav-container {
@@ -11057,6 +11069,10 @@ td {
   
   .desktop-only {
     display: block;
+  }
+  
+  .nav-menu.desktop-only {
+    display: flex !important;
   }
 }
 

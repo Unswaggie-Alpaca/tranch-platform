@@ -1494,6 +1494,68 @@ const DealRoomSelector = ({ isOpen, onClose, project, deals }) => {
 };
 
 // ===========================
+// LANDING PAGE BOTTOM NAVIGATION
+// ===========================
+
+const LandingBottomNav = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const isActive = (path) => location.pathname === path;
+  
+  return (
+    <nav className="mobile-bottom-nav landing-bottom-nav">
+      <Link 
+        to="/" 
+        className={`mobile-bottom-nav-item ${isActive('/') ? 'active' : ''}`}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span className="mobile-bottom-nav-label">Home</span>
+      </Link>
+      
+      <Link 
+        to="/login" 
+        className={`mobile-bottom-nav-item ${isActive('/login') ? 'active' : ''}`}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+          <polyline points="10 17 15 12 10 7" />
+          <line x1="15" y1="12" x2="3" y2="12" />
+        </svg>
+        <span className="mobile-bottom-nav-label">Sign In</span>
+      </Link>
+      
+      <Link 
+        to="/register" 
+        className={`mobile-bottom-nav-item ${isActive('/register') ? 'active' : ''}`}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="8.5" cy="7" r="4" />
+          <line x1="20" y1="8" x2="20" y2="14" />
+          <line x1="23" y1="11" x2="17" y2="11" />
+        </svg>
+        <span className="mobile-bottom-nav-label">Sign Up</span>
+      </Link>
+      
+      <button 
+        className="mobile-bottom-nav-item"
+        onClick={() => navigate('/register')}
+      >
+        <svg className="mobile-bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="11" width="18" height="10" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        <span className="mobile-bottom-nav-label">Get Started</span>
+      </button>
+    </nav>
+  );
+};
+
+// ===========================
 // NAVIGATION COMPONENT
 // ===========================
 
@@ -1610,23 +1672,23 @@ const Navigation = () => {
   return (
     <>
     <nav className="navbar">
-        <div className="nav-container">
+      <div className="nav-container">
         <Link to="/dashboard" className="nav-logo">
           <span className="logo-text">Tranch</span>
         </Link>
         
         {/* Desktop Navigation */}
-       <div className="nav-menu desktop-only">
-  {filteredLinks.map(link => (
-    <Link 
-      key={link.path}
-      to={link.path} 
-      className={`nav-link ${isActive(link.path) ? 'active' : ''}`}
-    >
-      {link.label}
-    </Link>
-  ))}
-</div>
+        <div className="nav-menu desktop-only">
+          {filteredLinks.map(link => (
+            <Link 
+              key={link.path}
+              to={link.path} 
+              className={`nav-link ${isActive(link.path) ? 'active' : ''}`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
 
 
         
@@ -11168,7 +11230,7 @@ const revertToDraft = async (project) => {
                         <button
                           onClick={() => {
                             setSelectedProject(project);
-                            setShowReviewModal(true);
+                            setShowRejectModal(true);
                           }}
                           className="btn btn-sm btn-danger"
                           title="Reject and move back to draft"
@@ -14123,9 +14185,9 @@ function App() {
             <Router>
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<ClerkAuthWrapper mode="sign-in" />} />
-              <Route path="/register" element={<ClerkAuthWrapper mode="sign-up" />} />
+              <Route path="/" element={<><LandingPage /><LandingBottomNav /></>} />
+              <Route path="/login" element={<><ClerkAuthWrapper mode="sign-in" /><LandingBottomNav /></>} />
+              <Route path="/register" element={<><ClerkAuthWrapper mode="sign-up" /><LandingBottomNav /></>} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
               <Route path="/cookies" element={<CookiePolicy />} />
