@@ -22,8 +22,8 @@ async function syncClerkUser(clerkUser) {
     // Combine first and last name
     const name = `${first_name || ''} ${last_name || ''}`.trim() || email.split('@')[0];
     
-    // Get role from metadata or default to 'borrower'
-    const role = public_metadata?.role || 'borrower';
+    // Don't assign a default role - users must choose during onboarding
+    const role = public_metadata?.role || null;
     
     // Check if user exists
     db.get('SELECT id, role FROM users WHERE email = ?', [email], (err, existingUser) => {
@@ -46,7 +46,7 @@ async function syncClerkUser(clerkUser) {
           }
         );
       } else {
-        // Create new user
+        // Create new user without role - they'll set it during onboarding
         db.run(
           `INSERT INTO users (
             clerk_user_id, name, email, role, approved, 
@@ -56,9 +56,9 @@ async function syncClerkUser(clerkUser) {
             id,
             name,
             email,
-            role,
-            role === 'borrower' ? 1 : 0, // Auto-approve borrowers
-            role === 'borrower' ? 'verified' : 'pending',
+            role, // Will be null, forcing onboarding
+            0, // Not approved until they complete onboarding
+            'pending',
             'inactive'
           ],
           function(err) {

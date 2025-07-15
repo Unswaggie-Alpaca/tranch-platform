@@ -655,6 +655,9 @@ const authenticateToken = async (req, res, next) => {
 // Role-based access middleware
 const requireRole = (roles) => {
   return (req, res, next) => {
+    if (!req.user || !req.user.role) {
+      return res.status(403).json({ error: 'User role not set. Please complete onboarding.' });
+    }
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -1802,8 +1805,9 @@ app.post('/api/auth/complete-profile', authenticateToken, async (req, res) => {
     years_experience, aum, phone, linkedin, bio, abn
   } = req.body;
 
-  if (req.user.role !== 'funder') {
-    return res.status(400).json({ error: 'Profile completion only for funders' });
+  // Both borrowers and funders can complete profiles now
+  if (!req.user.role || (req.user.role !== 'funder' && req.user.role !== 'borrower')) {
+    return res.status(400).json({ error: 'Invalid user role' });
   }
 
   db.run(
@@ -1958,7 +1962,12 @@ if (equity_contribution && equity_contribution < 0) {
     function(err) {
       if (err) {
         console.error('Project creation error:', err);
-        return res.status(500).json({ error: 'Failed to create project' });
+        console.error('Error details:', err.message);
+        console.error('SQL error code:', err.code);
+        return res.status(500).json({ 
+          error: 'Failed to create project',
+          details: err.message 
+        });
       }
 
       res.status(201).json({
