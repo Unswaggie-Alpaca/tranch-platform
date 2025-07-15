@@ -2057,13 +2057,9 @@ const Onboarding = () => {
     try {
       await api.setUserRole(role);
       
-      if (role === 'borrower') {
-        await refreshUser();
-        navigate('/dashboard');
-      } else {
-        setFormData({ ...formData, role });
-        setStep('profile');
-      }
+      // All users complete profile - no bypass for borrowers
+      setFormData({ ...formData, role });
+      setStep('profile');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2074,20 +2070,28 @@ const Onboarding = () => {
   const validateProfile = () => {
     const errors = [];
     
+    // Common fields for both roles
     if (!formData.company_name) errors.push('Company name is required');
-    if (!formData.company_type) errors.push('Company type is required');
-    if (!formData.investment_focus) errors.push('Investment focus is required');
-    if (!formData.typical_deal_size_min) errors.push('Minimum deal size is required');
-    if (!formData.typical_deal_size_max) errors.push('Maximum deal size is required');
-    if (!formData.years_experience) errors.push('Years of experience is required');
     if (!formData.phone) errors.push('Phone number is required');
     if (!formData.abn) errors.push('ABN is required');
     
     if (!validatePhone(formData.phone)) errors.push('Invalid phone number format');
     if (!validateABN(formData.abn)) errors.push('Invalid ABN format');
     
-    if (parseInt(formData.typical_deal_size_min) >= parseInt(formData.typical_deal_size_max)) {
-      errors.push('Maximum deal size must be greater than minimum');
+    // Role-specific validation
+    if (formData.role === 'funder') {
+      if (!formData.company_type) errors.push('Company type is required');
+      if (!formData.investment_focus) errors.push('Investment focus is required');
+      if (!formData.typical_deal_size_min) errors.push('Minimum deal size is required');
+      if (!formData.typical_deal_size_max) errors.push('Maximum deal size is required');
+      if (!formData.years_experience) errors.push('Years of experience is required');
+      
+      if (parseInt(formData.typical_deal_size_min) >= parseInt(formData.typical_deal_size_max)) {
+        errors.push('Maximum deal size must be greater than minimum');
+      }
+    } else if (formData.role === 'borrower') {
+      // Add borrower-specific validation if needed
+      if (!formData.company_type) errors.push('Company type is required');
     }
     
     return errors;
@@ -2106,13 +2110,19 @@ const Onboarding = () => {
     setError('');
 
     try {
-      await api.completeProfile({
+      const profileData = {
         ...formData,
-        typical_deal_size_min: parseInt(formData.typical_deal_size_min),
-        typical_deal_size_max: parseInt(formData.typical_deal_size_max),
-        years_experience: parseInt(formData.years_experience),
         aum: formData.aum ? parseInt(formData.aum) : null
-      });
+      };
+      
+      // Only include funder-specific fields if user is a funder
+      if (formData.role === 'funder') {
+        profileData.typical_deal_size_min = parseInt(formData.typical_deal_size_min);
+        profileData.typical_deal_size_max = parseInt(formData.typical_deal_size_max);
+        profileData.years_experience = parseInt(formData.years_experience);
+      }
+      
+      await api.completeProfile(profileData);
       await refreshUser();
       setStep('complete');
     } catch (err) {
@@ -2209,32 +2219,45 @@ const Onboarding = () => {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="company_type">
-                    Company Type *
-                    <Tooltip content="Select the category that best describes your organization">
-                      <span className="help-icon">?</span>
-                    </Tooltip>
-                  </label>
-                  <select
-                    id="company_type"
-                    value={formData.company_type}
-                    onChange={(e) => setFormData({ ...formData, company_type: e.target.value })}
-                    className="form-select"
-                    required
-                  >
-                    <option value="">Select company type</option>
-                    <option value="Private Credit Fund">Private Credit Fund</option>
-                    <option value="Investment Bank">Investment Bank</option>
-                    <option value="Family Office">Family Office</option>
-                    <option value="Hedge Fund">Hedge Fund</option>
-                    <option value="Real Estate Fund">Real Estate Fund</option>
-                    <option value="High Net Worth Individual">High Net Worth Individual</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
+              <div className="form-group">
+                <label htmlFor="company_type">
+                  Company Type *
+                  <Tooltip content="Select the category that best describes your organization">
+                    <span className="help-icon">?</span>
+                  </Tooltip>
+                </label>
+                <select
+                  id="company_type"
+                  value={formData.company_type}
+                  onChange={(e) => setFormData({ ...formData, company_type: e.target.value })}
+                  className="form-select"
+                  required
+                >
+                  <option value="">Select company type</option>
+                  {formData.role === 'funder' ? (
+                    <>
+                      <option value="Private Credit Fund">Private Credit Fund</option>
+                      <option value="Investment Bank">Investment Bank</option>
+                      <option value="Family Office">Family Office</option>
+                      <option value="Hedge Fund">Hedge Fund</option>
+                      <option value="Real Estate Fund">Real Estate Fund</option>
+                      <option value="High Net Worth Individual">High Net Worth Individual</option>
+                      <option value="Other">Other</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="Developer">Property Developer</option>
+                      <option value="Builder">Builder</option>
+                      <option value="Investor">Property Investor</option>
+                      <option value="Real Estate Agency">Real Estate Agency</option>
+                      <option value="Construction Company">Construction Company</option>
+                      <option value="Other">Other</option>
+                    </>
+                  )}
+                </select>
+              </div>
 
+              {formData.role === 'funder' && (
                 <div className="form-group">
                   <label htmlFor="years_experience">
                     Years Experience *
@@ -2251,34 +2274,35 @@ const Onboarding = () => {
                     max={100}
                   />
                 </div>
-              </div>
+              )}
             </div>
 
-            <div className="form-section">
-              <h3>Investment Profile</h3>
-              
-              <div className="form-group">
-                <label htmlFor="investment_focus">
-                  Investment Focus *
-                  <Tooltip content="Primary property types you invest in">
-                    <span className="help-icon">?</span>
-                  </Tooltip>
-                </label>
-                <select
-                  id="investment_focus"
-                  value={formData.investment_focus}
-                  onChange={(e) => setFormData({ ...formData, investment_focus: e.target.value })}
-                  className="form-select"
-                  required
-                >
-                  <option value="">Select investment focus</option>
-                  <option value="Residential Development">Residential Development</option>
-                  <option value="Commercial Development">Commercial Development</option>
-                  <option value="Mixed-Use Development">Mixed-Use Development</option>
-                  <option value="Industrial Development">Industrial Development</option>
-                  <option value="All Property Types">All Property Types</option>
-                </select>
-              </div>
+            {formData.role === 'funder' && (
+              <div className="form-section">
+                <h3>Investment Profile</h3>
+                
+                <div className="form-group">
+                  <label htmlFor="investment_focus">
+                    Investment Focus *
+                    <Tooltip content="Primary property types you invest in">
+                      <span className="help-icon">?</span>
+                    </Tooltip>
+                  </label>
+                  <select
+                    id="investment_focus"
+                    value={formData.investment_focus}
+                    onChange={(e) => setFormData({ ...formData, investment_focus: e.target.value })}
+                    className="form-select"
+                    required
+                  >
+                    <option value="">Select investment focus</option>
+                    <option value="Residential Development">Residential Development</option>
+                    <option value="Commercial Development">Commercial Development</option>
+                    <option value="Mixed-Use Development">Mixed-Use Development</option>
+                    <option value="Industrial Development">Industrial Development</option>
+                    <option value="All Property Types">All Property Types</option>
+                  </select>
+                </div>
 
               <div className="form-row">
                 <div className="form-group">
@@ -2332,7 +2356,8 @@ const Onboarding = () => {
                   min={0}
                 />
               </div>
-            </div>
+              </div>
+            )}
 
             <div className="form-section">
               <h3>Contact Information</h3>
