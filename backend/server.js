@@ -970,7 +970,7 @@ app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'applic
                 
                 // Update project status with row locking
                 db.run(
-                  'UPDATE projects SET payment_status = ?, visible = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND payment_status = ?',
+                  'UPDATE projects SET payment_status = ?, visible = 0 WHERE id = ? AND payment_status = ?',
                   ['payment_pending', projectId, 'unpaid'],
                   function(err) {
                     if (err) return done(err);
@@ -982,7 +982,7 @@ app.post('/api/webhooks/stripe', express.raw({type: ['application/json', 'applic
                     
                     // Update payment record
                     db.run(
-                      'UPDATE payments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_payment_intent_id = ? AND status = ?',
+                      'UPDATE payments SET status = ? WHERE stripe_payment_intent_id = ? AND status = ?',
                       ['completed', paymentIntent.id, 'pending'],
                       function(err2) {
                         if (err2) return done(err2);
@@ -1764,6 +1764,23 @@ db.run(`ALTER TABLE projects ADD COLUMN postcode TEXT`, (err) => {
     console.error('Failed to add postcode column:', err);
   } else if (!err) {
     console.log('Successfully added postcode column to projects table');
+  }
+});
+
+// Migration to add updated_at columns
+db.run(`ALTER TABLE projects ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add updated_at column to projects:', err);
+  } else if (!err) {
+    console.log('Successfully added updated_at column to projects table');
+  }
+});
+
+db.run(`ALTER TABLE payments ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add updated_at column to payments:', err);
+  } else if (!err) {
+    console.log('Successfully added updated_at column to payments table');
   }
 });
 
