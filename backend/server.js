@@ -1742,6 +1742,31 @@ db.run(`ALTER TABLE projects ADD COLUMN rejection_date DATETIME`, (err) => {
   }
 });
 
+// Migration to add city, state, and postcode columns (added to schema but missing in production)
+db.run(`ALTER TABLE projects ADD COLUMN city TEXT`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add city column:', err);
+  } else if (!err) {
+    console.log('Successfully added city column to projects table');
+  }
+});
+
+db.run(`ALTER TABLE projects ADD COLUMN state TEXT`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add state column:', err);
+  } else if (!err) {
+    console.log('Successfully added state column to projects table');
+  }
+});
+
+db.run(`ALTER TABLE projects ADD COLUMN postcode TEXT`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Failed to add postcode column:', err);
+  } else if (!err) {
+    console.log('Successfully added postcode column to projects table');
+  }
+});
+
 // Import AI Chat routes (with Clerk auth)
 const aiChatRoutes = require('./routes/ai-chat');
 app.use('/api/ai-chat', authenticateToken, aiChatRoutes);
